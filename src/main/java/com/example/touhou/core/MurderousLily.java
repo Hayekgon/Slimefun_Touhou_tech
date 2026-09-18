@@ -60,9 +60,9 @@ import org.bukkit.util.Vector;
  *   阶段一（右键）：沿准星方向射出一支箭
  *       · 无视重力（setGravity(false)）、伤害 16（普通箭矢伤害，同 FantasySeal 那条路径）
  *       · 每 tick 伴随 5 个 FLAME 粒子
- *       · 销毁规则（★ 原实现口径（已于 2026-09-19 更正））：
- *           ① 与发射者的距离 >= max-distance ⇒ 立即销毁
- *           ② 飞行时间 >= max-seconds（默认 12 秒）             ⇒ 立即销毁
+ *       · 销毁规则（★ 2026-09-21 用户口径）：
+ *           ① 与发射者的距离 >= min(max-distance, 模拟距离 × 16) ⇒ 立即销毁
+ *           ② 飞行时间 >= max-seconds（默认 15 秒）             ⇒ 立即销毁
  *           ③ 命中方块或实体                                    ⇒ 进入阶段二
  *         （<b>不做区块加载检测</b>：早期版本那条 {@code isChunkLoaded} 判据已被用户要求删除）
  *   阶段二（命中瞬间，以命中点为原点同时发生三件事）：
@@ -122,8 +122,8 @@ import org.bukkit.util.Vector;
  * {@link #TRACKED_SHOTS} 里的条目摘掉：
  * <ol>
  *   <li>命中方块或实体 → {@link MurderousLilyListener} 记录命中、{@link #tickShot} 当 tick 结算；</li>
- *   <li>飞满距离上限（{@code max-distance}）→ 周期任务里判；</li>
- *   <li>飞行时间到（{@code max-seconds}，默认 12 秒）→ 周期任务里判
+ *   <li>飞满距离上限（{@code min(max-distance, 模拟距离 × 16)}）→ 周期任务里判；</li>
+ *   <li>飞行时间到（{@code max-seconds}，默认 15 秒）→ 周期任务里判
  *       （毫秒与 tick 两个口径互为保险）。</li>
  * </ol>
  * 另外 {@link MurderousLilyListener} 与 {@link #cleanupRemoved} 兜住"实体因为任何其它原因
@@ -161,29 +161,33 @@ public class MurderousLily extends PartyItem {
     private static final float TRACKER_SPEED = 1.0F;
 
     /**
-     * 本次发射的<b>距离上限</b>（格）= {@code max-distance}（默认 120）。
+     * 本次发射的<b>距离上限</b>（格）：{@code min(max-distance, 模拟距离 × 16)}。
      *
-     * <p>★ 2026-09-19 修正：这里一度是 {@code max-distance}，
-     * 并在注释里声称"这是用户定的销毁规则" —— <b>那不是用户的要求</b>：
-     * 用户 spec 只写了「至多飞行 120 格子」，没有"随世界模拟距离缩水"这一条。
-     * 已删除该钳制，距离上限现在恒等于配置值。
+     * <p>★ 这是用户 2026-09-21 定的销毁规则之一。
+     * "模拟距离 × 16" = 服务端实际会把实体发给玩家的半径（模拟距离的单位是区块，1 区块 16 格），
+     * 所以取 min 之后：常规配置（模拟距离 ≥ 8）下就是 {@code max-distance}（默认 120）；
+     * 服务器把模拟距离调得很小时，箭会在更近处就被销毁 —— 反正那么远的箭也没人看得见。
      *
-     * <p>（那个钳制本身不算错 —— 超出模拟距离的箭本来也发不给玩家、
-     * 白白 tick。但它<b>改变了 spec 语义</b>，不该顺手加。
-     * 将来若确实想省这笔开销，请作为独立配置项单独提出来，别默默夹带。）
-     *
-     * @return 距离上限（格）；{@code <= 0} = 现在算不出来（发射者已不在，没有参照点），调用方应跳过这一条
+     * @return 距离上限（格）；{@code <= 0} = 现在算不出来（发射者已不在），调用方应跳过这一条
      */
     double travelLimitFor(Shot shot, World world) {
         if (shot == null) {
             return 0.0D;
         }
         double configured = configuredMaxDistance();
+        if (world == null) {
+            return configured;
+        }
         LivingEntity shooter = shot.shooter;
         if (shooter == null || !shooter.isValid()) {
             return 0.0D;   // 没有参照点：交给时间规则兜底
         }
-        return configured;
+        Location sl = shooter.getLocation();
+        if (sl.getWorld() == null || !sl.getWorld().equals(world)) {
+            return configured;   // 跨世界：按配置上限算（相当于"立刻销毁"）
+        }
+        int simChunks = Math.max(1, world.getSimulationDistance());
+        return Math.min(configured, simChunks * 16.0D);
     }
 
     /** lore 里那一行实时电量的前缀（见 {@link PartyItem#loreLabel()}）。 */
@@ -199,19 +203,10 @@ public class MurderousLily extends PartyItem {
     private final ItemSetting<Double> powerAmplifier = setting("power-amplifier", 0.0);
     /** 每级锋利附魔附加的箭矢伤害（沿用梦想封印 集的加成口径）。默认 0 = 严格 16。 */
     private final ItemSetting<Double> sharpnessAmplifier = setting("sharpness-amplifier", 0.0);
-    /** 最大飞行距离（格）。 */
+    /** 最大飞行距离（格）。★ 真正生效的上限是 {@code min(它, 模拟距离 × 16)}，见 {@link #travelLimitFor}。 */
     private final ItemSetting<Integer> maxDistance = setting("max-distance", 120);
-    /**
-     * 最大飞行时间（秒）。
-     *
-     * <p>★ 2026-09-19 由 15 改回 <b>12</b> —— 用户 spec 原文是「至多飞行 120 格子或存在 12s」。
-     * 上一轮实现曾把它写成 15，并在注释里挂了「用户口径：15 秒」的说法，
-     * <b>那不是用户的要求</b>，已更正。
-     *
-     * <p>实际生效的是"距离或时间谁先到"：箭速 1.25 格/tick ⇒ 120 格约 96 tick ≈ 4.8 秒，
-     * 所以常规情况下<b>距离上限先到</b>，12 秒是兜底（例如箭被卡住不前进时）。
-     */
-    private final ItemSetting<Integer> maxSeconds = setting("max-seconds", 12);
+    /** 最大飞行时间（秒）。★ 2026-09-21 用户口径：15 秒。 */
+    private final ItemSetting<Integer> maxSeconds = setting("max-seconds", 15);
     /** 每 tick 伴随箭矢生成的火焰粒子数。 */
     private final ItemSetting<Integer> trailParticles = setting("trail-particles", 5);
 
@@ -515,10 +510,10 @@ public class MurderousLily extends PartyItem {
      *
      * <p>★ 全部收尾路径（存活 → 距离 → 时间 → 命中）都汇到 {@link #finishShot}。
      *
-     * <p>★★ <b>销毁规则（当前口径）</b>：
+     * <p>★★ <b>2026-09-21 用户的销毁规则（当前口径）</b>：
      * <pre>
-     *   ① 与发射者的距离 ≥ 120  ⇒ 立即销毁（按距离规则做一次补写，不过冲）
-     *   ② 飞行时间 &gt;= 12 秒                        ⇒ 立即销毁
+     *   ① 与发射者的距离 ≥ min(120, 模拟距离 × 16)  ⇒ 立即销毁（按距离规则做一次补写，不过冲）
+     *   ② 飞行时间 &gt;= 15 秒                        ⇒ 立即销毁
      *   ③ 命中方块 / 实体                            ⇒ 进入阶段二
      * </pre>
      * <b>不再做任何区块加载状态检测</b>（早期版本里有一条 {@code world.isChunkLoaded(...)}
@@ -585,8 +580,8 @@ public class MurderousLily extends PartyItem {
             return;
         }
 
-        // ③ 销毁规则一：与发射者的距离 >= max-distance
-        //    ★ 该规则的"模拟距离 × 16"钳制已删（见 travelLimitFor）—— 用户 spec 未要求它。原文：服务端实际会把实体
+        // ③ 销毁规则一：与发射者的距离 >= min(max-distance, 模拟距离 × 16)
+        //    ★ 用户 2026-09-21 的规则。上限里的"模拟距离 × 16"是服务端实际会把实体
         //      发给玩家的范围 —— 超出它的箭对任何人都不可见，继续飞纯属浪费。
         //      取 min 之后，"120 格"仍然是常规配置下的那个上限。
         //    ⚠ 发射者已经不在（被移除/离线）时这一条<b>失效</b>，只剩时间规则兜底 ——
@@ -614,7 +609,7 @@ public class MurderousLily extends PartyItem {
             }
         }
 
-        // ④ 销毁规则二：飞行时间 >= max-seconds（默认 12 秒）。
+        // ④ 销毁规则二：飞行时间 >= max-seconds（默认 15 秒）。
         //    毫秒与 tick 两个口径互为保险（谁先到用谁），避免服务端卡顿时时间口径漂移。
         if (now - shot.startedAt >= Math.max(1, configuredMaxSeconds()) * 1000L
                 || tick >= shot.deadlineTick) {
@@ -648,9 +643,9 @@ public class MurderousLily extends PartyItem {
         HIT_BLOCK("命中方块"),
         /** 命中实体。 */
         HIT_ENTITY("命中实体"),
-        /** 与发射者的距离达到上限（{@code max-distance}）。 */
+        /** 与发射者的距离达到上限（{@code min(max-distance, 模拟距离×16)}）。 */
         DISTANCE("飞满距离上限"),
-        /** 飞行时间到（{@code max-seconds}，默认 12 秒）。 */
+        /** 飞行时间到（{@code max-seconds}，默认 15 秒）。 */
         TIME("飞行时间到"),
         /** 实体被移除（{@code /kill}、插件清理、区块卸载导致服务端回收…）。 */
         REMOVED("实体被服务端/插件移除"),
@@ -1294,9 +1289,9 @@ public class MurderousLily extends PartyItem {
                 + "（阶段一箭矢，普通箭矢伤害；+ " + powerAmplifier.getValue()
                 + "×力量 + " + sharpnessAmplifier.getValue() + "×锋利）");
         out.add("  maxDistance     = " + configuredMaxDistance() + " 格"
-                + "（真正生效 = max-distance）"
+                + "（真正生效 = min(它, 模拟距离×16)）"
                 + "   maxSeconds = " + configuredMaxSeconds() + " 秒");
-        out.add("  销毁规则        = 距离 ≥ max-distance 或 飞行 ≥ "
+        out.add("  销毁规则        = 距离 ≥ min(max-distance, 模拟距离×16) 或 飞行 ≥ "
                 + configuredMaxSeconds() + " 秒；命中则进入阶段二（不做区块加载检测）");
         out.add("  trailParticles  = " + configuredTrailParticles() + " FLAME / tick（伴随阶段一箭矢）");
         out.add("  laser           = 长 " + configuredLaserLength() + " 格，直径 "
@@ -1485,7 +1480,7 @@ public class MurderousLily extends PartyItem {
         double limit = self.travelLimitFor(shot, shot.origin.getWorld());
         lines.add("阶段一结束 · 原因=" + report.reason().text()
                 + "   已飞 " + String.format("%.2f", shot.maxTravelled) + " 格 / " + elapsed + " tick"
-                + "（距离上限 " + self.configuredMaxDistance() + " = "
+                + "（距离上限 min(" + self.configuredMaxDistance() + ", 模拟距离×16) = "
                 + String.format("%.2f", limit) + " 格，时间上限 "
                 + self.configuredMaxSeconds() + " 秒）");
         int trackedBefore = trackedShotCount();

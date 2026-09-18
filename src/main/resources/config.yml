@@ -404,9 +404,9 @@ seal:
 #   纯狐的符卡「殺意の百合」，英文 Murderous Lily。三段行为：
 #     阶段一：右键射出一支【无视重力】的箭（伤害 16，普通箭矢伤害），
 #             每 tick 伴随 5 个火焰粒子；
-#             销毁规则（★ 原实现口径（已于 2026-09-19 更正））：
-#               ① 与发射者的距离 >= max-distance ⇒ 立即销毁
-#               ② 飞行时间 >= max-seconds（默认 12 秒）             ⇒ 立即销毁
+#             销毁规则（★ 2026-09-21 用户口径）：
+#               ① 与发射者的距离 >= min(max-distance, 模拟距离 × 16) ⇒ 立即销毁
+#               ② 飞行时间 >= max-seconds（默认 15 秒）             ⇒ 立即销毁
 #               ③ 命中方块或实体                                    ⇒ 进入阶段二
 #             （不做区块加载检测 —— 早期那条 isChunkLoaded 判据已按要求删除）
 #     阶段二（命中点爆发，三件事同时发生）：
@@ -443,7 +443,7 @@ seal:
 #        power-capacity / power-cost / charge-per-cycle / charge-interval-seconds /
 #        cooldown-millis / charge-wireless / charge-range / hint-throttle-seconds
 #        basic-damage 16        power-amplifier 0.0      sharpness-amplifier 0.0
-#        max-distance 120       max-seconds 12           trail-particles 5
+#        max-distance 120       max-seconds 15           trail-particles 5
 #        laser-length 12        laser-diameter 1.0       laser-damage 32
 #        fountain-particles 300 tracker-count 12         tracker-damage 12
 #        tracker-range 12       tracker-seconds 5        tracker-particles 2
