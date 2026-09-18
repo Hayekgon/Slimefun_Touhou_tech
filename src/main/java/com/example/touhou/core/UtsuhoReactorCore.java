@@ -59,7 +59,8 @@ import java.util.List;
  *   <li>右键核心 —— 把"未激活"转成"空闲中"（spec 的手动激活要求）。</li>
  * </ul>
  */
-public class UtsuhoReactorCore extends AGenerator {
+public class UtsuhoReactorCore extends AGenerator
+        implements io.github.thebusybiscuit.slimefun4.core.attributes.RecipeDisplayItem {
 
     // ---------------------------------------------------------------- GUI 布局
     //
@@ -313,6 +314,140 @@ public class UtsuhoReactorCore extends AGenerator {
     @Override
     public int[] getOutputSlots() {
         return OUTPUT.clone();
+    }
+
+    // ---------------------------------------------------------------- 粘液书配方页
+    //
+    // ★★ 这一页的内容【全部现场生成】，一个数字都没有写死在展示代码里：
+    //    · 燃料配方  → 遍历本体 AbstractEnergyProvider 里已注册的 MachineFuel
+    //                  （我们只 registerFuel 了一条，但展示这边不假设有几条）；
+    //    · 进程耗时  → MachineFuel#getTicks()（= AddonConfig#processTicks）；
+    //    · 产物      → MachineFuel#getOutput()；
+    //    · 发电参数  → AddonConfig 的 energyProduction / energyCapacity /
+    //                  modeThreshold / productModeSpeedMultiplier / productModeEnergyRate。
+    //    所以以后改 config.yml（甚至加第二条 MachineFuel）→ 重新打开指南就能看到新数值，
+    //    展示代码一行都不用动。
+    //
+    // ★ 为什么不做缓存：指南每次翻页/重开都会重新调 getDisplayRecipes()，
+    //   缓存只会带来"改了配置书里不变"的假象。这一页只有几个 ItemStack，现算成本可以忽略。
+
+    /**
+     * 指南页底部网格的内容（LogiTech 那种「材料 N / 输入数量 / 产物 N / 进程耗时」的图标）。
+     *
+     * <p>布局：每一条燃料配方占若干行（左列输入、右列输出），
+     * 最后再补一行"运转参数"（左边留空、右边是参数说明）。
+     *
+     * <p>★ 这里<b>不用</b> {@link ReactorManager#effectiveProduction(Location)} 那类
+     * "要看具体方块"的方法：指南页是<b>物品</b>的页面，没有 Location，
+     * 拿 config 里的额定数值才是对的（也才不会在打开书的时候去读世界方块）。
+     */
+    @Override
+    public List<ItemStack> getDisplayRecipes() {
+        List<ItemStack> display = new ArrayList<>();
+
+        // ---- ① 燃料配方：从已注册的 MachineFuel 表来 ----
+        for (MachineFuel fuel : sortedFuels()) {
+            List<ItemStack> inputs = new ArrayList<>();
+            List<ItemStack> outputs = new ArrayList<>();
+            ItemStack in = fuel.getInput();
+            inputs.add(RecipePages.input(in, 0,
+                    in == null ? 1 : Math.max(1, in.getAmount()),
+                    List.of("&8燃料", "&8投入核心的输入槽")));
+            ItemStack out = fuel.getOutput();
+            if (out != null && !out.getType().isAir()) {
+                outputs.add(RecipePages.output(out, 0, Math.max(1, out.getAmount()),
+                        fuelTicksOf(fuel), List.of("&8进程结束后产出")));
+            }
+            display.addAll(RecipePages.block(inputs, outputs));
+
+            // 空桶：进程结束时本体 AGenerator 会把"桶装燃料"换成空桶吐出来
+            // （判据就是本类自己的 isBucketItem，与真正跑机器时用的是同一个方法）。
+            // ★ 用 note 而不是 output：它不是"产物 2"，说成产物会误导
+            //   （玩家会以为烧一桶能额外得到什么东西）。所以左边留空、右边单独一行。
+            if (isBucketItem(in)) {
+                display.addAll(RecipePages.block(List.of(),
+                        List.of(RecipePages.note(new ItemStack(Material.BUCKET),
+                                "&e装燃料的桶会退回",
+                                List.of("", "&7进程结束时空桶回到核心的输出槽")))));
+            }
+        }
+
+        // ---- ② 运转参数：没有输入，只有一行说明（放在输出列，左列自然留空） ----
+        AddonConfig cfg = ReactorManager.config();
+        long productModeOutput = (long) (cfg.energyProduction * cfg.productModeEnergyRate);
+        List<String> params = new ArrayList<>();
+        params.add("");
+        params.add("&a运转参数");
+        params.add("&7发电功率： &e" + String.format("%,d", cfg.energyProduction) + " &7J/tick");
+        params.add("&7储电上限： &e" + String.format("%,d", cfg.energyCapacity) + " &7J");
+        params.add("&7发电模式暂停阈值： &e" + String.format("%,d", cfg.modeThreshold) + " &7J");
+        params.add("&8达到阈值即暂停进程（进度保留），直到电量被用掉");
+        params.add("&7产物模式： &f效率 " + trimDouble(cfg.productModeSpeedMultiplier * 100)
+                + "% &7/ &f电量 " + trimDouble(cfg.productModeEnergyRate * 100) + "%"
+                + " &8(" + String.format("%,d", productModeOutput) + " J/tick)");
+        params.add("&8需要结构完整 + 已激活才会运转");
+        display.addAll(RecipePages.block(List.of(),
+                List.of(RecipePages.note(Material.REDSTONE, "&e反应堆运转参数", params))));
+
+        return display;
+    }
+
+    /** 指南里那一段的标题（默认是英文/本地化的"机器配方"，这里给中文）。 */
+    @Override
+    public String getRecipeSectionLabel(org.bukkit.entity.Player p) {
+        return "&7⇩ &f运转配方 &7⇩";
+    }
+
+    /**
+     * 已注册的燃料配方，<b>排序后</b>返回。
+     *
+     * <p>★ 为什么要排序：本体的 {@code AbstractEnergyProvider#fuelTypes} 是 {@link java.util.HashSet}
+     * （已用 {@code javap} 确认），遍历顺序取决于对象的 identity hash ——
+     * 同一份代码两次启动可能给出不同的顺序。指南页的顺序跟着它漂移会非常难排查
+     * （"我什么都没改，怎么书里两条配方的上下位置变了"），所以这里定死一个顺序：
+     * 先按进程耗时、再按输入物品的显示名。
+     */
+    private List<MachineFuel> sortedFuels() {
+        List<MachineFuel> fuels = new ArrayList<>(getFuelTypes());
+        fuels.sort((a, b) -> {
+            if (a == null || b == null) {
+                return a == b ? 0 : (a == null ? 1 : -1);
+            }
+            if (a.getTicks() != b.getTicks()) {
+                return Integer.compare(a.getTicks(), b.getTicks());
+            }
+            return RecipePages.labelOf(a.getInput()).compareTo(RecipePages.labelOf(b.getInput()));
+        });
+        return fuels;
+    }
+
+    /** 把倍率写成不带多余小数的文本（5.0 → "500"，12.5 → "12.5"）。 */
+    private static String trimDouble(double value) {
+        if (Math.abs(value - Math.rint(value)) < 1.0e-6D) {
+            return String.valueOf((long) Math.rint(value));
+        }
+        return String.valueOf(Math.round(value * 10.0D) / 10.0D);
+    }
+
+    /**
+     * 这条燃料<b>真正</b>要跑多少个 Slimefun tick。
+     *
+     * <p>★★ 为什么是 {@code getTicks() / 2} 而不是 {@code getTicks()}：
+     * 本体的 {@code MachineFuel} 构造器会把传进来的 tick <b>乘 2</b> 再存起来
+     * （用 {@code javap -c} 看字节码是 {@code iconst_2; imul; putfield ticks}）。
+     * 我们注册时传的是 {@code AddonConfig#processTicks}（默认 600），
+     * 所以 {@code getTicks()} 读回来是 1200 —— 若照抄它，书里会写"1200 tick"，
+     * 而机器真正开的进程只有 600 tick（见 {@link #tryStartProcess} 里
+     * {@code new FuelOperation(..., ReactorManager.config().processTicks)}），
+     * 也就是与核心 GUI 信息格显示的"本次进程总时长"对不上。
+     * 除以 2 正好还原"注册时写下的那个数"，对我们这条燃料就是 {@code processTicks}。
+     */
+    private static int fuelTicksOf(MachineFuel fuel) {
+        if (fuel == null) {
+            return ReactorManager.config().processTicks;
+        }
+        int raw = fuel.getTicks();
+        return raw > 1 ? raw / 2 : ReactorManager.config().processTicks;
     }
 
     // ---------------------------------------------------------------- GUI

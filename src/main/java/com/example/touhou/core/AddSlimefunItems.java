@@ -67,6 +67,12 @@ public final class AddSlimefunItems {
     public static PowerStorageUnit POWER_STORAGE_UNIT;
 
     public static void setup(Touhou plugin) {
+        // ★ 自定义配方类型要先建好：它是两个多方块核心的"指南配方页"载体，物品构造器就要吃它
+        //   （见 TouhouRecipeTypes 的类注释 —— 它【不会】让核心变成可合成物品）。
+        //   它只依赖 AddItems 的模板，所以放在 AddItems.setup() 之后的任意位置都行；
+        //   放最前面是为了"顺着往下读注册流程时先看到它"。
+        TouhouRecipeTypes.setup();
+
         // 材料：逻辑奇点本身就是反应堆的产物，所以给一个"没有配方"的占位，
         // 只作为物品存在（玩家只能从反应堆拿到）。
         LOGIC_SINGULARITY = register(new SlimefunItem(
@@ -108,11 +114,14 @@ public final class AddSlimefunItems {
                 RecipeType.NULL, noRecipe()), plugin);
 
         // 多方块大型机器：反应堆核心
+        // ★ 配方类型从 RecipeType.NULL 换成 TouhouRecipeTypes.REACTOR_CORE：
+        //   只为让粘液书那一页有内容（槽 10 的机器图标 + 底部自定义配方页）。
+        //   配方数组仍是 9 格全空 ⇒ 依旧不可合成，理由见 TouhouRecipeTypes 的类注释。
         UTSUHO_REACTOR_CORE = register(new UtsuhoReactorCore(
                 AddGroups.COMPLEX_MACHINE,
                 AddItems.UTSUHO_REACTOR_CORE,
-                RecipeType.ENHANCED_CRAFTING_TABLE,
-                reactorRecipe()), plugin);
+                TouhouRecipeTypes.REACTOR_CORE,
+                noRecipe()), plugin);
 
         // 多方块构件：结构层图由用户指定，这里只把"积木"注册进 2 级组 COMPLEX_MACHINE。
         // ⚠ 配方暂缺（RecipeType.NULL = 不可合成），先用 /sf give 或创造模式拿取；
@@ -156,20 +165,15 @@ public final class AddSlimefunItems {
 
         SAIZENBAKO = register(new Saizenbako(
                 AddGroups.COMPLEX_MACHINE, AddItems.SAIZENBAKO,
-                RecipeType.NULL, noRecipe()), plugin);
+                TouhouRecipeTypes.SAIZENBAKO, noRecipe()), plugin);
 
-        // ★ 标签：保护罩与两个接口共用 touhou:reactor_shell。
-        //   结构层图里写 `S: "#touhou:reactor_shell"`，这些方块都能满足那一格的要求 ——
-        //   也就是"接口可以替代保护罩搭建"。
-        ItemTags.tag("touhou:reactor_shell",
-                REACTOR_SHIELD.getId(),
-                REACTOR_INPUT_PORT.getId(),
-                REACTOR_OUTPUT_PORT.getId());
-        // ★★ 但是【投影图标】必须挑定一个：层图里 'S' 那一格占了整座反应堆的一大半，
-        //    画出来的应该是用户明确要求的「旧地狱-反应堆保护罩」，而不是"成员里恰好排第一的那个"
-        //    （登记顺序只是注册顺序的副产品，改一行注册就会让图标悄悄换成接口）。
-        //    所以显式登记代表件 —— 见 ItemTags.setDefaultDisplay 的注释。
-        ItemTags.setDefaultDisplay("touhou:reactor_shell", REACTOR_SHIELD.getId());
+        // ★ 标签 touhou:reactor_shell（保护罩 + 两个接口）的登记【不在这里】——
+        //   它挪到了 AddItems.setup() 的末尾。原因：核心物品描述里的「建造所需材料」
+        //   要把层图里的 #touhou:reactor_shell 翻成可读名字，而那段 lore 在
+        //   AddItems.setup() 里就拼完了；本方法排在它之后，在这里登记已经来不及
+        //   （实测症状：物品描述写着 #touhou:reactor_shell，而 /touhou guide 现算出
+        //     「旧地狱-反应堆保护罩」，同一件事两个说法）。
+        //   请看 AddItems 末尾「标签登记」那一段，别在这里再登记一次。
 
         // Flee into Gensokyo：博丽的御币（形状模仿钓鱼竿）
         // ★ PARTY_ITEM 之前因为一个物品都没有，注册表里根本没它；
@@ -205,11 +209,23 @@ public final class AddSlimefunItems {
     }
 
     /**
-     * 反应堆核心的合成配方。
+     * 反应堆核心的合成配方（<b>当前未被使用</b> —— 保留下来只是为了"想恢复合成时一行就能切回去"）。
      *
-     * <p>刻意用"钢锭 + 强化合金 + 下界之星"这种中后期材料，而不是测试方块 ——
-     * 这台机器按 spec 的定位是顶级产能机器，配方不该便宜到随手能做。
+     * <p>★ 为什么不再使用：本次需求是"两个多方块核心都不能是可合成物品"，
+     * 所以核心改用 {@link TouhouRecipeTypes#REACTOR_CORE} 这个自定义配方类型 + 全空配方数组。
+     * 空数组是硬的：{@code RecipeType#register} 对自定义类型本来就不会注册任何东西
+     * （见 {@link TouhouRecipeTypes} 的类注释），再加上 9 格全空 —— <b>两条保险</b>。
+     *
+     * <p>★ 想恢复"增强工作台可造"：把上面 {@code UTSUHO_REACTOR_CORE} 的注册改回
+     * {@code RecipeType.ENHANCED_CRAFTING_TABLE} + {@code reactorRecipe()} 即可。
+     * 这条配方是刻意设计过的（钢锭 + 强化合金 + 下界之星这类中后期材料，
+     * 因为这台机器按 spec 的定位是顶级产能机器），所以<b>代码保留、不删</b>。
+     *
+     * <p>⚠ 改回去会连带丢掉"粘液书底部的自定义配方页"吗？不会 ——
+     * 那一页来自 {@code RecipeDisplayItem}（见 {@link RecipePages}），与配方类型无关；
+     * 配方类型只决定指南页<b>槽 10</b> 显示哪台机器的图标、以及上面 3×3 网格画什么。
      */
+    @SuppressWarnings("unused")
     private static ItemStack[] reactorRecipe() {
         return new ItemStack[] {
                 SlimefunItems.REINFORCED_PLATE, SlimefunItems.BLISTERING_INGOT_3, SlimefunItems.REINFORCED_PLATE,
@@ -218,7 +234,13 @@ public final class AddSlimefunItems {
         };
     }
 
-    /** 9 格全空（RecipeType.NULL 用）。 */
+    /**
+     * 9 格全空 —— "这个物品没有合成表"。
+     *
+     * <p>两个多方块核心（反应堆 / 赛钱箱）现在也走它，配合
+     * {@link TouhouRecipeTypes} 的自定义配方类型：核心既不会出现在原版工作台，
+     * 也不会出现在增强工作台或任何多方块机器里（判据见那个类的类注释）。
+     */
     private static ItemStack[] noRecipe() {
         return new ItemStack[] {
                 null, null, null,

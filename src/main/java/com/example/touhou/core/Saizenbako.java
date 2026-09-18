@@ -95,7 +95,9 @@ import java.util.Map;
  * 加上"6 个预留槽根本不在物流槽位表里"，漏斗/物流两条路都碰不到预留槽。
  */
 public class Saizenbako extends AbstractPowerBlock
-        implements PowerComponent, GuiShiftGuard, io.github.thebusybiscuit.slimefun4.core.attributes.NotHopperable {
+        implements PowerComponent, GuiShiftGuard,
+        io.github.thebusybiscuit.slimefun4.core.attributes.NotHopperable,
+        io.github.thebusybiscuit.slimefun4.core.attributes.RecipeDisplayItem {
 
     // ---------------------------------------------------------------- POWER
 
@@ -120,6 +122,94 @@ public class Saizenbako extends AbstractPowerBlock
 
     /** POWER 额定容量（{@code items.yml} 可改，默认 {@value #DEFAULT_CAPACITY}）。 */
     public final ItemSetting<Integer> capacity = new ItemSetting<>(this, "capacity", DEFAULT_CAPACITY);
+
+    // ---------------------------------------------------------------- 粘液书配方页
+    //
+    // ★★ 这一页的内容【完全从配方注册表现场长出来】：
+    //    遍历 SaizenbakoRecipes.all() → 每条配方再遍历它的 6 个编号槽位
+    //    → 每个槽位取 Ingredient（物品模板 + 数量）、最后取 output()。
+    //    所以"往 SaizenbakoRecipes 里加一条配方，书里就自动多一条"是自然成立的
+    //    —— 展示代码里没有任何一处提到具体配方的名字、物品或数量。
+    //
+    // ★ 缓存问题（本次需求特别问到的点）：本类【不做任何缓存】。
+    //    指南每次打开/翻页都会重新调 getDisplayRecipes()，我们每次都现读注册表。
+    //    好处是"注册表变了书就变"，代价是每次开书重建十几个 ItemStack —— 可忽略。
+    //    反过来说：一旦在这里加缓存，就必须同时挂失效通知（SaizenbakoRecipes.register
+    //    要回调过来清缓存），否则新配方不会出现在书里。既然现算的成本这么低，
+    //    就不引入那个"必须记得清"的状态。
+    //
+    // ★ 时机：SaizenbakoRecipes.setup() 排在 AddSlimefunItems.setup() 之后
+    //    （见 Touhou#onEnable），而本方法只会在玩家开书时被调用 —— 那时配方早就装好了。
+    //    就算一条配方都没有（注册表为空），本方法也返回一行"还没有配方"的说明，
+    //    而不是空列表（空列表会让指南整段底部网格消失，看起来像功能坏了）。
+
+    /**
+     * 指南页底部网格：每一条已注册的祈愿配方 → 6 行「材料 N」，产物落在最后一行右列。
+     *
+     * <p>为什么每条配方恒占 6 行（没登记的槽位也占一行写"该格不限制"）：
+     * 见 {@link RecipePages#freeSlot} 的注释 —— 保持「材料 N ↔ N 号木桩」的编号不错位。
+     */
+    @Override
+    public List<ItemStack> getDisplayRecipes() {
+        List<ItemStack> display = new ArrayList<>();
+        List<SaizenbakoRecipe> all = SaizenbakoRecipes.all();
+
+        for (SaizenbakoRecipe recipe : all) {
+            List<ItemStack> inputs = new ArrayList<>();
+            List<ItemStack> outputs = new ArrayList<>();
+
+            for (int i = 0; i < SaizenbakoRecipe.SLOTS; i++) {
+                List<String> extra = new ArrayList<>();
+                if (i == 0) {
+                    // 配方名挂在第一条上，玩家一眼能看出"下面这 6 行属于哪条配方"
+                    extra.add("&8配方: " + recipe.id()
+                            + (recipe.note() == null || recipe.note().isBlank()
+                                    ? "" : "（" + recipe.note() + "）"));
+                }
+                extra.add("&8木桩 #" + i + "（预留槽 " + reservedSlotOf(i) + "）");
+
+                SaizenbakoRecipe.Ingredient ing = recipe.ingredientAt(i);
+                inputs.add(ing == null
+                        ? RecipePages.freeSlot(i, extra)
+                        : RecipePages.input(ing.template(), i, ing.amount(), extra));
+            }
+
+            ItemStack out = recipe.output();
+            outputs.add(RecipePages.output(out, 0, out.getAmount(), null,
+                    List.of("&8产出到核心 GUI 的 IO 槽",
+                            "&e消耗: " + AddonConfig.get().saizenPowerCost + " POWER")));
+
+            display.addAll(RecipePages.block(inputs, outputs));
+        }
+
+        // ---- 收尾：祭坛自己的运转参数（与反应堆那边同理，放输出列、左列留空） ----
+        AddonConfig cfg = AddonConfig.get();
+        List<String> params = new ArrayList<>();
+        params.add("");
+        params.add("&a祭坛运转参数");
+        params.add("&7一次运作消耗： &e" + cfg.saizenPowerCost + " POWER");
+        params.add("&7核心额定容量： &e" + capacity.getValue() + " POWER");
+        params.add("&7运作间隔： &f" + cfg.saizenWorkIntervalTicks + " tick &8（约 "
+                + String.format("%.1f", cfg.saizenWorkIntervalTicks / 10.0) + " 秒）");
+        params.add("&8结构完整 + 玩家点信息格激活后才会运作");
+        display.addAll(RecipePages.block(List.of(),
+                List.of(RecipePages.note(Material.RED_DYE, "&e祭坛运转参数", params))));
+
+        if (all.isEmpty()) {
+            // 一条配方都没有时给一行明确的说明：整段底部网格消失会让人以为"功能坏了"
+            display.clear();
+            display.addAll(RecipePages.block(List.of(),
+                    List.of(RecipePages.note(Material.BARRIER, "&c还没有注册任何祈愿配方",
+                            List.of("", "&7请在 SaizenbakoRecipes.setup() 里注册一条")))));
+        }
+        return display;
+    }
+
+    /** 指南里那一段的标题（默认是本地化的"机器配方"，这里给中文）。 */
+    @Override
+    public String getRecipeSectionLabel(Player p) {
+        return "&7⇩ &f祈愿配方 &7⇩";
+    }
 
     // ---------------------------------------------------------------- GUI 布局
 

@@ -337,6 +337,27 @@ public final class AddonConfig {
      */
     public String messageLevel = "important";
 
+    // ---- 粘液书（指南）配方页 / 物品描述 ----
+    /**
+     * 是否往多方块核心的<b>物品描述</b>里追加「建造所需材料」清单。
+     *
+     * <p>清单由 {@link StructureMaterials} 从 {@link #structureLayers} /
+     * {@link #saizenLayers} 现算，<b>不</b>依赖结构实例（lore 构造时结构还没创建）。
+     * 关掉它物品描述就回到"只有简介"的样子，控制台/命令的诊断输出不受影响。
+     */
+    public boolean guideMaterialLore = true;
+
+    /**
+     * 物品描述里最多列<b>几种</b>材料（{@code <= 0} = 不限制）。
+     *
+     * <p>★ 为什么要这道闸：合并计数之后，两种内置结构都只有 4 种材料
+     * （反应堆 44 框架 + 36 保护罩 + 9 基座 + 9 稳定器 = 98 个构件），
+     * 正常配置下列得完；但 legend 是玩家可改的，塞进几十种方块时 lore 会撑爆物品提示框。
+     * 超出上限的部分<b>只统计不列出</b>：标题行永远报出"共 X 个构件 / Y 种"，
+     * 所以信息一个都没丢，只是没逐行展开。
+     */
+    public int guideMaterialKinds = 6;
+
     private static AddonConfig instance;
 
     private AddonConfig() {
@@ -363,6 +384,14 @@ public final class AddonConfig {
         loadSaizenbako(c, cfg);
 
         c.consoleInfo = cfg.getBoolean("logging.console-info", c.consoleInfo);
+
+        // 粘液书那一段也放在 reactor: 之前读（与投影同理）：它是"全局"设置，
+        // 不该因为 reactor 段整段丢了就让物品描述里的材料清单一并消失。
+        ConfigurationSection guide = cfg.getConfigurationSection("guide");
+        if (guide != null) {
+            c.guideMaterialLore = guide.getBoolean("material-lore", c.guideMaterialLore);
+            c.guideMaterialKinds = guide.getInt("material-kinds", c.guideMaterialKinds);
+        }
 
         // 投影那一段放在 reactor: 之前读（与赛钱箱同理）：
         // 它是"全局"设置，不该因为 reactor 段整段丢了就失效。
@@ -623,6 +652,9 @@ public final class AddonConfig {
                 "particles         = " + (particleEnabled ? "开" : "关")
                         + " 球壳 " + particleInnerRadius + "~" + particleOuterRadius + " 格"
                         + " / " + particleAmount + " 颗每 " + particleIntervalTicks + " tick"
-                        + " / 完成爆 " + particleCompletionBurst);
+                        + " / 完成爆 " + particleCompletionBurst,
+                "guide             = 核心物品描述里的材料清单 "
+                        + (guideMaterialLore ? "开" : "关")
+                        + "，最多列 " + (guideMaterialKinds <= 0 ? "全部" : guideMaterialKinds + " 种"));
     }
 }

@@ -7,6 +7,10 @@ import org.bukkit.enchantments.Enchantment;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.meta.ItemMeta;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
 /**
  * TOUHOU 物品模板。
  *
@@ -428,6 +432,82 @@ public final class AddItems {
                 "&7电量按容量比例在网络内自动均衡",
                 "",
                 "&8long 精度，不会像原生电容那样溢出");
+
+        // ------------------------------------------------------------------ 标签登记
+        // ★ 为什么标签登记在这个"物品模板"层、而不是像最初那样放在 AddSlimefunItems 里：
+        //   紧跟着的「建造所需材料」要把层图里的 #touhou:reactor_shell 翻成可读名字
+        //   （见 StructureMaterials.nameOf 的第 1 条判据），而那段 lore 就是在本方法末尾拼的。
+        //   原先登记在 AddSlimefunItems.setup()，那一步排在 AddItems.setup()【之后】——
+        //   等它登记完物品描述早就定型了，实测结果就是物品描述里赫然写着
+        //   「#touhou:reactor_shell* ×36」，而 /touhou guide 现算出来的是
+        //   「旧地狱-反应堆保护罩 ×36」，同一件事两个说法。
+        //   标签本就是"哪些物品属于同一族"的模板层知识，放在这里也更顺 ——
+        //   反正成员写的就是模板自己的 id，不需要先 register 成 SlimefunItem。
+        //
+        //   ★ 结构层图里写 `S: "#touhou:reactor_shell"`，这些方块都能满足那一格的要求 ——
+        //     也就是"接口可以替代保护罩搭建"。
+        ItemTags.tag("touhou:reactor_shell",
+                REACTOR_SHIELD.getItemId(),
+                REACTOR_INPUT_PORT.getItemId(),
+                REACTOR_OUTPUT_PORT.getItemId());
+        //   ★★ 但【投影图标】必须挑定一个：层图里 'S' 那一格占了整座反应堆的一大半，
+        //     画出来的应该是用户明确要求的「旧地狱-反应堆保护罩」，而不是"成员里恰好排第一的那个"
+        //     （登记顺序只是注册顺序的副产品，改一行注册就会让图标悄悄换成接口）。
+        //     所以显式登记代表件 —— 见 ItemTags.setDefaultDisplay 的注释。
+        //     它同时也是上面材料清单里那一格显示成什么名字的依据。
+        ItemTags.setDefaultDisplay("touhou:reactor_shell", REACTOR_SHIELD.getItemId());
+
+        // ------------------------------------------------------------------ 两个多方块核心：建造材料 lore
+        // ★ 为什么必须放在 setup() 的【最后】：
+        //   材料名要按 part id 反查物品显示名，而 legend 里能出现的构件模板
+        //   （框架/保护罩/基座/稳定器/木桩…）必须都已经 new 出来才查得到
+        //   —— 这一点由 StructureMaterials 的模板表兜住（见那个类的注释）。
+        //
+        // ★★ 数据源是 AddonConfig 的【层图数据】，绝不是 ReactorManager.structure() /
+        //   SaizenbakoStructure.get()：本方法跑在 onEnable 的第二步，那两个结构实例
+        //   要等 onEnable 后半段才被创建，这里取只会拿到 null（会直接毁掉插件启用）。
+        //   而 AddonConfig 在 saveDefaultConfig() 之后就已经把层图与 legend 填好了。
+        applyStructureLore(UTSUHO_REACTOR_CORE,
+                AddonConfig.get().structureLayers, AddonConfig.get().structureLegend);
+        applyStructureLore(SAIZENBAKO,
+                AddonConfig.get().saizenLayers, AddonConfig.get().saizenLegend);
+    }
+
+    /**
+     * 往核心物品的 lore 末尾追加「建造所需材料」清单。
+     *
+     * <p>清单内容由 {@link StructureMaterials} 从层图现算（合并计数 + 数量降序 +
+     * {@code #标签}/Material/粘液 id 三路翻名字），这里只负责"接在原有 lore 后面"。
+     *
+     * <p>★ 颜色代码要在这里翻：{@code ItemMeta#setLore} 不认 {@code &}，
+     * 直接塞进去玩家看到的是字面的 {@code &7- &f…}。
+     * （物品名与基础 lore 由 {@link SlimefunItemStack} 的构造器负责翻译，所以那边写 {@code &} 没事。）
+     *
+     * <p>★ {@link ItemMeta#setLore} 必须<b>整表替换</b>，所以先 get 再 append 再 set；
+     * 清单为空（层图/legend 缺失）时原样返回，绝不清空已有 lore。
+     */
+    private static void applyStructureLore(SlimefunItemStack core,
+                                           List<List<String>> layers,
+                                           Map<Character, String> legend) {
+        if (core == null || !AddonConfig.get().guideMaterialLore) {
+            return;
+        }
+        List<String> extra = StructureMaterials.lore(
+                layers, legend, AddonConfig.get().guideMaterialKinds, null);
+        if (extra.isEmpty()) {
+            return;
+        }
+        ItemMeta meta = core.getItemMeta();
+        if (meta == null) {
+            return;
+        }
+        List<String> lore = meta.getLore() == null
+                ? new ArrayList<>() : new ArrayList<>(meta.getLore());
+        for (String line : extra) {
+            lore.add(ReactorManager.color(line));
+        }
+        meta.setLore(lore);
+        core.setItemMeta(meta);
     }
 
     /**

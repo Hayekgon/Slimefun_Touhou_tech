@@ -2,6 +2,7 @@ package com.example.touhou;
 
 import com.example.touhou.core.AddGroups;
 import com.example.touhou.core.AddItems;
+import com.example.touhou.core.AddSlimefunItems;
 import com.example.touhou.core.AddonConfig;
 import com.example.touhou.core.Log;
 import com.example.touhou.core.MultiBlockProjection;
@@ -10,6 +11,7 @@ import com.example.touhou.core.ReactorMode;
 import com.example.touhou.core.ReactorStructure;
 import com.example.touhou.core.Saizenbako;
 import com.example.touhou.core.TouhouData;
+import com.example.touhou.core.TouhouRecipeTypes;
 import com.example.touhou.core.UtsuhoReactorCore;
 import io.github.thebusybiscuit.slimefun4.api.items.SlimefunItem;
 import io.github.thebusybiscuit.slimefun4.implementation.Slimefun;
@@ -84,6 +86,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
             case "proj", "projection" -> proj(sender, Arrays.copyOfRange(args, 1, args.length));
             case "structure" -> structure(sender, Arrays.copyOfRange(args, 1, args.length));
             case "saizen" -> saizen(sender, Arrays.copyOfRange(args, 1, args.length));
+            case "guide" -> guide(sender, Arrays.copyOfRange(args, 1, args.length));
             case "place" -> place(sender, Arrays.copyOfRange(args, 1, args.length));
             case "gui" -> guiCheck(sender, Arrays.copyOfRange(args, 1, args.length));
             case "clickpart", "edit" -> editBlock(sender, Arrays.copyOfRange(args, 1, args.length));
@@ -150,11 +153,206 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         s.sendMessage("\u00a77/touhou proj list                  列出当前持有的投影组与实体数");
         s.sendMessage("\u00a77/touhou structure <x> <y> <z> [alldirs]");
         s.sendMessage("\u00a77/touhou saizen <x> <y> <z> [info|check|activate|deactivate|slots|posts|recipe|seed|tick [n]|charge <n>|guard|alldirs]");
+        s.sendMessage("\u00a77/touhou guide [reactor|saizen]   粘液书自定义配方页的内容自检（展示列表 + 可合成性核查）");
         s.sendMessage("\u00a77/touhou place <x> <y> <z> <sfId> [world] [--force]");
         s.sendMessage("\u00a77/touhou remove <x> <y> <z>            删除方块 + Slimefun 方块数据（setblock 清不掉）");
         s.sendMessage("\u00a77/touhou edit <x> <y> <z> [placed|broken]  模拟结构变动（现在唯一的常规检测触发途径）");
         s.sendMessage("\u00a77/touhou gui [x y z]                   GUI 锁槽自检（防占位符被拿走）");
         s.sendMessage("\u00a77/touhou layout | groups | messages | reload | power [rebuild]");
+    }
+
+    // ------------------------------------------------------------------ guide
+
+    /**
+     * <b>粘液书自定义配方页的内容自检</b>（无头）。
+     *
+     * <pre>
+     *   /touhou guide            两个核心都打印
+     *   /touhou guide reactor    只看反应堆核心
+     *   /touhou guide saizen     只看赛钱箱（祭坛）核心
+     * </pre>
+     *
+     * <p>★ 为什么要有这条命令：配方页的最终形态是"玩家翻开指南书看到的一屏图标"，
+     * 而书是 GUI —— 控制台点不了。所以这里把<b>同一份</b>
+     * {@code RecipeDisplayItem#getDisplayRecipes()} 的结果原样打印出来
+     * （每个 ItemStack 的显示名 + lore 首行），于是"配方页里到底有什么、
+     * 是不是从注册表长出来的"就有了可 grep 的证据，而不是靠肉眼翻书。
+     *
+     * <p>顺带打印两件"这次改动必须证明的事"：
+     * <ol>
+     *   <li>核心物品 lore 里的「建造所需材料」清单（需求 B 的可验证出口）；</li>
+     *   <li><b>可合成性核查</b>：配方数组有几个非空格、配方类型背后是不是多方块机器、
+     *       Bukkit 配方表里有几条能产出这个核心（正常必须是 0）。</li>
+     * </ol>
+     *
+     * <p>输出走 {@link Log#command}（不受 {@code logging.console-info} 影响），
+     * 于是"跑一次服务端 + 从 stdin 敲一条命令"就能拿到全部证据。
+     * 发送者是玩家时另外回显到聊天栏 —— 控制台来源不再重复推一遍（避免日志里两行一样的）。
+     */
+    private void guide(CommandSender sender, String[] args) {
+        String which = args.length >= 1 ? args[0].toLowerCase() : "all";
+        boolean reactor = which.equals("all") || which.equals("reactor");
+        boolean saizen = which.equals("all") || which.equals("saizen") || which.equals("saizenbako");
+        if (!reactor && !saizen) {
+            sender.sendMessage(PREFIX + "\u00a7c用法: /touhou guide [reactor|saizen]");
+            return;
+        }
+
+        guideLine(sender, PREFIX + "\u00a7e粘液书自定义配方页内容自检");
+        guideLine(sender, "\u00a78  " + TouhouRecipeTypes.describe());
+        guideLine(sender, "\u00a78  SaizenbakoRecipes 已注册 "
+                + com.example.touhou.core.SaizenbakoRecipes.count() + " 条配方");
+
+        if (reactor) {
+            dumpCorePage(sender, "反应堆核心", AddSlimefunItems.UTSUHO_REACTOR_CORE,
+                    AddonConfig.get().structureLayers, AddonConfig.get().structureLegend);
+        }
+        if (saizen) {
+            dumpCorePage(sender, "赛钱箱（祭坛）核心", AddSlimefunItems.SAIZENBAKO,
+                    AddonConfig.get().saizenLayers, AddonConfig.get().saizenLegend);
+        }
+    }
+
+    /**
+     * 打印一个核心的配方页 + 物品 lore + 可合成性核查。
+     *
+     * @param layers/legend 这套结构的层图数据（用来现算「建造所需材料」清单 ——
+     *                      与物品 lore 走的是<b>同一个</b> {@link StructureMaterials} 入口，
+     *                      所以命令输出能证明物品描述里那几行是怎么来的）
+     */
+    private void dumpCorePage(CommandSender sender, String label,
+                              io.github.thebusybiscuit.slimefun4.api.items.SlimefunItem item,
+                              java.util.List<java.util.List<String>> layers,
+                              java.util.Map<Character, String> legend) {
+        guideLine(sender, "\u00a7e== " + label + " ==");
+        if (item == null) {
+            guideLine(sender, "\u00a7c  未注册（AddSlimefunItems 没跑完？）");
+            return;
+        }
+        guideLine(sender, "\u00a78  id = " + item.getId()
+                + "   配方类型 = " + (item.getRecipeType() == null
+                        ? "(null)" : item.getRecipeType().getKey().toString()));
+
+        // ---- ① 展示列表（配方页底部网格）----
+        if (item instanceof io.github.thebusybiscuit.slimefun4.core.attributes.RecipeDisplayItem page) {
+            java.util.List<ItemStack> display = page.getDisplayRecipes();
+            for (String line : com.example.touhou.core.RecipePages.dump(display)) {
+                guideLine(sender, "\u00a77" + line);
+            }
+        } else {
+            guideLine(sender, "\u00a7c  它没有实现 RecipeDisplayItem —— 指南里不会出现自定义配方页");
+        }
+
+        // ---- ② 物品 lore（含「建造所需材料」清单）----
+        guideLine(sender, "\u00a7e  -- 物品描述 --");
+        ItemStack icon = item.getItem();
+        org.bukkit.inventory.meta.ItemMeta meta = icon == null ? null : icon.getItemMeta();
+        guideLine(sender, "\u00a77    名称: " + com.example.touhou.core.RecipePages.labelOf(icon));
+        if (meta != null && meta.getLore() != null) {
+            for (String line : meta.getLore()) {
+                guideLine(sender, "\u00a77    " + com.example.touhou.core.Notify.plain(line));
+            }
+        } else {
+            guideLine(sender, "\u00a78    (没有 lore)");
+        }
+        // 现算一遍材料清单：证明物品描述里那几行就是这份数据（同一个入口算出来的）
+        guideLine(sender, "\u00a7e  -- 从层图现算的建造材料 --");
+        for (String line : com.example.touhou.core.StructureMaterials.describe(layers, legend)) {
+            guideLine(sender, "\u00a78  " + line);
+        }
+
+        // ---- ③ 可合成性核查 ----
+        guideLine(sender, "\u00a7e  -- 可合成性核查（都应该是 0 / 否）--");
+        ItemStack[] recipe = item.getRecipe();
+        int filled = 0;
+        if (recipe != null) {
+            for (ItemStack it : recipe) {
+                if (it != null && !it.getType().isAir()) {
+                    filled++;
+                }
+            }
+        }
+        guideLine(sender, "\u00a78    配方数组非空格数 = " + filled
+                + "（数组长度 " + (recipe == null ? 0 : recipe.length) + "）");
+        io.github.thebusybiscuit.slimefun4.api.items.SlimefunItem machine =
+                item.getRecipeType() == null ? null : item.getRecipeType().getMachine();
+        boolean multiblock = machine instanceof io.github.thebusybiscuit.slimefun4.core.multiblocks.MultiBlockMachine;
+        guideLine(sender, "\u00a78    配方类型指向的机器 = "
+                + (machine == null ? "(无)" : machine.getId())
+                + "，是不是多方块机器 = " + (multiblock ? "\u00a7c是" : "\u00a7a否"));
+        guideLine(sender, "\u00a78    Bukkit 配方表里能产出它的配方 = " + countRecipesFor(item)
+                + " 条（原版工作台口径）");
+        guideLine(sender, "\u00a78    Slimefun 多方块机器配方表里能产出它的 = " + countMachineRecipesFor(item)
+                + " 条（增强工作台 / 冶炼炉 / 魔法工作台…口径）");
+        guideLine(sender, "\u00a78    /sf give 能不能拿到 = "
+                + (io.github.thebusybiscuit.slimefun4.api.items.SlimefunItem.getById(item.getId()) == item
+                        ? "\u00a7a能（物品已在 Slimefun 注册表里）" : "\u00a7c查不到"));
+    }
+
+    /** 遍历 Bukkit 的配方表，数"产物是给定粘液物品"的配方有几条。 */
+    private static int countRecipesFor(
+            io.github.thebusybiscuit.slimefun4.api.items.SlimefunItem item) {
+        int count = 0;
+        java.util.Iterator<org.bukkit.inventory.Recipe> it = Bukkit.recipeIterator();
+        while (it.hasNext()) {
+            org.bukkit.inventory.Recipe recipe = it.next();
+            if (recipe == null) {
+                continue;
+            }
+            ItemStack result = recipe.getResult();
+            if (result != null && item.isItem(result)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /**
+     * 数"Slimefun 的多方块机器（增强工作台 / 冶炼炉 / 魔法工作台…）里有没有配方产出这个物品"。
+     *
+     * <p>★ 为什么单查 Bukkit 的配方表不够：Slimefun 的合成<b>不走</b>原版配方系统 ——
+     * 它把 addon 的配方塞进 {@code MultiBlockMachine#recipes}（判据见
+     * {@code TouhouRecipeTypes} 的类注释）。所以"工作台摆不出来"必须两边都查：
+     * <pre>
+     *   原版工作台口径 → Bukkit.recipeIterator()      （countRecipesFor）
+     *   增强工作台口径 → 各 MultiBlockMachine 的展示列表（本方法）
+     * </pre>
+     * 展示列表是"输入, 输出, 输入, 输出…"的扁平表，所以输出落在<b>奇数下标</b>。
+     */
+    private static int countMachineRecipesFor(
+            io.github.thebusybiscuit.slimefun4.api.items.SlimefunItem item) {
+        int count = 0;
+        for (io.github.thebusybiscuit.slimefun4.api.items.SlimefunItem machine
+                : Slimefun.getRegistry().getAllSlimefunItems()) {
+            if (!(machine instanceof io.github.thebusybiscuit.slimefun4.core.multiblocks.MultiBlockMachine mbm)) {
+                continue;
+            }
+            java.util.List<ItemStack> display = mbm.getDisplayRecipes();
+            if (display == null) {
+                continue;
+            }
+            for (int i = 1; i < display.size(); i += 2) {
+                ItemStack out = display.get(i);
+                if (out != null && item.isItem(out)) {
+                    count++;
+                }
+            }
+        }
+        return count;
+    }
+
+    /**
+     * 打印一行指南自检输出。
+     *
+     * <p>控制台来源只走 {@link Log#command}（带 {@code [TOUHOU] guide} 前缀，便于 grep）；
+     * 玩家来源只走聊天栏 —— 两边都发会让控制台日志出现一模一样的两份。
+     */
+    private static void guideLine(CommandSender sender, String line) {
+        if (sender instanceof org.bukkit.entity.Player) {
+            sender.sendMessage(line);
+        } else {
+            log("[TOUHOU] guide " + com.example.touhou.core.Notify.plain(line));
+        }
     }
 
     // ------------------------------------------------------------------ power
@@ -1585,7 +1783,10 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         if (args.length == 1) {
             return filter(List.of("reactor", "autobuild", "clickinfo", "structure", "saizen", "place",
                     "remove", "edit", "gui", "layout", "groups", "tags", "messages", "reload",
-                    "power", "proj"), args[0]);
+                    "power", "proj", "guide"), args[0]);
+        }
+        if (args[0].equalsIgnoreCase("guide") && args.length == 2) {
+            return filter(List.of("reactor", "saizen"), args[1]);
         }
         if ((args[0].equalsIgnoreCase("proj") || args[0].equalsIgnoreCase("projection"))
                 && args.length == 2) {
