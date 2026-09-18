@@ -165,6 +165,11 @@ public final class AddSlimefunItems {
                 REACTOR_SHIELD.getId(),
                 REACTOR_INPUT_PORT.getId(),
                 REACTOR_OUTPUT_PORT.getId());
+        // ★★ 但是【投影图标】必须挑定一个：层图里 'S' 那一格占了整座反应堆的一大半，
+        //    画出来的应该是用户明确要求的「旧地狱-反应堆保护罩」，而不是"成员里恰好排第一的那个"
+        //    （登记顺序只是注册顺序的副产品，改一行注册就会让图标悄悄换成接口）。
+        //    所以显式登记代表件 —— 见 ItemTags.setDefaultDisplay 的注释。
+        ItemTags.setDefaultDisplay("touhou:reactor_shell", REACTOR_SHIELD.getId());
 
         // Flee into Gensokyo：博丽的御币（形状模仿钓鱼竿）
         // ★ PARTY_ITEM 之前因为一个物品都没有，注册表里根本没它；

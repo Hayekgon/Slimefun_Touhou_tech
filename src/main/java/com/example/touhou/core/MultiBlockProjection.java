@@ -93,6 +93,15 @@ import java.util.function.Supplier;
  *       用于清"崩服前那一刻"留下的残骸）。</li>
  * </ol>
  *
+ * <h2>★ 投影朝向（旋转按钮）—— 与"结构朝向"是两个键</h2>
+ * <pre>
+ *   touhou:structure-dir  ← 结构检测命中时写，机器靠它重连 / 算 IO 口与木桩位置（本类只读）
+ *   touhou:mb-holo-dir    ← GUI 的旋转按钮写，只有投影读（本类独占）
+ * </pre>
+ * 分开是硬性要求：旋转按钮点一下如果把结构朝向改了，机器会停机 / 校验错乱，
+ * 而报错只会说"某格应为 X 实际 Y"，看不出是预览按钮干的。
+ * 详见 {@link #KEY_HOLOGRAM_DIR}、{@link #direction}、{@link #rotate}。
+ *
  * <h2>★ 线程</h2>
  * {@link #CACHE} 是<b>普通 HashMap</b>（与 LogiTech 的 {@code HOLOGRAM_CACHE} 一样），
  * 能这么用是因为它只在主线程读写。<b>不要在异步线程调用本类的任何方法</b> ——
@@ -118,6 +127,28 @@ public final class MultiBlockProjection {
      * 免得两个核心各写一遍。
      */
     public static final String KEY_HOLOGRAM = "touhou:mb-hologram";
+
+    /**
+     * <b>投影朝向</b>的持久化键（{@code 0..3}，与 {@link ReactorStructure.Direction} 的序号一致）。
+     *
+     * <p>★★ 它必须是<b>另一个键</b>，绝不能用机器的结构朝向键
+     * （{@link TouhouData#KEY_DIRECTION} / {@code touhou:structure-dir}）：那个键是
+     * "这台机器实际朝哪边"的结论，由结构检测在<b>命中时</b>写进去，机器靠它重连、
+     * 靠它算 IO 口/木桩的位置。拿它来当"转预览"的存储，
+     * 等于让玩家点一下旋转就把机器的朝向改了 —— 表现是结构校验错乱、机器停机，
+     * 而且报错只说"某格应为 X 实际 Y"，根本看不出是预览按钮干的。
+     *
+     * <p>两者语义完全不同，所以：
+     * <pre>
+     *   touhou:structure-dir  ← 结构检测写，机器自己用（本类【只读】，用来给投影朝向兜底）
+     *   touhou:mb-holo-dir    ← 旋转按钮写，只有投影读（本类独占）
+     * </pre>
+     *
+     * <p>没写过这个键时（老存档 / 从没转过），投影朝向退回
+     * {@link #directionFromData} 的结构朝向 —— 也就是"没转过的时候，
+     * 投影与机器实际朝向天然是对齐的"，与加这个功能之前的行为逐字一致。
+     */
+    public static final String KEY_HOLOGRAM_DIR = "touhou:mb-holo-dir";
 
     /** 父实体的碰撞箱宽高（LogiTech 用 0.1）。 */
     private static final float PARENT_WIDTH = 0.1F;
@@ -243,22 +274,123 @@ public final class MultiBlockProjection {
         return map;
     }
 
-    /** 单个 part id → 图标；认不出来返回 {@code null}。 */
+    /**
+     * 单个 part id → 图标；认不出来返回 {@code null}。
+     *
+     * <p>★ 真正的解析链在 {@link #resolveIconId}（它把 {@code #标签} 也解析成具体 id），
+     * 这里只负责"具体 id → ItemStack"这最后一步。
+     */
     private static ItemStack iconOfPartId(String partId) {
-        if (partId == null || partId.isBlank() || ReactorStructure.isAirRequirement(partId)) {
+        String id = resolveIconId(partId);
+        if (id == null) {
             return null;
         }
         try {
             io.github.thebusybiscuit.slimefun4.api.items.SlimefunItem sf =
-                    io.github.thebusybiscuit.slimefun4.api.items.SlimefunItem.getById(partId);
+                    io.github.thebusybiscuit.slimefun4.api.items.SlimefunItem.getById(id);
             if (sf != null && sf.getItem() != null) {
                 return sf.getItem().clone();
             }
         } catch (RuntimeException ignored) {
             // Slimefun 还没就绪 / id 非法：掉到原版材质那条路
         }
-        org.bukkit.Material mat = org.bukkit.Material.matchMaterial(partId);
+        org.bukkit.Material mat = org.bukkit.Material.matchMaterial(id);
         return mat == null || mat.isAir() ? null : new ItemStack(mat);
+    }
+
+    /**
+     * <b>part id → 实际用来取图标的那个具体 id</b>；解析不出来返回 {@code null}。
+     *
+     * <p>这是本类唯一一处"把层图里的写法翻译成物品"的地方，四条判据按顺序：
+     * <pre>
+     *   1. {@code #标签}            → {@link ItemTags} 里登记的默认展示件
+     *                                （没指定就取"成员里第一个能解析成物品的"）
+     *   2. 粘液物品 id              → 它自己
+     *   3. 原版 Material 名         → 它自己
+     *   4. 以上都不是 / 空气要求格  → null（如实跳过，画出来是透明格）
+     * </pre>
+     *
+     * <p>★★ 第 1 条就是"保护罩不渲染"那个 bug 的根因修法：
+     * 反应堆层图里 'S' 写的是 {@code "#touhou:reactor_shell"}（保护罩 / 输入接口 /
+     * 输出接口三个方块共用一个标签，见 {@code AddSlimefunItems}），
+     * 而这一格占了整座结构的一大半。老代码只试了
+     * {@code SlimefunItem.getById("#touhou:reactor_shell")}（查不到）与
+     * {@code Material.matchMaterial(...)}（也不是材质名），于是返回 null ⇒
+     * {@code ItemDisplay} 的 item 为 null ⇒ <b>整片保护罩是透明的</b>。
+     *
+     * <p>★ 刻意做成通用的：不为 {@code reactor_shell} 写特判，
+     * 将来层图里出现任何 {@code #标签} 都走同一条路（标签没登记过、或成员全都
+     * 解析不出物品时，如实返回 {@code null}，不抛异常、也不往映射里塞东西）。
+     */
+    public static String resolveIconId(String partId) {
+        if (partId == null || partId.isBlank() || ReactorStructure.isAirRequirement(partId)) {
+            return null;
+        }
+        if (!isTagRef(partId)) {
+            return resolvesToIcon(partId) ? partId : null;
+        }
+        String tag = partId.substring(1).trim();
+        if (!ItemTags.isKnown(tag)) {
+            return null;                        // 没登记过的标签：如实跳过（不猜）
+        }
+        String preferred = ItemTags.defaultDisplay(tag);
+        if (preferred != null && resolvesToIcon(preferred)) {
+            return preferred;                   // 显式指定的代表件优先
+        }
+        for (String member : ItemTags.members(tag)) {
+            if (resolvesToIcon(member)) {
+                return member;                  // 退而求其次：成员里第一个能解析的
+            }
+        }
+        return null;                            // 标签为空 / 成员全解析不出来
+    }
+
+    /**
+     * 这个 part id 是不是"标签引用"（形如 {@code #touhou:reactor_shell}）。
+     *
+     * <p>与 {@code LayeredReactorStructure#isTag} 同一判据（结构检测那一侧也是这么认的）
+     * —— 两处一旦不一致，就会出现"检测认这一格、投影认不出这一格"的撕裂状态。
+     */
+    private static boolean isTagRef(String partId) {
+        return partId.length() > 1 && partId.charAt(0) == '#';
+    }
+
+    /** 这个 id 到底能不能取到一个物品（粘液物品 或 非空气的原版材质）。 */
+    private static boolean resolvesToIcon(String id) {
+        if (id == null || id.isBlank() || ReactorStructure.isAirRequirement(id)) {
+            return false;
+        }
+        try {
+            io.github.thebusybiscuit.slimefun4.api.items.SlimefunItem sf =
+                    io.github.thebusybiscuit.slimefun4.api.items.SlimefunItem.getById(id);
+            if (sf != null && sf.getItem() != null) {
+                return true;
+            }
+        } catch (RuntimeException ignored) {
+            // 掉到材质那条路
+        }
+        org.bukkit.Material mat = org.bukkit.Material.matchMaterial(id);
+        return mat != null && !mat.isAir();
+    }
+
+    /**
+     * 诊断用：某个 part id 最终解析出来的<b>物品显示名</b>（去掉颜色代码）。
+     *
+     * <p>给 {@code /touhou proj <x y z> mapping} 用 —— 那一条命令要证明
+     * "保护罩那一格现在真的解析成保护罩了"，而"解析成了什么"只有名字说得清
+     * （光看 {@code resolveIconId} 返回的 id 常量不直观）。
+     *
+     * @return 解析不出来返回 {@code null}
+     */
+    public static String iconNameOf(String partId) {
+        ItemStack icon = iconOfPartId(partId);
+        if (icon == null) {
+            return null;
+        }
+        org.bukkit.inventory.meta.ItemMeta meta = icon.getItemMeta();
+        String name = meta != null && meta.hasDisplayName()
+                ? meta.getDisplayName() : icon.getType().name();
+        return Notify.plain(name);
     }
 
     /**
@@ -271,10 +403,13 @@ public final class MultiBlockProjection {
      *          （render 内部先清旧组）→ 写 on
      * </pre>
      *
-     * <p>★ 朝向的来源（三者优先级从高到低）：
+     * <p>★ 朝向的来源（优先级从高到低）：
+     * <b>玩家用旋转按钮显式设定的</b>（{@link #KEY_HOLOGRAM_DIR}）→
      * 结构自己 {@link ReactorStructure#projector()} 给的 → <b>本次现场检测命中的</b> →
      * 已落盘的 {@code touhou:structure-dir} → NORTH。
-     * 现场那次优先于落盘值，是因为玩家可能刚把结构换了个方向搭好，落盘的还是旧朝向。
+     * 现场那次优先于落盘值，是因为玩家可能刚把结构换了个方向搭好，落盘的还是旧朝向；
+     * 但"显式转过"的优先级更高 —— 否则旋转按钮一转就会被现场检测结果顶掉，
+     * 表现成"点了没反应"（详见 {@link #rotate}）。
      *
      * @param host  宿主（结构 + 图标映射）；见 {@link ReactorStructure.ProjectionHost}
      * @param requireCompleteStructure 未开时是否要求"结构完整"才给开。
@@ -302,8 +437,11 @@ public final class MultiBlockProjection {
             return refuse(feedback, "&c当前结构不支持投影（没有落点表）");
         }
 
+        // ★ "玩家显式转过的朝向"要先取出来：它一旦存在，后面的现场检测就不能把它顶掉。
+        ReactorStructure.Direction explicit = storedDirection(loc);
         ReactorStructure.Direction dir = structure.isSymmetric()
-                ? ReactorStructure.Direction.NORTH : directionFromData(loc);
+                ? ReactorStructure.Direction.NORTH
+                : (explicit != null ? explicit : directionFromData(loc));
         // ★ 结构检测【总是】跑一次：它更重要的作用是"拿到现场命中的准确朝向"。
         //   是否因为"不完整"而拒绝，才由 requireCompleteStructure 决定。
         //
@@ -314,8 +452,9 @@ public final class MultiBlockProjection {
         if (requireCompleteStructure && !r.isComplete()) {
             return refuse(feedback, "&c结构不完整，无法开启投影：&7" + r.summary());
         }
-        if (r.isComplete() && r.direction() != null && !structure.isSymmetric()) {
-            dir = r.direction();                // 现场命中的朝向最准
+        if (r.isComplete() && r.direction() != null && !structure.isSymmetric()
+                && explicit == null) {
+            dir = r.direction();                // 现场命中的朝向最准（仅在玩家没转过时采用）
         }
         // ★ 必须拷一份 effectively-final 的副本给 lambda 捕获：
         //   上面那个 if 改过 dir，编译器就不允许它再进闭包了。
@@ -335,7 +474,8 @@ public final class MultiBlockProjection {
         if (feedback != null) {
             feedback.accept("&a已开启&f多方块投影&7（" + lastCellCount() + " 格 ≈ "
                     + (lastCellCount() + 1) + " 个实体"
-                    + (structure.isSymmetric() ? "，结构四向对称按 NORTH 画" : "") + "）");
+                    + (structure.isSymmetric() ? "，结构四向对称按 NORTH 画"
+                            : "，朝向 " + finalDir.display()) + "）");
         }
         return true;
     }
@@ -353,6 +493,199 @@ public final class MultiBlockProjection {
         }
     }
 
+    // ---------------------------------------------------------------- 投影朝向（与结构朝向分开）
+
+    /**
+     * 读<b>玩家用旋转按钮设定的</b>投影朝向。
+     *
+     * @return 没设过 / 值非法时返回 {@code null}（= "没有显式偏好"，由调用方决定兜底）
+     */
+    public static ReactorStructure.Direction storedDirection(Location core) {
+        String raw = TouhouData.getString(core, KEY_HOLOGRAM_DIR, null);
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            String v = raw.trim();
+            int i = Integer.parseInt(v);
+            // ★ 越界当成"没设过"而不是回落到 NORTH：把垃圾值悄悄变成 NORTH
+            //   会让"数据坏了"和"玩家转到了北"看起来一模一样。
+            if (i < 0 || i >= ReactorStructure.Direction.values().length) {
+                Log.warn("[投影] " + TouhouData.xyz(core) + " 的 " + KEY_HOLOGRAM_DIR
+                        + " 值非法（" + v + "），本次按'未设定'处理");
+                return null;
+            }
+            return ReactorStructure.Direction.fromInt(i);
+        } catch (NumberFormatException e) {
+            Log.warn("[投影] " + TouhouData.xyz(core) + " 的 " + KEY_HOLOGRAM_DIR
+                    + " 不是数字（" + raw + "），本次按'未设定'处理");
+            return null;
+        }
+    }
+
+    /**
+     * 写投影朝向（{@code loc == null} 时静默忽略，构造期安全）。
+     *
+     * <p>★ 只写 {@link #KEY_HOLOGRAM_DIR}，<b>绝不</b>碰 {@link TouhouData#KEY_DIRECTION}
+     * （结构朝向）—— 这是本功能唯一的红线，理由见 {@link #KEY_HOLOGRAM_DIR}。
+     */
+    public static void setDirection(Location core, ReactorStructure.Direction direction) {
+        if (direction == null) {
+            return;
+        }
+        TouhouData.setInt(core, KEY_HOLOGRAM_DIR, direction.ordinal());
+    }
+
+    /**
+     * <b>这台机器的投影该按哪个朝向画</b>（GUI 图标、诊断命令、渲染三处共用的唯一口径）。
+     *
+     * <pre>
+     *   四向对称结构          → 恒 NORTH（形状转不转都一样，与 LogiTech 同策略）
+     *   玩家转过（有本类的键）→ 玩家选的那个
+     *   没转过                → 结构朝向 touhou:structure-dir（= 加本功能之前的行为）
+     *   连结构朝向都没有      → NORTH
+     * </pre>
+     *
+     * @param structure 结构（{@code null} 时按"不对称"处理，只看数据）
+     */
+    public static ReactorStructure.Direction direction(Location core, ReactorStructure structure) {
+        if (structure != null && structure.isSymmetric()) {
+            return ReactorStructure.Direction.NORTH;
+        }
+        ReactorStructure.Direction mine = storedDirection(core);
+        return mine != null ? mine : directionFromData(core);
+    }
+
+    /**
+     * <b>旋转投影</b> —— GUI 的旋转按钮与 {@code /touhou proj <x y z> rotate} 共用这一条链路。
+     *
+     * <p>行为（与需求逐条对应）：
+     * <ol>
+     *   <li>把 {@link #KEY_HOLOGRAM_DIR} 顺时针推进一格（NORTH → EAST → SOUTH → WEST → NORTH），
+     *       <b>不碰</b>结构朝向键；</li>
+     *   <li>如果投影正开着，<b>立刻按新朝向重画</b> —— 走的是
+     *       {@link #render}（它第一步就 {@link #hide} 清旧组），不另开一条画法；</li>
+     *   <li>{@link ReactorStructure#isSymmetric()} 为 {@code true} 的结构
+     *       <b>拒绝旋转并说清楚原因</b>（见下面 ★）。</li>
+     * </ol>
+     *
+     * <p>★★ <b>对称结构：允许点，但明确拒绝</b>（而不是把按钮禁用/锁死）。
+     * 理由三条：
+     * <ul>
+     *   <li>{@link GuiLock} 里没有"禁用按钮"这个原语 —— 锁死它就等于"点了什么都不发生"，
+     *       与"按钮坏了 / 没注册上"在界面上<b>长得一模一样</b>，玩家学不到任何东西；</li>
+     *   <li>对称性是<b>算出来的</b>（{@code LayeredReactorStructure.computeSymmetric}），
+     *       而层图来自 config.yml、{@code ReactorManager.structure()} 每次现取 ——
+     *       config 改成不对称结构后，锁死的按钮不会自己活过来（得重建 preset）；</li>
+     *   <li>拒绝这条路走的是 {@code Notify.warn}（永远输出），所以玩家一定看得到
+     *       "对称结构无需旋转"这句话 —— 需求要的正是"说清楚"，而不是"假装转成功了"。</li>
+     * </ul>
+     * 对照：反应堆（5×5×5，四向对称）永远走这一条；赛钱箱（核心偏心，绕纵轴转 90° 必然出界）
+     * 是真正会转的那台。
+     *
+     * <p>⚠ <b>主线程</b>调用（会生成/删除实体）。没开投影时只改数据、不画 ——
+     * 于是"先转好朝向再开投影"也是成立的。
+     *
+     * @param core     核心位置
+     * @param host     宿主（结构 + 图标映射）
+     * @param feedback 反馈出口（可为 {@code null}）
+     * @return 本次生效的投影朝向（被拒绝时 = 当前朝向，未改动）
+     */
+    public static ReactorStructure.Direction rotate(Location core, ReactorStructure.ProjectionHost host,
+                                                    java.util.function.Consumer<String> feedback) {
+        Location loc = TouhouData.norm(core);
+        if (loc == null) {
+            refuse(feedback, "&c核心坐标无效，无法旋转投影");
+            return ReactorStructure.Direction.NORTH;
+        }
+        ReactorStructure structure = host == null ? null : host.structure();
+        if (structure == null || !structure.supportsProjection()) {
+            refuse(feedback, "&c当前结构不支持投影（没有落点表）");
+            return direction(loc, structure);
+        }
+        if (structure.isSymmetric()) {
+            // ★ 不写任何数据、不重画：这才是"如实告诉玩家转不了"
+            refuse(feedback, "&e本结构四向对称（转 90° 与原来逐格相同），"
+                    + "四个朝向完全等价 —— &f无需旋转&e，投影固定按 "
+                    + ReactorStructure.Direction.NORTH.display() + " &e绘制");
+            return ReactorStructure.Direction.NORTH;
+        }
+
+        ReactorStructure.Direction before = direction(loc, structure);
+        ReactorStructure.Direction next = before.next();
+        setDirection(loc, next);
+
+        if (!isOn(loc)) {
+            if (feedback != null) {
+                feedback.accept("&7投影朝向已设为 " + next.display()
+                        + "&7（投影当前是关闭的，开启后按这个朝向画）");
+            }
+            return next;
+        }
+
+        // ★ 开着就立刻重画：render 的第一步就是 hide（清旧组），所以不会留下两组实体。
+        ReactorStructure.Projector projector = projectorOf(structure, next,
+                () -> host.displayMapping(next));
+        if (projector == null) {
+            refuse(feedback, "&c当前结构不支持投影（拿不到 projector），朝向已存为 " + next.display());
+            return next;
+        }
+        ReactorStructure.Direction finalDir = projector.projectionDirection() == null
+                ? next : projector.projectionDirection();
+        if (render(loc, structure, finalDir, projector.displayMapping(), feedback)) {
+            // ★ render → hide() 会把开关写回 off，这里必须补回来，
+            //   否则"转一下"的副作用是"投影被关掉"。
+            setOn(loc, true);
+            if (feedback != null) {
+                feedback.accept("&a已把投影转到 " + next.display() + "&a（" + lastCellCount()
+                        + " 格已按新朝向重画）");
+            }
+        }
+        return next;
+    }
+
+    /**
+     * <b>投影旋转按钮的图标</b> —— 两种核心共用一份文案（差别只有"这台机器的结构"）。
+     *
+     * <p>图标要说清三件事（需求原文）：<b>当前朝向</b>（如 {@code &f北 (NORTH)}）、
+     * <b>投影开关状态</b>、<b>点击会做什么</b>；另外补两行"为什么是这样"的上下文
+     * （对称结构为什么转不了、朝向存在哪个键 —— 后者是排查时最想知道的事）。
+     *
+     * <p>★ 必须能在 {@code loc == null} 时安全返回：本方法会被 GUI 的<b>构造期</b>
+     * （{@code BlockMenuPreset.init()}）调用，那一刻还没有方块。
+     * 所有数据读取都经 {@link TouhouData}（它对 null 坐标有统一兜底）。
+     */
+    public static ItemStack rotationIcon(Location core, ReactorStructure structure) {
+        boolean symmetric = structure != null && structure.isSymmetric();
+        ReactorStructure.Direction dir = direction(core, structure);
+        boolean on = core != null && isOn(core);
+
+        List<String> lore = new ArrayList<>();
+        lore.add("");
+        lore.add(core == null ? "&7投影朝向： &8(定位失败)" : "&7投影朝向： " + dir.display());
+        if (symmetric) {
+            lore.add("&8（本结构四向对称，四个朝向逐格等价 —— 朝向固定 NORTH）");
+        } else if (storedDirection(core) == null) {
+            lore.add("&8（还没转过：当前跟随机器的结构朝向 " + dir.display() + "&8）");
+        }
+        lore.add(on ? "&a● 投影已开启" : "&c○ 投影已关闭");
+        lore.add("");
+        if (symmetric) {
+            lore.add("&e&l➤ 点击本格：&c无效&7（对称结构无需旋转）");
+            lore.add("&8· 转 90° 之后每一格要的东西完全一样");
+            lore.add("&8· 想要朝向差别，只能换一份不对称的层图");
+        } else {
+            lore.add("&e&l➤ 点击本格：把投影顺时针转 90°");
+            lore.add("&8· NORTH → EAST → SOUTH → WEST → NORTH");
+            lore.add(on ? "&8· 投影正开着，转完会立刻按新朝向重画"
+                    : "&8· 投影关着，转完只记朝向，开启时生效");
+        }
+        lore.add("");
+        lore.add("&8投影朝向存在方块数据 &f" + KEY_HOLOGRAM_DIR);
+        lore.add("&8机器的结构朝向 &f" + TouhouData.KEY_DIRECTION + " &8不受影响");
+        return named(new ItemStack(org.bukkit.Material.SPYGLASS), "&e投影旋转", lore);
+    }
+
     // ---------------------------------------------------------------- 开关状态（持久化）
 
     /** 这台核心的投影开着吗（读方块数据，单一数据源）。 */
@@ -363,6 +696,30 @@ public final class MultiBlockProjection {
     /** 写投影开关状态（{@code loc == null} 时静默忽略，构造期安全）。 */
     public static void setOn(Location core, boolean on) {
         TouhouData.setString(core, KEY_HOLOGRAM, on ? "on" : "off");
+    }
+
+    /**
+     * 给物品设置显示名与 lore（与 {@code UtsuhoReactorCore#named} 同一套写法）。
+     *
+     * <p>为什么本类也要有一份：图标工厂在投影这一侧（{@link #rotationIcon}），
+     * 而 {@code named} 是本工程"改 meta 但保留物品本体"的既有写法
+     * （不用 {@code CustomItemStack} 的便捷构造器 —— 那会弄丢物品原有的一切）。
+     */
+    private static ItemStack named(ItemStack item, String name, List<String> lore) {
+        ItemStack out = item.clone();
+        org.bukkit.inventory.meta.ItemMeta meta = out.getItemMeta();
+        if (meta != null) {
+            meta.setDisplayName(org.bukkit.ChatColor.translateAlternateColorCodes('&', name));
+            if (!lore.isEmpty()) {
+                List<String> colored = new ArrayList<>(lore.size());
+                for (String line : lore) {
+                    colored.add(org.bukkit.ChatColor.translateAlternateColorCodes('&', line));
+                }
+                meta.setLore(colored);
+            }
+            out.setItemMeta(meta);
+        }
+        return out;
     }
 
     // ---------------------------------------------------------------- 画 / 清
@@ -674,6 +1031,14 @@ public final class MultiBlockProjection {
         Projection group = CACHE.get(loc);
         out.add("开关状态 : " + (open ? "&a开" : "&7关")
                 + "  （方块数据 key = " + KEY_HOLOGRAM + "）");
+        // ★ 投影朝向与结构朝向分开报：这两个值必须能一眼看出"是不是同一个"，
+        //   否则"旋转按钮把机器朝向搞坏了"这类问题只能靠猜。
+        ReactorStructure.Direction mine = storedDirection(loc);
+        out.add("投影朝向 : " + direction(loc, null).display()
+                + "  （" + KEY_HOLOGRAM_DIR + " = "
+                + (mine == null ? "&7未设定，跟随结构朝向" : mine.label()) + "&r）");
+        out.add("结构朝向 : " + directionFromData(loc).display()
+                + "  （" + TouhouData.KEY_DIRECTION + "，本类只读不写）");
         out.add("缓存中的组: " + (group == null ? "&7无" : "&a有（子实体 "
                 + group.children.size() + " 个）"));
         if (group != null) {
@@ -697,6 +1062,9 @@ public final class MultiBlockProjection {
                 "构件格显示 partId 对应的物品；映射不到就显示为空（与 LogiTech 一致）",
                 "\"必须是空气\"的格子不生成实体（本项目对 LogiTech 的唯一取舍）",
                 "开关状态持久化在方块数据 " + KEY_HOLOGRAM,
+                "朝向（旋转按钮）持久化在 " + KEY_HOLOGRAM_DIR
+                        + "，与结构朝向 " + TouhouData.KEY_DIRECTION + " 分开",
+                "层图里的 #标签 按 ItemTags 的\"默认展示件\"解析成图标",
                 "单次投影上限 " + limit + " 格（projection.max-parts）",
                 "总开关 projection.enabled = " + (cfg == null || cfg.projectionEnabled));
     }

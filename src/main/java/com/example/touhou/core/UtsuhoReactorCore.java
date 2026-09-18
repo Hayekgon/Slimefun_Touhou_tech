@@ -66,9 +66,9 @@ public class UtsuhoReactorCore extends AGenerator {
     // 布局按用户实测截图定稿，并且<b>刻意给本体原生进度条留出槽位 22</b>：
     //   列:    0    1    2    3    4    5    6    7    8
     //   行0:   x    x    x    J    Ox   K    x    x    x
-    //   行1:   Ix   I    H    P    Ox   O    O    O    O
-    //   行2:   Ix   I    x    B    Ox   O    O    O    O
-    //   行3:   Ix   I    x    Ox   Ox   O    O    O    O
+    //   行1:   Ix   I    x    P    Ox   O    O    O    O
+    //   行2:   Ix   I    H    B    Ox   O    O    O    O
+    //   行3:   Ix   I    R    Ox   Ox   O    O    O    O
     //   行4:   Ix   I    x    Ox   Ox   O    O    O    O
     //   行5:   x    x    x    x    x    x    x    x    x
     //
@@ -76,7 +76,8 @@ public class UtsuhoReactorCore extends AGenerator {
     //   J = 第 0 行列 3（点它 = 结构检测 + 激活）
     //   K = 第 0 行列 5（点它 = 发电模式 / 产物模式 切换）
     //   B = 第 2 行列 3（点它 = 手动构建 / 自动构建 切换，见 BuildMode）
-    //   H = 第 1 行列 2（点它 = 多方块投影开关，见 MultiBlockProjection）
+    //   H = 第 2 行列 2（点它 = 多方块投影开关，见 MultiBlockProjection）
+    //   R = 第 3 行列 2（点它 = 投影顺时针转 90°，见 MultiBlockProjection#rotate）
     //   O = 第 1~4 行 × 第 6~9 列的 4×4 输出区
     //
     //   ★ 为什么输出区从第 6 列（而不是第 5 列）开始：
@@ -86,15 +87,15 @@ public class UtsuhoReactorCore extends AGenerator {
     //     把输出区右移一列，槽 22 自然成为"原生进度条专用格"，两者不再打架。
     //
     //   17 玻璃板(x) + 4 输入提示(Ix) + 4 输入(I) + 1 信息(J) + 1 模式(K)
-    //   + 1 特效开关(P) + 1 构建模式(B) + 1 投影开关(H) + 16 输出(O) + 7 输出提示(Ox)
-    //   + 1 进度槽位(22，归我们维护) = 54
-    //   自检：/touhou layout
+    //   + 1 特效开关(P) + 1 构建模式(B) + 1 投影开关(H) + 1 投影旋转(R)
+    //   + 16 输出(O) + 7 输出提示(Ox) = 54   （槽 22 是 Ox 里的那一格，不重复计数）
+    //   自检：/touhou layout（逐格比对 + 合计必须 54）
 
     /** x：普通占位玻璃板。 */
     private static final int[] BORDER = {
             0, 1, 2,
             6, 7, 8,
-            11, 29, 38,
+            11, 38,
             45, 46, 47, 48, 49, 50, 51, 52, 53
     };
     /** Ix：输入槽提示占位符（4 个，第 1~4 行列 0）。 */
@@ -172,6 +173,23 @@ public class UtsuhoReactorCore extends AGenerator {
      * 所以那两个地方也要同步（{@code /touhou layout} 会立刻发现漏改）。
      */
     public static final int HOLOGRAM_SLOT = 20;
+
+    /**
+     * <b>投影旋转按钮</b>（槽 29 = {@link #HOLOGRAM_SLOT} 正下方一格）。
+     *
+     * <p>★ 位置选择：它原本是 {@link #BORDER} 里的普通占位玻璃板，
+     * 而且不落在任何既有用途上 —— 把"开关"和"开关的下一个动作"上下摆成一对，
+     * 与 {@link #INFO_SLOT}(J) / {@link #PARTICLE_SLOT}(P)、
+     * {@link #MODE_SLOT}(K) / {@link #BUILD_MODE_SLOT}(B) 那两对是同一套视觉关系。
+     *
+     * <p>⚠ 改这个常量必须同步改三处，否则 {@code /touhou layout} 会报不一致：
+     * {@link #BORDER}（不能再把它当占位符）、{@link #classify}、{@link #layoutSummary} 的期望图。
+     *
+     * <p>★ 反应堆这座结构是<b>四向对称</b>的，所以这个按钮点下去会被明确拒绝
+     * （"对称结构无需旋转"），不会假装转成功 —— 理由见
+     * {@link MultiBlockProjection#rotate}。
+     */
+    public static final int HOLOGRAM_ROTATE_SLOT = 29;
 
     private static final int INVENTORY_SIZE = 54;
 
@@ -352,6 +370,11 @@ public class UtsuhoReactorCore extends AGenerator {
         lock.button(HOLOGRAM_SLOT, projectionIcon(false),
                 (p, e) -> handleHologramClick(p, HOLOGRAM_SLOT, e));
 
+        // Hr：投影旋转（槽 29 = H 正下方一格，原本也是普通占位玻璃板）
+        //   ★ 初始图标按 loc == null 生成（构造期没有方块），真实朝向由 refreshGui 刷新。
+        lock.button(HOLOGRAM_ROTATE_SLOT, projectionRotateIcon(null),
+                (p, e) -> handleHologramRotateClick(p, HOLOGRAM_ROTATE_SLOT, e));
+
         // 输出槽：只出不进（产物能取走，但塞不进东西）
         for (int slot : OUTPUT) {
             lock.outputSlot(slot);
@@ -375,6 +398,15 @@ public class UtsuhoReactorCore extends AGenerator {
      * "只在结论变化时落盘"是同一个思路。
      */
     private transient Boolean lastHologramIconState;
+
+    /**
+     * 旋转按钮图标上一次写进去的状态（{@code null} = 还没写过）。
+     *
+     * <p>与 {@link #lastHologramIconState} 同一个理由（{@link #refreshGui} 是每 tick 调的），
+     * 但这一格的图标同时取决于<b>朝向</b>与<b>开关</b>两件事，所以键是两者的组合串，
+     * 而不是一个布尔。
+     */
+    private transient String lastRotateIconKey;
 
     /** 本核心 GUI 的锁槽自检报告。 */
     public GuiLock guiLock() {
@@ -432,6 +464,29 @@ public class UtsuhoReactorCore extends AGenerator {
     }
 
     /**
+     * 投影<b>旋转</b>槽点击：把投影朝向顺时针转 90° 并刷新。
+     *
+     * <p>与 {@link #handleHologramClick} 是同一套写法（定位 → 调静态入口 → 刷新），
+     * 所以 {@code /touhou proj <x y z> rotate} 验证过的行为就是玩家点出来的行为。
+     *
+     * <p>⚠ 反应堆结构四向对称，所以这里正常情况下会得到一条
+     * "对称结构无需旋转"的拒绝提示（{@link Notify#warn}，永远输出）——
+     * 这不是 bug，是需求要求"说清楚"而不是"假装转成功"。
+     */
+    private void handleHologramRotateClick(Player p, int slot, InventoryClickEvent event) {
+        if (slot != HOLOGRAM_ROTATE_SLOT) {
+            return;
+        }
+        Location loc = locateMachine(p, event);
+        if (loc == null) {
+            Notify.warn(p, "&c无法定位反应堆，请关掉界面后对着反应堆右键重新打开");
+            return;
+        }
+        rotateProjection(p, loc);
+        refreshGui(loc, StorageCacheUtils.getMenu(loc));
+    }
+
+    /**
      * <b>反应堆的多方块投影宿主</b> —— 把"用哪套结构"与"显示什么图标"配成一对。
      *
      * <p>这里就是本工程"面向未来"的那条接缝：投影机制本身（{@link MultiBlockProjection}）
@@ -470,6 +525,32 @@ public class UtsuhoReactorCore extends AGenerator {
                     + " 构件 " + MultiBlockProjection.lastCellCount() + " 格");
         }
         return on;
+    }
+
+    /**
+     * <b>投影旋转</b>（GUI 的旋转按钮与控制台命令共用同一条链路）。
+     *
+     * <p>真正的实现在 {@link MultiBlockProjection#rotate} —— 与投影开关一样，
+     * 那是一份<b>与结构无关</b>的通用实现（对称结构拒绝、转过之后立刻按新朝向重画、
+     * 只写 {@code touhou:mb-holo-dir} 不碰结构朝向键）。
+     *
+     * <p>★ 反应堆是<b>四向对称</b>结构，所以本方法在反应堆上总是返回一条拒绝提示
+     * —— 这不是"没实现"，而是"如实告诉玩家这个结构转了也白转"（见
+     * {@link MultiBlockProjection#rotate} 里的三条理由）。
+     *
+     * @param p   触发者；{@code null} = 控制台（反馈改走 {@code Log.command}）
+     * @param loc 核心位置
+     * @return 本次生效的投影朝向
+     */
+    public static ReactorStructure.Direction rotateProjection(Player p, Location loc) {
+        if (loc == null) {
+            return ReactorStructure.Direction.NORTH;
+        }
+        ReactorStructure.Direction now = MultiBlockProjection.rotate(loc, projectionHost(),
+                line -> notifyProjection(p, line));
+        Log.info("[MBREACTOR] 投影朝向 @ " + TouhouData.xyz(loc) + " -> " + now.label()
+                + "（投影 " + (MultiBlockProjection.isOn(loc) ? "开" : "关") + "）");
+        return now;
     }
 
     /**
@@ -530,6 +611,19 @@ public class UtsuhoReactorCore extends AGenerator {
         lore.add("&e点击切换开关");
         return named(new ItemStack(on ? Material.ITEM_FRAME : Material.GLASS_PANE),
                 on ? "&b多方块投影" : "&7多方块投影", lore);
+    }
+
+    /**
+     * Hr：投影旋转图标 —— 文案在 {@link MultiBlockProjection#rotationIcon} 里
+     * （两份核心共用一套，免得两处的"当前朝向/开关状态/点击做什么"三件事各写各的、慢慢漂移）。
+     *
+     * <p>★ 这里只负责把"本机的结构"传进去：旋转能不能转、当前朝向是什么，
+     * 都由那份通用实现按<b>结构自己</b>的对称性与方块数据算出来。
+     *
+     * @param loc 核心位置；{@code null} = 构造期（图标会自动降级成"定位失败"，不抛异常）
+     */
+    private ItemStack projectionRotateIcon(Location loc) {
+        return MultiBlockProjection.rotationIcon(loc, ReactorManager.structure());
     }
 
     /**
@@ -1229,6 +1323,16 @@ public class UtsuhoReactorCore extends AGenerator {
             inv.replaceExistingItem(HOLOGRAM_SLOT, projectionIcon(holoOn));
         }
 
+        // ★ 旋转按钮的图标取决于"朝向 + 开关"两件事（两者都几乎不变），
+        //   所以同样只在变化时重建 —— 用组合串而不是布尔，免得漏掉"只转了朝向"这一种变化。
+        String rotateKey = ReactorManager.structure().isSymmetric()
+                ? "symmetric/" + holoOn
+                : MultiBlockProjection.storedDirection(loc) + "/" + holoOn;
+        if (!rotateKey.equals(lastRotateIconKey)) {
+            lastRotateIconKey = rotateKey;
+            inv.replaceExistingItem(HOLOGRAM_ROTATE_SLOT, projectionRotateIcon(loc));
+        }
+
         // ★ 进度条也归我们管。本体那段"画进度条 / 收尾把槽清成黑色玻璃板"写在
         //   它自己的 getGeneratedOutput 里 —— 我们重写了那个方法（而且要重写对签名，
         //   见上面的 ★★），所以槽 22 必须自己维护，否则会留下"卡在 xx%"的残留。
@@ -1435,19 +1539,25 @@ public class UtsuhoReactorCore extends AGenerator {
      * 输出是第 1~4 行 × 第 6~9 列的 4×4 区域）：
      * <pre>
      *   x  | x  | x  | J  | Ox | K  | x  | x  | x
-     *   Ix | I  | H  | P  | Ox | O  | O  | O  | O
-     *   Ix | I  | x  | B  | Ox | O  | O  | O  | O
-     *   Ix | I  | x  | Ox | Ox | O  | O  | O  | O
+     *   Ix | I  | x  | P  | Ox | O  | O  | O  | O
+     *   Ix | I  | H  | B  | Ox | O  | O  | O  | O
+     *   Ix | I  | R  | Ox | Ox | O  | O  | O  | O
      *   Ix | I  | x  | Ox | Ox | O  | O  | O  | O
      *   x  | x  | x  | x  | x  | x  | x  | x  | x
      * </pre>
      *
-     * <p>槽位 12（第 1 行列 3）是 {@link #PARTICLE_SLOT}：附加粒子特效开关（spec 说"放在 INFO 上方"，
+     * <p>槽位 12（第 2 行列 4）是 {@link #PARTICLE_SLOT}：附加粒子特效开关（spec 说"放在 INFO 上方"，
      * 但 INFO 已在第一行、上方是标题栏，所以放在它正下方第一格）。
-     * 槽位 21（第 2 行列 3）是 {@link #BUILD_MODE_SLOT}：构建模式开关，
-     * 在同一列再往下一格 —— 与 P 一起构成"J/K 两个主按钮各带一个下方开关"。
-     * 槽位 20（第 1 行列 2）是 {@link #HOLOGRAM_SLOT}：多方块投影开关，
-     * 与 P/B 同处第 3 列那一条竖线，构成"三个附加开关一列排开"。
+     * 槽位 21（第 3 行列 4）是 {@link #BUILD_MODE_SLOT}：构建模式开关，
+     * 与 P 一起构成"J/K 两个主按钮各带一个下方开关"。
+     * 槽位 20（第 3 行列 3）是 {@link #HOLOGRAM_SLOT}：多方块投影开关；
+     * 槽位 29（第 4 行列 3）是 {@link #HOLOGRAM_ROTATE_SLOT}：投影旋转 ——
+     * 与 H 上下成对，和第 4 列那两组同款关系。
+     *
+     * <p>★ 上文行号按代码里的 0 基行号写（第 3 行 = 下标 2 那一行）。
+     * 曾经这份期望图把 H 画在第 2 行第 3 列（槽 11），而常量其实是槽 20 ——
+     * 于是 {@code /touhou layout} 一直报着 2 处不一致却没人发现
+     * （自检的价值就在于这种"改了一处忘了另一处"，所以这里逐格对齐、并且合计必须等于 54）。
      *
      * <p>⚠ 槽 22 在期望图里写 {@code Ox}（空闲时的外观），运行时它是
      * {@link #VANILLA_PROGRESS_SLOT} 原生进度条的位置。
@@ -1455,18 +1565,20 @@ public class UtsuhoReactorCore extends AGenerator {
     public static List<String> layoutSummary() {
         String[][] spec = {
                 {"x", "x", "x", "J", "Ox", "K", "x", "x", "x"},
-                {"Ix", "I", "H", "P", "Ox", "O", "O", "O", "O"},
-                {"Ix", "I", "x", "B", "Ox", "O", "O", "O", "O"},
-                {"Ix", "I", "x", "Ox", "Ox", "O", "O", "O", "O"},
+                {"Ix", "I", "x", "P", "Ox", "O", "O", "O", "O"},
+                {"Ix", "I", "H", "B", "Ox", "O", "O", "O", "O"},
+                {"Ix", "I", "R", "Ox", "Ox", "O", "O", "O", "O"},
                 {"Ix", "I", "x", "Ox", "Ox", "O", "O", "O", "O"},
                 {"x", "x", "x", "x", "x", "x", "x", "x", "x"}
         };
 
         List<String> out = new ArrayList<>();
-        // ★ 合计必须是 54：4 个主按钮（J/K/B/H）+ P + 之后各项。
-        //   注意 OUTPUT_PLACEHOLDER 里的槽 22 与"原生进度槽"是同一格 ——
-        //   空闲时它就是输出占位符外观，所以这里不能再单独加 1（曾经就是这么算成 55 的）。
-        int buttons = 4;
+        // ★ 合计必须是 54：六个按钮（J/K/B/P/H/R）+ 各类槽位。
+        //   这里的每一项都与上面那些槽位数组一一对应，谁多一格少一格，
+        //   下面的 total != 54 判定会立刻报出来（不再靠"注释里写着 54"）。
+        int buttons = 6;
+        int total = BORDER.length + INPUT_BORDER.length + INPUT_SLOTS.length
+                + buttons + OUTPUT.length + OUTPUT_PLACEHOLDER.length;
         out.add("尺寸 " + INVENTORY_SIZE
                 + " | 玻璃板x=" + BORDER.length
                 + " | 输入提示Ix=" + INPUT_BORDER.length
@@ -1476,10 +1588,10 @@ public class UtsuhoReactorCore extends AGenerator {
                 + " | 构建模式B=" + BUILD_MODE_SLOT
                 + " | 特效开关P=" + PARTICLE_SLOT
                 + " | 投影开关H=" + HOLOGRAM_SLOT
+                + " | 投影旋转R=" + HOLOGRAM_ROTATE_SLOT
                 + " | 输出O=" + OUTPUT.length
                 + " | 输出提示Ox=" + OUTPUT_PLACEHOLDER.length
-                + " | 合计=" + (BORDER.length + INPUT_BORDER.length + INPUT_SLOTS.length
-                        + buttons + 1 + OUTPUT.length + OUTPUT_PLACEHOLDER.length));
+                + " | 合计=" + total);
 
         int mismatch = 0;
         for (int row = 0; row < 6; row++) {
@@ -1502,6 +1614,10 @@ public class UtsuhoReactorCore extends AGenerator {
         }
         out.add(mismatch == 0 ? "  OK 54 格布局与 spec 完全一致（含把空白区并入输出槽的决定）"
                 : "  FAIL 有 " + mismatch + " 格与 spec 不一致");
+        // ★ 逐格比对之外再核一次"总数"：它能抓到"某一格既是 A 又是 B"这类
+        //   逐格比对看不出来的错（每个槽位只该属于一类）。
+        out.add(total == INVENTORY_SIZE ? "  OK 各类槽位合计 = " + INVENTORY_SIZE + "（不重不漏）"
+                : "  FAIL 各类槽位合计 = " + total + "，应为 " + INVENTORY_SIZE);
         return out;
     }
 
@@ -1521,6 +1637,9 @@ public class UtsuhoReactorCore extends AGenerator {
         }
         if (slot == HOLOGRAM_SLOT) {
             return "H";
+        }
+        if (slot == HOLOGRAM_ROTATE_SLOT) {
+            return "R";
         }
         for (int s : INPUT_SLOTS) {
             if (s == slot) {

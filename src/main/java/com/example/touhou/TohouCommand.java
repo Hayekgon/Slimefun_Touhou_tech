@@ -39,7 +39,7 @@ import java.util.stream.Collectors;
  * /touhou reactor &lt;x&gt; &lt;y&gt; &lt;z&gt; activate    模拟"点击 GUI 信息格激活"
  * /touhou reactor &lt;x&gt; &lt;y&gt; &lt;z&gt; mode        切换发电模式 / 产物模式
  * /touhou reactor &lt;x&gt; &lt;y&gt; &lt;z&gt; test [n]    塞 1 个原油桶并模拟 n 次发电 tick（默认 12）
- * /touhou proj &lt;x&gt; &lt;y&gt; &lt;z&gt; &lt;动作&gt;          多方块投影：on / off / info / cells / count / clean
+ * /touhou proj &lt;x&gt; &lt;y&gt; &lt;z&gt; &lt;动作&gt;          多方块投影：on / off / toggle / rotate / info / cells / mapping / count / clean
  * /touhou proj list                      列出当前持有的投影组与实体数
  * /touhou saizen &lt;x&gt; &lt;y&gt; &lt;z&gt; &lt;动作&gt;        赛钱箱：info / check / activate / slots / posts / tick …
  * /touhou structure &lt;x&gt; &lt;y&gt; &lt;z&gt;           只检测多方块结构（会打缺失明细）
@@ -146,7 +146,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         s.sendMessage("\u00a77/touhou reactor <x> <y> <z> io [layout|fill|abort|reset|seed|count|scans|guard]   IO 接口诊断");
         s.sendMessage("\u00a77/touhou autobuild <x> <y> <z> [manual|auto] [n]   构建模式时间线验证（无头推 tick）");
         s.sendMessage("\u00a77/touhou clickinfo <x> <y> <z>       模拟玩家点击 GUI 的信息格（激活入口）");
-        s.sendMessage("\u00a77/touhou proj <x> <y> <z> [on|off|toggle|info|cells|count|clean [r]]   多方块投影");
+        s.sendMessage("\u00a77/touhou proj <x> <y> <z> [on|off|toggle|rotate|info|cells|mapping|count|clean [r]]   多方块投影");
         s.sendMessage("\u00a77/touhou proj list                  列出当前持有的投影组与实体数");
         s.sendMessage("\u00a77/touhou structure <x> <y> <z> [alldirs]");
         s.sendMessage("\u00a77/touhou saizen <x> <y> <z> [info|check|activate|deactivate|slots|posts|recipe|seed|tick [n]|charge <n>|guard|alldirs]");
@@ -311,6 +311,10 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage("\u00a77  投影开关槽 " + UtsuhoReactorCore.HOLOGRAM_SLOT + " 锁死="
                     + (!core.guiLock().isRealSlot(UtsuhoReactorCore.HOLOGRAM_SLOT)
                             ? "\u00a7a是" : "\u00a7c否"));
+            sender.sendMessage("\u00a77  投影旋转槽 " + UtsuhoReactorCore.HOLOGRAM_ROTATE_SLOT + " 锁死="
+                    + (!core.guiLock().isRealSlot(UtsuhoReactorCore.HOLOGRAM_ROTATE_SLOT)
+                            ? "\u00a7a是" : "\u00a7c否")
+                    + "\u00a78（H=" + UtsuhoReactorCore.HOLOGRAM_SLOT + " 正下方一格）");
         } else if (item instanceof com.example.touhou.core.AbstractReactorPort port) {
             for (String line : com.example.touhou.core.AbstractReactorPort.guardReport(port)) {
                 sender.sendMessage("\u00a78" + line);
@@ -351,6 +355,10 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage("\u00a77  投影开关槽 " + Saizenbako.HOLOGRAM_SLOT + " 锁死="
                     + (!saizen.guiLock().isRealSlot(Saizenbako.HOLOGRAM_SLOT)
                             ? "\u00a7a是" : "\u00a7c否"));
+            sender.sendMessage("\u00a77  投影旋转槽 " + Saizenbako.HOLOGRAM_ROTATE_SLOT + " 锁死="
+                    + (!saizen.guiLock().isRealSlot(Saizenbako.HOLOGRAM_ROTATE_SLOT)
+                            ? "\u00a7a是" : "\u00a7c否")
+                    + "\u00a78（紧贴 H=" + Saizenbako.HOLOGRAM_SLOT + " 右侧）");
             sender.sendMessage("\u00a77  物流表=" + Arrays.toString(new int[] {Saizenbako.IO_SLOT})
                     + "（预留槽不在表里 \u21d2 Cargo/漏斗碰不到）");
             sender.sendMessage("\u00a77  全局防护（拖拽/双击/背包Shift）="
@@ -371,8 +379,10 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
      * /touhou proj &lt;x&gt; &lt;y&gt; &lt;z&gt; on       开启投影（等价于点 GUI 的投影开关）
      * /touhou proj &lt;x&gt; &lt;y&gt; &lt;z&gt; off      关闭投影
      * /touhou proj &lt;x&gt; &lt;y&gt; &lt;z&gt; toggle   切换（默认动作）
-     * /touhou proj &lt;x&gt; &lt;y&gt; &lt;z&gt; info     开关状态 / 缓存 / 附近实体计数 / 落点表
+     * /touhou proj &lt;x&gt; &lt;y&gt; &lt;z&gt; rotate   投影顺时针转 90°（等价于点 GUI 的投影旋转）
+     * /touhou proj &lt;x&gt; &lt;y&gt; &lt;z&gt; info     开关状态 / 朝向 / 缓存 / 附近实体计数
      * /touhou proj &lt;x&gt; &lt;y&gt; &lt;z&gt; cells    只打印落点表（逐格 partId + 偏移 + 旋转后世界坐标）
+     * /touhou proj &lt;x&gt; &lt;y&gt; &lt;z&gt; mapping  逐格打印"partId → 解析出的显示物品"
      * /touhou proj &lt;x&gt; &lt;y&gt; &lt;z&gt; count    只数附近带标记的投影实体（验证"真的生成了"）
      * /touhou proj &lt;x&gt; &lt;y&gt; &lt;z&gt; clean [r]  清孤儿投影（LogiTech 的 HOLOGRAM_REMOVER 等价物）
      * /touhou proj list                  列出当前本插件持有的全部投影组
@@ -381,6 +391,11 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
      * <p>{@code count} 是"投影到底有没有真的生成实体"的<b>证据</b>：它数的是世界里带
      * {@code display-source} 标记的 Display/Interaction —— 与开关状态（方块数据）
      * 是两套独立读数，互相印证。
+     *
+     * <p>{@code mapping} 是"每一格画出来的是什么"的<b>证据</b>：它把结构里出现的每个
+     * part id 逐个过一遍解析链（{@link MultiBlockProjection#resolveIconId}），
+     * 于是"层图里的 {@code #touhou:reactor_shell} 到底解析成了哪个方块"
+     * 这种事不用进游戏就看得见 —— 保护罩那一格曾经因为解析不出来而整片透明。
      */
     private void proj(CommandSender sender, String[] args) {
         // proj list：不需要坐标
@@ -451,6 +466,9 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
             if (host != null) {
                 ReactorStructure st = host.structure();
                 ReactorStructure.Direction dir = ReactorManager.storedDirection(loc);
+                // ★ 画的时候用的是【投影朝向】（touhou:mb-holo-dir 优先，没有才跟随结构朝向），
+                //   所以这里也用它 —— 否则 cells 打印出来的世界坐标会与实际画的位置不一致。
+                ReactorStructure.Direction use = MultiBlockProjection.direction(loc, st);
                 List<ReactorStructure.Cell> cells = st.cells();
                 List<ReactorStructure.Cell> drawable = ReactorStructure.solidCells(cells);
                 sender.sendMessage("\u00a77  结构实现: " + st.getClass().getName());
@@ -458,7 +476,11 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
                         + "  落点 " + cells.size() + " 格（含空气要求）"
                         + "  可画 " + drawable.size() + " 格"
                         + "  四向对称=" + st.isSymmetric()
-                        + "  已落盘朝向=" + (dir == null ? "(无)" : dir.label()));
+                        + "  已落盘结构朝向=" + (dir == null ? "(无)" : dir.label()));
+                sender.sendMessage("\u00a77  实际投影朝向=" + use.display()
+                        + "\u00a78（" + MultiBlockProjection.KEY_HOLOGRAM_DIR + " = "
+                        + TouhouData.getString(loc, MultiBlockProjection.KEY_HOLOGRAM_DIR, "(未设定)")
+                        + "）");
                 if (st instanceof com.example.touhou.core.LayeredReactorStructure layered) {
                     int[] sz = layered.size();
                     sender.sendMessage("\u00a77  层图尺寸 " + sz[0] + "x" + sz[1] + "x" + sz[2]
@@ -467,8 +489,6 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
                 }
                 if (sub.equals("cells")) {
                     // 逐格打印：偏移 → 旋转后的世界坐标 → 该格要什么
-                    ReactorStructure.Direction use = st.isSymmetric() || dir == null
-                            ? ReactorStructure.Direction.NORTH : dir;
                     int n = 0;
                     for (ReactorStructure.Cell c : drawable) {
                         int[] rot = use.rotate(c.dx(), c.dz());
@@ -487,6 +507,88 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
                 sender.sendMessage("\u00a7c  这个方块不是已接入投影的多方块核心");
             }
             log("[TOUHOU] proj " + sub + " @ " + xyz(loc) + " on=" + MultiBlockProjection.isOn(loc));
+            return;
+        }
+
+        // mapping：逐格证明"这一格画出来是什么"（解析链见 MultiBlockProjection#resolveIconId）
+        if (sub.equals("mapping")) {
+            ReactorStructure.ProjectionHost host = hostOf(item);
+            if (host == null) {
+                sender.sendMessage(PREFIX + "\u00a7c这个方块不是已接入投影的多方块核心，拿不到落点表");
+                return;
+            }
+            ReactorStructure st = host.structure();
+            ReactorStructure.Direction use = MultiBlockProjection.direction(loc, st);
+            sender.sendMessage(PREFIX + "\u00a7epartId → 显示物品 @ " + xyz(loc)
+                    + "  （按朝向 " + use.display() + " 画）");
+            java.util.LinkedHashMap<String, Integer> seen = new java.util.LinkedHashMap<>();
+            for (ReactorStructure.Cell c : ReactorStructure.solidCells(st.cells())) {
+                seen.merge(c.id(), 1, Integer::sum);
+            }
+            int ok = 0;
+            int miss = 0;
+            for (java.util.Map.Entry<String, Integer> e : seen.entrySet()) {
+                String id = e.getKey();
+                String resolved = MultiBlockProjection.resolveIconId(id);
+                String name = MultiBlockProjection.iconNameOf(id);
+                String where = e.getValue() + " 格";
+                if (resolved == null) {
+                    miss++;
+                    sender.sendMessage("\u00a78  " + String.format("%-26s", id)
+                            + "\u00a7c → 未解析（画出来是透明格）\u00a78  " + where);
+                } else {
+                    ok++;
+                    sender.sendMessage("\u00a77  " + String.format("%-26s", id)
+                            + "\u00a7f → " + resolved + " \u00a7b「" + name + "」\u00a78  " + where
+                            + (resolved.equals(id) ? "" : "\u00a78  " + resolutionNote(id, resolved)));
+                }
+            }
+            sender.sendMessage("\u00a77  part id 共 " + seen.size() + " 种：\u00a7a解析 " + ok
+                    + " \u00a7c未解析 " + miss
+                    + "\u00a78（未解析的格子仍然生成实体，只是 item 为 null ⇒ 看起来透明）");
+            log("[TOUHOU] proj mapping @ " + xyz(loc) + " ids=" + seen.size()
+                    + " resolved=" + ok + " unresolved=" + miss);
+            return;
+        }
+
+        // rotate：走与 GUI 旋转按钮完全相同的那条链路
+        if (sub.equals("rotate")) {
+            ReactorStructure.ProjectionHost host = hostOf(item);
+            if (host == null) {
+                sender.sendMessage(PREFIX + "\u00a7c这个方块不是已接入投影的多方块核心，无法旋转投影（实际 "
+                        + (item == null ? "\u00a7c非 Slimefun 方块" : item.getId()) + "）");
+                return;
+            }
+            ReactorStructure.Direction before = MultiBlockProjection.direction(loc, host.structure());
+            int structBefore = TouhouData.getInt(loc, TouhouData.KEY_DIRECTION, -1);
+            ReactorStructure.Direction after;
+            if (item instanceof UtsuhoReactorCore) {
+                after = UtsuhoReactorCore.rotateProjection(null, loc);
+            } else if (item instanceof Saizenbako) {
+                after = Saizenbako.rotateProjection(null, loc);
+            } else {
+                sender.sendMessage(PREFIX + "\u00a7c这个方块不支持旋转投影");
+                return;
+            }
+            int structAfter = TouhouData.getInt(loc, TouhouData.KEY_DIRECTION, -1);
+            sender.sendMessage(PREFIX + "\u00a7e旋转投影 @ " + xyz(loc)
+                    + "  结构四向对称=" + host.structure().isSymmetric());
+            sender.sendMessage("\u00a77  投影朝向 " + before.display() + " \u00a77\u2192 "
+                    + after.display()
+                    + "\u00a78（方块数据 " + MultiBlockProjection.KEY_HOLOGRAM_DIR + " = "
+                    + TouhouData.getString(loc, MultiBlockProjection.KEY_HOLOGRAM_DIR, "(未设定)")
+                    + "）");
+            // ★ 这一行就是"旋转没有动结构朝向"的证据：两个键的读数必须一个变、一个不变。
+            sender.sendMessage("\u00a77  结构朝向 " + structBefore + " \u2192 " + structAfter
+                    + "\u00a78（方块数据 " + TouhouData.KEY_DIRECTION + "，旋转【不应】改动它）"
+                    + (structBefore == structAfter ? "\u00a7a  ✓未变" : "\u00a7c  ✗被改了！"));
+            sender.sendMessage("\u00a77  投影 " + (MultiBlockProjection.isOn(loc)
+                    ? "\u00a7a开着" : "\u00a77关着")
+                    + " \u00a77附近实体 \u00a7f" + MultiBlockProjection.countNearby(loc, 16)
+                    + "\u00a78  （开着时应当已经按新朝向重画）");
+            log("[TOUHOU] proj rotate @ " + xyz(loc) + " " + before.label() + " -> " + after.label()
+                    + " structDir " + structBefore + "->" + structAfter
+                    + " on=" + MultiBlockProjection.isOn(loc));
             return;
         }
 
@@ -531,6 +633,26 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
             return Saizenbako.projectionHost();
         }
         return null;
+    }
+
+    /**
+     * {@code proj mapping} 里那句"这个 id 是怎么解析出来的"。
+     *
+     * <p>只对 {@code #标签} 有意义 —— 它要回答的正是"同一个标签下有三个方块，
+     * 为什么偏偏画的是保护罩"：因为 {@code ItemTags.setDefaultDisplay} 显式指定了它，
+     * 而不是靠登记顺序碰运气。
+     */
+    private static String resolutionNote(String partId, String resolved) {
+        if (partId == null || !partId.startsWith("#")) {
+            return "";
+        }
+        String tag = partId.substring(1);
+        String prefer = com.example.touhou.core.ItemTags.defaultDisplay(tag);
+        if (prefer != null && prefer.equals(resolved)) {
+            return "（标签 " + tag + " 的默认展示件；该标签共 "
+                    + com.example.touhou.core.ItemTags.members(tag).size() + " 个成员）";
+        }
+        return "（标签 " + tag + " 没指定默认展示件 ⇒ 取成员里第一个能解析成物品的）";
     }
 
     // ------------------------------------------------------------------ clickinfo
@@ -1471,7 +1593,8 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         }
         if ((args[0].equalsIgnoreCase("proj") || args[0].equalsIgnoreCase("projection"))
                 && args.length == 4) {
-            return filter(List.of("on", "off", "toggle", "info", "cells", "count", "clean"), args[3]);
+            return filter(List.of("on", "off", "toggle", "rotate", "info", "cells", "mapping",
+                    "count", "clean"), args[3]);
         }
         if (args[0].equalsIgnoreCase("saizen") && args.length == 4) {
             return filter(List.of("info", "check", "activate", "deactivate", "slots", "posts",

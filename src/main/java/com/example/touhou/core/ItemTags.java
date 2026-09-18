@@ -28,11 +28,33 @@ import java.util.Set;
  *
  * <p>标签名建议用 {@code 命名空间:名字} 的形式（本附属统一用 {@code touhou:} 前缀），
  * 与 Minecraft 原版标签的写法一致；层图里引用时前面加 {@code #}。
+ *
+ * <p>★ 标签还兼着<b>多方块投影</b>的图标来源：层图里写 {@code #标签} 的格子
+ * 检测时"任一成员都算对"，画投影时则画 {@link #defaultDisplay} 指定的那一个
+ * （没指定就取成员里第一个能解析成物品的）—— 见那个方法的注释。
  */
 public final class ItemTags {
 
     /** 标签 -> part id 集合（保持插入顺序，方便诊断输出稳定）。 */
     private static final Map<String, Set<String>> TAGS = new LinkedHashMap<>();
+
+    /**
+     * 标签 -> <b>默认展示件</b>的 part id。
+     *
+     * <p>★ 为什么需要它（多方块投影的"标签格画什么图标"）：
+     * 层图里写 {@code #标签} 的格子，检测时"标签里任意一个成员都算对"，
+     * 但<b>画投影</b>时必须挑<b>一个</b>具体物品当图标 —— 而"挑哪个"是<b>业务决策</b>，
+     * 不是数据结构层面能推导出来的事（例如 {@code touhou:reactor_shell} 覆盖
+     * 保护罩 / 输入接口 / 输出接口，用户明确要求这一格画<b>保护罩</b>）。
+     *
+     * <p>为什么不直接取"成员里第一个"：{@link #TAGS} 虽然是 {@link LinkedHashSet}
+     * （登记顺序稳定），但那个顺序只是"谁先被 {@link #tag} 调用"的副产品 ——
+     * 哪天有人把 {@code AddSlimefunItems} 里两行注册换个位置、或加一个新成员，
+     * 图标就会<b>悄悄</b>变成另一个方块，而结构检测一切正常，极难发现。
+     * 所以把"代表件"显式写下来（{@link #setDefaultDisplay}），
+     * 只有没显式指定时才退回"成员里第一个能解析成物品的"。
+     */
+    private static final Map<String, String> DISPLAY_DEFAULTS = new LinkedHashMap<>();
 
     private ItemTags() {
     }
@@ -52,6 +74,27 @@ public final class ItemTags {
                 parts.add(id.trim());
             }
         }
+    }
+
+    /**
+     * 指定某个标签的<b>默认展示件</b>（投影画这一格时用哪个物品当图标）。
+     *
+     * <p>惯例上就在 {@link #tag} 的下面紧接着登记（见 {@code AddSlimefunItems}），
+     * 让"这个标签有哪几个成员、代表件是哪个"两件事挨着看得到。
+     *
+     * @param partId 必须是该标签的成员之一（不是成员也照样记下来，
+     *               但 {@code /touhou tags} 会如实报出来，便于发现登记笔误）
+     */
+    public static void setDefaultDisplay(String tag, String partId) {
+        if (tag == null || tag.isBlank() || partId == null || partId.isBlank()) {
+            return;
+        }
+        DISPLAY_DEFAULTS.put(tag, partId.trim());
+    }
+
+    /** 标签的默认展示件；没指定过返回 {@code null}（投影那边会退回"第一个能解析的成员"）。 */
+    public static String defaultDisplay(String tag) {
+        return tag == null ? null : DISPLAY_DEFAULTS.get(tag);
     }
 
     /** 该 part id 是否属于这个标签。 */
@@ -88,6 +131,15 @@ public final class ItemTags {
         }
         for (Map.Entry<String, Set<String>> e : TAGS.entrySet()) {
             out.add("  #" + e.getKey() + " -> " + String.join(", ", e.getValue()));
+            // ★ 默认展示件也报出来：投影画 `#标签` 那一格用的就是它，
+            //   而"成员里的哪一个"是投影图标那种"看不清就没法排查"的问题的唯一线索。
+            String pick = DISPLAY_DEFAULTS.get(e.getKey());
+            if (pick == null) {
+                out.add("      默认展示件: (未指定 —— 投影取成员里第一个能解析成物品的)");
+            } else {
+                out.add("      默认展示件: " + pick
+                        + (e.getValue().contains(pick) ? "" : "  ⚠ 它不在本标签的成员里"));
+            }
         }
         return out;
     }

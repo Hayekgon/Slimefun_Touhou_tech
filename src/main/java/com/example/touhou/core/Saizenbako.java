@@ -59,12 +59,15 @@ import java.util.Map;
  *   第2行:  X  X  0  i  X  X  2  i  X      槽  9~17， 预留#0/#2 在槽 11/15，指示槽 12/16
  *   第3行:  X  X  X  I  IO S  X  X  X      槽 18~26， I 在槽 21，IO 在槽 22，S 在槽 23
  *   第4行:  X  X  5  i  X  X  3  i  X      槽 27~35， 预留#5/#3 在槽 29/33，指示槽 30/34
- *   第5行:  X  X  X  X  4  i  H  X  X      槽 36~44， 预留#4 在槽 40，指示槽 41，投影开关 42
+ *   第5行:  X  X  X  X  4  i  H  Hr X      槽 36~44， 预留#4 在槽 40，指示槽 41
+ *                                          投影开关 42，投影旋转 43
  *
  *   X  = 占位符（灰色玻璃板，显示文本「少女祈祷中」），不可取出不可放入
  *   I  = 信息槽：POWER 量 + 激活状态 + 最近一次运作结论，<b>点击 = 现场检测并激活</b>
  *   IO = 混合型输入输出端：外界物流可进可出，<b>也是唯一的输出槽</b>
  *   S  = 信息槽：多方块核心位置 + 编号↔槽位映射，点击 = 打印结构明细
+ *   H  = 多方块投影开关（开/关）
+ *   Hr = 多方块投影旋转（顺时针转 90°，开着时立刻按新朝向重画）
  *   0~5 = <b>预留槽</b>：真正为空（不放任何图标），玩家放不进去、也拿不出来；
  *         内容是"编号相同的木桩 IO 槽"的只读镜像
  *   i  = <b>序号指示槽</b>：紧邻预留槽右侧（下标 +1），显示该预留槽的序号 0~5，锁死不可交互
@@ -162,7 +165,21 @@ public class Saizenbako extends AbstractPowerBlock
          * 这一格仍然是<b>锁死的按钮</b>（{@link GuiLock#button}），
          * 图标拿不走、东西放不进，玩家只能点它切开关。
          */
-        HOLOGRAM
+        HOLOGRAM,
+
+        /**
+         * 多方块<b>投影旋转</b>（槽 43 = 第 5 行列 8，紧贴 {@link #HOLOGRAM} 右边一格）。
+         *
+         * <p>★ 位置选择：第 5 行（下标 36~44）是
+         * {@code X X X X 4 i H ? X} —— 槽 42 是投影开关，所以只剩 36/37/38/39/43/44。
+         * 取<b>槽 43</b>（投影开关右边那一格），让"开关 + 它旁边那个动作"成为一对，
+         * 与第 5 行已有的"预留#4 + 指示槽"那一对同款；玩家在右下角一眼就能看到两个按钮。
+         *
+         * <p>★ 赛钱箱这座结构<b>不对称</b>（层图里 C 在最右一列，绕纵轴转 90° 必然出界），
+         * 所以这一格是真正会转的那一个：点一下把投影顺时针转 90° 并按新朝向立刻重画
+         * （见 {@link MultiBlockProjection#rotate}）。
+         */
+        HOLOGRAM_ROTATE
     }
     /**
      * <b>唯一的</b>骨架 —— 逐格抄自需求，槽号 = 行*9 + 列。
@@ -172,7 +189,7 @@ public class Saizenbako extends AbstractPowerBlock
      *   行1:  X  X  0  i  X  X  2  i  X
      *   行2:  X  X  X  I  IO S  X  X  X
      *   行3:  X  X  5  i  X  X  3  i  X
-     *   行4:  X  X  X  X  4  i  H  X  X
+     *   行4:  X  X  X  X  4  i  H  Hr X
      * </pre>
      *
      * <p>{@code RESERVED} 是"预留接口"，数字是<b>序号</b>：
@@ -180,9 +197,15 @@ public class Saizenbako extends AbstractPowerBlock
      * （从左上开始顺时针，与 spec 的 1~6 标注一致，只是序号改成从 0 起）。
      * 每个序号后面紧跟一个 {@code INDEX}（下标 = 预留槽 + 1）。
      *
-     * <p>★ {@code 行4 列7}（槽 42）原本是 {@code X} 占位符，现在是
-     * {@link GridCell#HOLOGRAM}（多方块投影开关）—— 这是本骨架相对需求原文
-     * <b>唯一</b>的一处偏移，见 {@link #HOLOGRAM_SLOT}。
+     * <p>★ 本骨架相对需求原文<b>唯一</b>的两处偏移，都在第 5 行右侧：
+     * <ul>
+     *   <li>{@code 行4 列7}（槽 42）原本是 {@code X} 占位符，现在是
+     *       {@link GridCell#HOLOGRAM}（投影开关）；</li>
+     *   <li>{@code 行4 列8}（槽 43）原本也是 {@code X} 占位符，现在是
+     *       {@link GridCell#HOLOGRAM_ROTATE}（投影旋转）。</li>
+     * </ul>
+     * 于是占位符从需求原文的 30 格变成 28 格 —— {@link #verifySkeleton()} 里那个
+     * "必须恰好 28"的断言就是这条偏移的记账。
      */
     private static final GridCell[][] SKELETON = {
             {GridCell.BORDER, GridCell.BORDER, GridCell.BORDER, GridCell.BORDER, GridCell.RESERVED,
@@ -194,7 +217,7 @@ public class Saizenbako extends AbstractPowerBlock
             {GridCell.BORDER, GridCell.BORDER, GridCell.RESERVED, GridCell.INDEX, GridCell.BORDER,
                     GridCell.BORDER, GridCell.RESERVED, GridCell.INDEX, GridCell.BORDER},
             {GridCell.BORDER, GridCell.BORDER, GridCell.BORDER, GridCell.BORDER, GridCell.RESERVED,
-                    GridCell.INDEX, GridCell.HOLOGRAM, GridCell.BORDER, GridCell.BORDER}
+                    GridCell.INDEX, GridCell.HOLOGRAM, GridCell.HOLOGRAM_ROTATE, GridCell.BORDER}
     };
 
     private static final int ROWS = 5;
@@ -225,6 +248,22 @@ public class Saizenbako extends AbstractPowerBlock
      * 反而让"所有多方块核心的投影开关都在这一个键下"这件事一眼可见。
      */
     public static final int HOLOGRAM_SLOT = 42;
+
+    /**
+     * <b>多方块投影旋转</b> = 第 5 行第 8 列（槽 43，紧贴 {@link #HOLOGRAM_SLOT} 右边一格）。
+     *
+     * <p>见 {@link GridCell#HOLOGRAM_ROTATE}：这一格原来是 {@code X} 占位符。
+     * 点一下把投影朝向顺时针转 90°（{@code touhou:mb-holo-dir}），
+     * 投影开着时立刻按新朝向重画 —— <b>不碰</b>结构朝向键 {@code touhou:structure-dir}。
+     *
+     * <p>★ 与反应堆那一格（{@link UtsuhoReactorCore#HOLOGRAM_ROTATE_SLOT}）的差别：
+     * 赛钱箱这座结构不对称，所以这里是真的会转；反应堆四向对称，点下去只会得到
+     * "对称结构无需旋转"的说明。文案由 {@link MultiBlockProjection#rotationIcon} 统一给出。
+     *
+     * <p>⚠ 不能取槽 41（4 号预留槽的指示槽）、也不能取 42（投影开关）——
+     * {@link #verifySkeleton()} 会在类初始化时直接拒绝这种重号，表现为整个插件启用失败。
+     */
+    public static final int HOLOGRAM_ROTATE_SLOT = 43;
 
     /**
      * 预留槽的槽位（<b>下标 = 序号</b>）。
@@ -430,6 +469,7 @@ public class Saizenbako extends AbstractPowerBlock
             case IO -> "IO";
             case CORE_POS -> "S";
             case HOLOGRAM -> "H";       // 多方块投影开关
+            case HOLOGRAM_ROTATE -> "Hr";   // 多方块投影旋转
         };
     }
 
@@ -526,14 +566,19 @@ public class Saizenbako extends AbstractPowerBlock
                 || count.getOrDefault(GridCell.CORE_POS, 0) != 1) {
             throw new IllegalStateException("赛钱箱骨架的 信息/输入输出/核心位置 必须各恰好 1 格");
         }
-        if (count.getOrDefault(GridCell.BORDER, 0) != 29) {
-            // ★ 29 而不是需求原文的 30：槽 42 被挪去当投影开关了（GridCell.HOLOGRAM）
-            throw new IllegalStateException("赛钱箱骨架的占位符应为 29 格，实际 "
+        if (count.getOrDefault(GridCell.BORDER, 0) != 28) {
+            // ★ 28 而不是需求原文的 30：槽 42 / 43 被挪去当投影开关与投影旋转了
+            //   （GridCell.HOLOGRAM / GridCell.HOLOGRAM_ROTATE）
+            throw new IllegalStateException("赛钱箱骨架的占位符应为 28 格，实际 "
                     + count.getOrDefault(GridCell.BORDER, 0));
         }
         if (count.getOrDefault(GridCell.HOLOGRAM, 0) != 1) {
             throw new IllegalStateException("赛钱箱骨架的投影开关应恰好 1 格，实际 "
                     + count.getOrDefault(GridCell.HOLOGRAM, 0));
+        }
+        if (count.getOrDefault(GridCell.HOLOGRAM_ROTATE, 0) != 1) {
+            throw new IllegalStateException("赛钱箱骨架的投影旋转应恰好 1 格，实际 "
+                    + count.getOrDefault(GridCell.HOLOGRAM_ROTATE, 0));
         }
         if (count.getOrDefault(GridCell.RESERVED, 0) != RESERVED_SLOTS.length) {
             throw new IllegalStateException("赛钱箱骨架的预留槽应为 " + RESERVED_SLOTS.length
@@ -569,14 +614,24 @@ public class Saizenbako extends AbstractPowerBlock
                         + RESERVED_SLOTS[i] + " → 指示槽 " + want);
             }
         }
-        // 三个功能槽的常量必须与骨架一致
+        // 功能槽的常量必须与骨架一致
         if (slotOf(GridCell.INFO) != INFO_SLOT
                 || slotOf(GridCell.IO) != IO_SLOT
                 || slotOf(GridCell.CORE_POS) != CORE_POS_SLOT
-                || slotOf(GridCell.HOLOGRAM) != HOLOGRAM_SLOT) {
-            throw new IllegalStateException("四个功能槽常量与骨架不一致：I=" + slotOf(GridCell.INFO)
+                || slotOf(GridCell.HOLOGRAM) != HOLOGRAM_SLOT
+                || slotOf(GridCell.HOLOGRAM_ROTATE) != HOLOGRAM_ROTATE_SLOT) {
+            throw new IllegalStateException("五个功能槽常量与骨架不一致：I=" + slotOf(GridCell.INFO)
                     + " IO=" + slotOf(GridCell.IO) + " S=" + slotOf(GridCell.CORE_POS)
-                    + " H=" + slotOf(GridCell.HOLOGRAM));
+                    + " H=" + slotOf(GridCell.HOLOGRAM)
+                    + " Hr=" + slotOf(GridCell.HOLOGRAM_ROTATE));
+        }
+        // ★ 两个投影按钮必须【相邻】（开关在左、旋转在右）—— 它们是一对，
+        //   而且都在第 5 行内。把它们摆错位置在界面上几乎看不出来（都是按钮），
+        //   所以这里用一条断言钉死"右边那一格"的语义。
+        if (HOLOGRAM_ROTATE_SLOT != HOLOGRAM_SLOT + 1
+                || HOLOGRAM_ROTATE_SLOT / COLS != HOLOGRAM_SLOT / COLS) {
+            throw new IllegalStateException("投影旋转槽应紧贴投影开关槽右侧（同一行内）：开关 "
+                    + HOLOGRAM_SLOT + " → 旋转 " + HOLOGRAM_ROTATE_SLOT);
         }
     }
 
@@ -625,7 +680,12 @@ public class Saizenbako extends AbstractPowerBlock
         // H：多方块投影开关（槽 42 = 第 5 行第 7 列，原本是 X 占位符）
         lock.button(HOLOGRAM_SLOT, buildHologramIcon(null), (p, e) -> handleHologramClick(p, e));
 
-        // 安全网：除 IO 真实槽与四个按钮外，其余 41 格（29 占位 + 6 预留 + 6 指示）全部锁死
+        // Hr：多方块投影旋转（槽 43 = H 右边一格，原本也是 X 占位符）
+        //   与 H 一样按 loc == null 生成初始图标（构造期没有方块），真实朝向由 ticker 刷新。
+        lock.button(HOLOGRAM_ROTATE_SLOT, buildHologramRotateIcon(null),
+                (p, e) -> handleHologramRotateClick(p, e));
+
+        // 安全网：除 IO 真实槽与四个按钮外，其余 40 格（28 占位 + 6 预留 + 6 指示）全部锁死
         lock.autoGuard();
         this.guiLock = lock;
     }
@@ -682,6 +742,11 @@ public class Saizenbako extends AbstractPowerBlock
             }
             menu.replaceExistingItem(INFO_SLOT, buildInfoIcon(loc));
             menu.replaceExistingItem(CORE_POS_SLOT, buildCorePosIcon(loc));
+            // ★ 投影开关与投影旋转两个图标也要按真实位置重画一次：
+            //   构造期给的初始图标是 loc == null 的降级版（"定位失败"），
+            //   不刷的话玩家一打开界面会看到"未设定/关"的旧状态。
+            menu.replaceExistingItem(HOLOGRAM_SLOT, buildHologramIcon(loc));
+            menu.replaceExistingItem(HOLOGRAM_ROTATE_SLOT, buildHologramRotateIcon(loc));
             SaizenbakoManager.mirrorNow(loc);
         } catch (RuntimeException e) {
             com.example.touhou.Touhou.getInstance().getLogger()
@@ -800,6 +865,7 @@ public class Saizenbako extends AbstractPowerBlock
             inv.replaceExistingItem(INFO_SLOT, buildInfoIcon(loc));
             inv.replaceExistingItem(CORE_POS_SLOT, buildCorePosIcon(loc));
             inv.replaceExistingItem(HOLOGRAM_SLOT, buildHologramIcon(loc));
+            inv.replaceExistingItem(HOLOGRAM_ROTATE_SLOT, buildHologramRotateIcon(loc));
         } catch (RuntimeException e) {
             // 不能因为一次界面刷新异常把 POWER 的 ticker 打死
             com.example.touhou.Touhou.getInstance().getLogger()
@@ -867,6 +933,23 @@ public class Saizenbako extends AbstractPowerBlock
     }
 
     /**
+     * Hr 点击：把投影朝向顺时针转 90°，投影开着就立刻按新朝向重画。
+     *
+     * <p>与 {@link #handleHologramClick} 同一套写法（定位 → 调静态入口 → 刷新），
+     * 于是 {@code /touhou proj <x y z> rotate} 验证过的行为就是玩家点出来的行为。
+     * 真正的逻辑在 {@link #rotateProjection} → {@link MultiBlockProjection#rotate}。
+     */
+    private void handleHologramRotateClick(Player p, InventoryClickEvent event) {
+        Location loc = locateSelf(p, event);
+        if (loc == null) {
+            Notify.warn(Notify.saizen(), p, "&c无法定位这台祭坛，请关掉界面后重新右键打开");
+            return;
+        }
+        rotateProjection(p, loc);
+        refreshGui(loc, StorageCacheUtils.getMenu(loc));
+    }
+
+    /**
      * <b>赛钱箱的多方块投影宿主</b> —— "用哪套结构"与"显示什么图标"的绑定。
      *
      * <p>赛钱箱这座结构<b>不对称</b>（层图里 C 在最右一列，转 90° 必然出界），
@@ -895,6 +978,31 @@ public class Saizenbako extends AbstractPowerBlock
                     + " 构件 " + MultiBlockProjection.lastCellCount() + " 格");
         }
         return on;
+    }
+
+    /**
+     * <b>投影旋转</b>（GUI 的旋转按钮与控制台命令共用同一条链路）。
+     *
+     * <p>真正的实现在 {@link MultiBlockProjection#rotate}：顺时针推进投影朝向
+     * （{@link MultiBlockProjection#KEY_HOLOGRAM_DIR}）、投影开着就立刻按新朝向重画
+     * （走的是 {@code render}，它第一步就清旧组）、四向对称结构则明确拒绝。
+     *
+     * <p>★ 赛钱箱这座结构<b>不对称</b>，所以这里是"真的会转"的那一台 ——
+     * 与反应堆那一格（永远得到"对称结构无需旋转"）正好形成对照。
+     *
+     * @param p   触发者；{@code null} = 控制台（反馈改走 {@code Log.command}）
+     * @param loc 核心位置
+     * @return 本次生效的投影朝向
+     */
+    public static ReactorStructure.Direction rotateProjection(Player p, Location loc) {
+        if (loc == null) {
+            return ReactorStructure.Direction.NORTH;
+        }
+        ReactorStructure.Direction now = MultiBlockProjection.rotate(loc, projectionHost(),
+                line -> notifyProjection(p, line));
+        Log.info("[赛钱箱] 投影朝向 @ " + TouhouData.xyz(loc) + " -> " + now.label()
+                + "（投影 " + (MultiBlockProjection.isOn(loc) ? "开" : "关") + "）");
+        return now;
     }
 
     /**
@@ -956,6 +1064,19 @@ public class Saizenbako extends AbstractPowerBlock
         lore.add("&e点击切换开关");
         return named(new ItemStack(on ? Material.ITEM_FRAME : Material.GLASS_PANE),
                 on ? "&b多方块投影" : "&7多方块投影", lore);
+    }
+
+    /**
+     * Hr：投影<b>旋转</b>图标。
+     *
+     * <p>文案在 {@link MultiBlockProjection#rotationIcon} 里 —— 与反应堆共用一份，
+     * 保证两台机器的"当前朝向 / 投影开关状态 / 点击会做什么"三件事口径一致。
+     * 这里只把"本机的结构"传进去（朝向能不能转由结构自己的对称性决定）。
+     *
+     * @param loc 核心位置；{@code null} = 构造期（图标自动降级成"定位失败"，不抛异常）
+     */
+    public static ItemStack buildHologramRotateIcon(Location loc) {
+        return MultiBlockProjection.rotationIcon(loc, SaizenbakoStructure.get());
     }
 
     /**
@@ -1028,6 +1149,8 @@ public class Saizenbako extends AbstractPowerBlock
                 + " | I信息=" + count.getOrDefault("I", 0)
                 + " | IO输入输出=" + count.getOrDefault("IO", 0)
                 + " | S核心位置=" + count.getOrDefault("S", 0)
+                + " | H投影开关=" + count.getOrDefault("H", 0)
+                + " | Hr投影旋转=" + count.getOrDefault("Hr", 0)
                 + " | 合计=" + count.values().stream().mapToInt(Integer::intValue).sum());
         for (int row = 0; row < ROWS; row++) {
             StringBuilder sb = new StringBuilder();
@@ -1036,7 +1159,8 @@ public class Saizenbako extends AbstractPowerBlock
             }
             out.add("  行" + row + " " + sb);
         }
-        out.add("  常量 I=" + INFO_SLOT + " IO=" + IO_SLOT + " S=" + CORE_POS_SLOT);
+        out.add("  常量 I=" + INFO_SLOT + " IO=" + IO_SLOT + " S=" + CORE_POS_SLOT
+                + " H=" + HOLOGRAM_SLOT + " Hr=" + HOLOGRAM_ROTATE_SLOT);
         for (String line : slotMapping()) {
             out.add("  " + line);
         }

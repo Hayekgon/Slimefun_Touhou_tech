@@ -82,6 +82,40 @@ public interface ReactorStructure {
             return i >= 0 && i < all.length ? all[i] : NORTH;
         }
 
+        /**
+         * <b>顺时针 90° 的下一个朝向</b>：NORTH → EAST → SOUTH → WEST → NORTH。
+         *
+         * <p>就是 GUI 里"投影旋转"按钮每点一次走的那一步。
+         * 循环顺序刻意与 {@code values()} 的声明顺序一致（{@link #rotate} 的四个分支
+         * 也正是按这个顺序各转 90°），所以"下一个"用取模算即可，
+         * 将来加朝向也不会漏改。
+         */
+        public Direction next() {
+            Direction[] all = values();
+            return all[(ordinal() + 1) % all.length];
+        }
+
+        /** 中文方位名（玩家提示用）。 */
+        public String chinese() {
+            return switch (this) {
+                case NORTH -> "北";
+                case EAST -> "东";
+                case SOUTH -> "南";
+                case WEST -> "西";
+            };
+        }
+
+        /**
+         * 给玩家看的朝向文本，形如 {@code "&f北 (NORTH)"} —— 中文方位 + 英文枚举名。
+         *
+         * <p>★ 为什么两个都写：中文是给玩家的，英文枚举名是给管理员/日志比对的
+         * （方块数据里存的是序号，{@link #label} 里也是英文名，
+         * 出问题时"界面上看到的"和"数据里存的"能直接对上）。
+         */
+        public String display() {
+            return "&f" + chinese() + " (" + name() + ")";
+        }
+
         /** 简短标签（日志/诊断用）。 */
         public String label() {
             return name() + "(" + ordinal() + ")";
