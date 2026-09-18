@@ -8,7 +8,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 
 /**
- * 博丽的御币 —— 弹幕命中时的无敌帧处理。
+ * 梦想封印 集 —— 弹幕命中时的无敌帧处理。
  *
  * <p>Minecraft 的受击无敌帧（noDamageTicks，默认 20）会让同 tick 内到达的后续伤害全部失效。
  * 36 发弹幕几乎同时命中同一目标时，只有 1~2 发能真正结算 —— 账面 36×伤害实际只有 1 份。
@@ -20,15 +20,18 @@ import org.bukkit.event.entity.EntityDamageByEntityEvent;
  * {@code ignoreCancelled = true} 保证被保护插件取消的伤害不会被我们解锁无敌帧。
  *
  * <p>只想放行一部分弹幕的话，把下面那行改成 {@code target.setNoDamageTicks(2)} 之类即可。
+ *
+ * <p>★ 本类与道具的能源改造无关：它只认"是不是这个道具发射的弹幕"
+ * （{@link FantasySeal#isTrackedArrow}），发射行为本身没有任何改动。
  */
-public class GoheiArrowListener implements Listener {
+public class FantasySealArrowListener implements Listener {
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onTrackedArrowHit(EntityDamageByEntityEvent e) {
         if (!(e.getDamager() instanceof Arrow arrow)) {
             return;
         }
-        if (!HakureiGohei.isTrackedArrow(arrow)) {
+        if (!FantasySeal.isTrackedArrow(arrow)) {
             return;
         }
         if (!(e.getEntity() instanceof LivingEntity target)) {

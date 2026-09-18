@@ -1,6 +1,7 @@
 package com.example.touhou.core;
 
 import com.example.touhou.Touhou;
+import com.example.touhou.power.DreamCatcher;
 import com.example.touhou.power.PowerIntegratedCore;
 import com.example.touhou.power.PowerRepeater;
 import com.example.touhou.power.PowerStorageUnit;
@@ -42,8 +43,8 @@ public final class AddSlimefunItems {
     public static SlimefunItem INFO_TEAM_SHANGHAI_ALICE;
     /** Ning_Meng__（项目提出者、代码开发者）。 */
     public static SlimefunItem INFO_NING_MENG;
-    /** 博丽的御币（Flee into Gensokyo，充能道具）。 */
-    public static HakureiGohei HAKUREI_GOHEI;
+    /** 梦想封印 集（Flee into Gensokyo，POWER 充能道具）。 */
+    public static FantasySeal FANTASY_SEAL;
 
     // 多方块构件（归属 2 级组 COMPLEX_MACHINE）
     public static SlimefunItem REACTOR_FRAME;
@@ -65,6 +66,8 @@ public final class AddSlimefunItems {
     public static PowerIntegratedCore POWER_INTEGRATED_CORE;
     public static PowerRepeater POWER_REPEATER;
     public static PowerStorageUnit POWER_STORAGE_UNIT;
+    /** 幻梦捕捉器（POWER 体系的第一台产能设备）。 */
+    public static DreamCatcher POWER_DREAMCATCHER;
 
     public static void setup(Touhou plugin) {
         // ★ 自定义配方类型要先建好：它是两个多方块核心的"指南配方页"载体，物品构造器就要吃它
@@ -179,12 +182,14 @@ public final class AddSlimefunItems {
         //     「旧地狱-反应堆保护罩」，同一件事两个说法）。
         //   请看 AddItems 末尾「标签登记」那一段，别在这里再登记一次。
 
-        // Flee into Gensokyo：博丽的御币（形状模仿钓鱼竿）
+        // Flee into Gensokyo：梦想封印 集（形状模仿钓鱼竿）
         // ★ PARTY_ITEM 之前因为一个物品都没有，注册表里根本没它；
         //   装上这个物品之后，这个 1 级组才真正出现在 TH_TECH 菜单里。
-        HAKUREI_GOHEI = register(new HakureiGohei(
+        //   ★ 它现在吃的是自研 POWER（不再实现 Rechargeable），充能循环由
+        //     Touhou#onEnable 在注册完成之后显式启动（见 FantasySeal#startCharging）。
+        FANTASY_SEAL = register(new FantasySeal(
                 AddGroups.PARTY_ITEM,
-                AddItems.HAKUREI_GOHEI,
+                AddItems.FANTASY_SEAL,
                 RecipeType.ENHANCED_CRAFTING_TABLE,
                 goheiRecipe()), plugin);
 
@@ -201,9 +206,15 @@ public final class AddSlimefunItems {
         POWER_STORAGE_UNIT = register(new PowerStorageUnit(
                 AddGroups.POWER, AddItems.POWER_STORAGE_UNIT,
                 RecipeType.NULL, noRecipe()), plugin);
+
+        //    幻梦捕捉器：POWER 体系的【第一台产能设备】（节点类型 GENERATOR，只捐不取）。
+        //    配方同样暂缺 —— 它跟另外三件 POWER 设备保持一致的拿取方式。
+        POWER_DREAMCATCHER = register(new DreamCatcher(
+                AddGroups.POWER, AddItems.POWER_DREAMCATCHER,
+                RecipeType.NULL, noRecipe()), plugin);
     }
 
-    /** 博丽的御币配方：竖着一条，模仿钓鱼竿的形状。 */
+    /** 梦想封印 集的配方：竖着一条，模仿钓鱼竿的形状（与改名前一致，没有动）。 */
     private static ItemStack[] goheiRecipe() {
         return new ItemStack[] {
                 null, AddItems.LOGIC_SINGULARITY, null,
@@ -268,12 +279,14 @@ public final class AddSlimefunItems {
                                 + "," + INFO_TARTARIC_ACID.getId()
                                 + "," + INFO_TEAM_SHANGHAI_ALICE.getId()
                                 + "," + INFO_NING_MENG.getId()))
-                + " / " + (HAKUREI_GOHEI == null ? "博丽的御币=未注册" : "博丽的御币=OK")
+                + " / " + (FANTASY_SEAL == null ? "梦想封印 集=未注册" : "梦想封印 集=OK")
                 + " / " + (REACTOR_INPUT_PORT == null ? "输入接口=未注册" : "输入接口=OK")
                 + " / " + (REACTOR_OUTPUT_PORT == null ? "输出接口=未注册" : "输出接口=OK")
                 + " / POWER=" + (POWER_INTEGRATED_CORE == null ? "未注册"
                         : (POWER_INTEGRATED_CORE.getId() + "," + POWER_REPEATER.getId()
-                                + "," + POWER_STORAGE_UNIT.getId()))
+                                + "," + POWER_STORAGE_UNIT.getId()
+                                + "," + (POWER_DREAMCATCHER == null
+                                        ? "幻梦捕捉器=未注册" : POWER_DREAMCATCHER.getId())))
                 + " / 祭祀=" + (SHRINE_POST == null ? "未注册"
                         : (SHRINE_POST.getId() + "," + SAIZENBAKO.getId()))
                 + " / 构件=" + (REACTOR_FRAME == null ? "未注册"

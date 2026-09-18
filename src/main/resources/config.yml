@@ -369,3 +369,57 @@ saizenbako:
       P: TOUHOU_COMPLEX_MACHINE_SHRINE_POST
       "_": nu
 
+# ============================================================================
+# 梦想封印 集（TOUHOU_PARTY_ITEM_FANTASY_SEAL_CONVERGE）
+#   灵梦的符卡「夢想封印」的「集」形态 —— 360° 追踪弹幕发射器。
+#   ★ 能源：自研 POWER（不再是 Slimefun 电力 J）。
+#     手持时每 2 秒从【玩家附近最近的 POWER 网络】取 1 点 POWER；
+#     附近没有网络 / 网络里没电 ⇒ 不充能，并给一条节流过的 warning
+#     （玩家可见反馈一律走 Notify.warn —— info/important 档位在默认配置下是静默的）。
+#   ★★ 四个数字（上限 40 / 单发 1 / 充能 1 每 2 秒 / 冷却 1.5 秒）**不在本文件**，
+#      它们是 ItemSetting，落在 plugins/Slimefun/Items.yml 的
+#      TOUHOU_PARTY_ITEM_FANTASY_SEAL_CONVERGE 一节里（连同发射参数一起）：
+#        power-capacity: 40        道具自身的 POWER 缓冲上限
+#        power-cost: 1             单次发射消耗
+#        charge-per-cycle: 1       每个充能节拍充入多少
+#        charge-interval-seconds: 2 充能节拍间隔（秒）
+#        cooldown-millis: 1500     每发之后的冷却
+#        charge-range: 4           取电的搜索半径（格）
+#        hint-throttle-seconds: 15 "充能失败"提示的最小间隔（秒）
+#     数值只保留那一处出处，这里不复制（复制出来的那份一定会漂移）。
+# ============================================================================
+seal:
+  # 道具【自己】的消息前缀。
+  #   ★ 同样不许蹭反应堆的：原先它走默认作用域，提示顶着
+  #     「[灵乌路空反应堆]」出现在聊天栏（与祭坛踩过的是同一个坑）。
+  message-prefix: "&8[&d梦想封印 集&8] &r"
+  messages:
+    # 道具自己的消息档位：off / important / normal / all。
+    #   ★ 默认 off：本道具目前只发 warning，而 warning 不受档位影响、永远输出。
+    #     这一格是给"以后想推常规操作反馈"留的开关。
+    level: off
+
+# ============================================================================
+# 幻梦捕捉器（TOUHOU_POWER_DREAMCATCHER）—— POWER 体系的第一台产能设备
+#   原创机器（不是东方原作要素）：名字取「捕梦网 dreamcatcher」的意象，
+#   把梦收进标靶里榨成 POWER。
+#
+#   规则：只看机器【四个水平面】（东/南/西/北，不含上下）是否紧贴床（Tag.BEDS）。
+#         效率 = 有床的面数 × 100%（0~4）：
+#           1 张床 → 8 秒 1 POWER      2 张床 → 4 秒 1 POWER
+#           3 张床 → 8/3 秒 1 POWER    4 张床 → 2 秒 1 POWER
+#           0 张床 → 不产出（并且计时归零，重新放床要重新等满一整段）
+#
+#   "优先对外输出"：它是 POWER 网络的 GENERATOR 节点（只捐不取）——
+#   产出先投递给网络里别的节点，投不出去才留在自己 15 点的缓冲里；
+#   即便投递失败，下一次网络结算也会把发电机缓冲里的电捐给储能点。
+#
+#   ★★ 数值同样不在本文件，而是 ItemSetting，落在 plugins/Slimefun/Items.yml 的
+#      TOUHOU_POWER_DREAMCATCHER 一节里：
+#        capacity: 15                   自身缓冲上限
+#        base-interval-seconds: 8       基准间隔（1 张床时的产出周期）
+#        power-per-cycle: 1             每轮产出多少 POWER
+#        bed-scan-interval-millis: 1000 多久重数一次四周的床（节流）
+#   ★ 本机没有 GUI：状态看 /touhou power <x> <y> <z> 与 /touhou dreamcatcher <x> <y> <z>。
+# ============================================================================
+

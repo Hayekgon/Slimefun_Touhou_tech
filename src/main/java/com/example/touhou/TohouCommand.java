@@ -27,6 +27,7 @@ import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -80,6 +81,8 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         }
         switch (args[0].toLowerCase()) {
             case "power" -> power(sender, Arrays.copyOfRange(args, 1, args.length));
+            case "dreamcatcher", "dc" -> dreamcatcher(sender, Arrays.copyOfRange(args, 1, args.length));
+            case "seal", "gohei", "fantasyseal" -> seal(sender, Arrays.copyOfRange(args, 1, args.length));
             case "autobuild" -> autobuild(sender, Arrays.copyOfRange(args, 1, args.length));
             case "reactor" -> reactor(sender, Arrays.copyOfRange(args, 1, args.length));
             case "clickinfo" -> clickInfo(sender, Arrays.copyOfRange(args, 1, args.length));
@@ -153,12 +156,17 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         s.sendMessage("\u00a77/touhou proj list                  列出当前持有的投影组与实体数");
         s.sendMessage("\u00a77/touhou structure <x> <y> <z> [alldirs]");
         s.sendMessage("\u00a77/touhou saizen <x> <y> <z> [info|check|activate|deactivate|slots|posts|recipe|seed|tick [n]|charge <n>|guard|alldirs]");
+        s.sendMessage("\u00a77/touhou dreamcatcher <x> <y> <z>   幻梦捕捉器：四周床数 / 自身 POWER / 所在网络总量 / 产出速率");
+        s.sendMessage("\u00a77/touhou seal <玩家名>                读玩家主手/副手「梦想封印 集」的 POWER、上限、可用次数");
+        s.sendMessage("\u00a77/touhou seal probe <x> <y> <z>       在指定坐标做一次真实的取电实测（内存测试物品）");
+        s.sendMessage("\u00a77/touhou seal selfcheck              梦想封印 集的参数自检（控制台可用）");
         s.sendMessage("\u00a77/touhou guide [reactor|saizen]   粘液书自定义配方页的内容自检（展示列表 + 可合成性核查）");
         s.sendMessage("\u00a77/touhou place <x> <y> <z> <sfId> [world] [--force]");
         s.sendMessage("\u00a77/touhou remove <x> <y> <z>            删除方块 + Slimefun 方块数据（setblock 清不掉）");
         s.sendMessage("\u00a77/touhou edit <x> <y> <z> [placed|broken]  模拟结构变动（现在唯一的常规检测触发途径）");
         s.sendMessage("\u00a77/touhou gui [x y z]                   GUI 锁槽自检（防占位符被拿走）");
-        s.sendMessage("\u00a77/touhou layout | groups | messages | reload | power [rebuild]");
+        s.sendMessage("\u00a77/touhou layout | groups | messages | reload");
+        s.sendMessage("\u00a77/touhou power [x y z] [world] | power rebuild   POWER 网络诊断（控制台可用坐标）");
     }
 
     // ------------------------------------------------------------------ guide
@@ -361,10 +369,14 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
      * POWER 网络诊断。
      *
      * <pre>
-     *   /touhou power            看向一个 POWER 方块（8 格内）后执行
-     *   /touhou power &lt;x y z&gt;    诊断指定方块
-     *   /touhou power rebuild    清空网络缓存，下次 tick 自动重算（排查用）
+     *   /touhou power                看向一个 POWER 方块（8 格内）后执行（仅玩家）
+     *   /touhou power &lt;x y z&gt; [world] 诊断指定方块 —— ★ 控制台也能用（无头验证靠它）
+     *   /touhou power rebuild        清空网络缓存，下次 tick 自动重算（排查用）
      * </pre>
+     *
+     * <p>输出里会分别报<b>上次结算</b>与<b>现算</b>两个口径的网络总量，
+     * 并按节点类型列出「集成核心 / 中继器 / 存储单元 / <b>发电机</b>」各几个
+     * （发电机就是幻梦捕捉器那一类"只捐不取"的产能设备）。
      */
     private void power(CommandSender sender, String[] args) {
         if (args.length > 0 && args[0].equalsIgnoreCase("rebuild")) {
@@ -372,27 +384,173 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage(PREFIX + "\u00a7a已清空网络缓存（原 " + n + " 个节点），下次 tick 自动重算");
             return;
         }
+        // ★ 给了坐标就直接诊断 —— 控制台也能用。
+        //   原先这条路径只对玩家开放（"控制台看不到方块"），可无头验证恰恰只有控制台，
+        //   于是这条命令在最需要它的场景下反而敲不动。坐标解析用宽松版 resolveAny，
+        //   所以"没粘液方块数据的位置"也能问出"这里不是 POWER 方块"这个结论。
+        if (args.length >= 3) {
+            Location loc = resolveAny(sender, args);
+            if (loc == null) {
+                return;
+            }
+            sender.sendMessage(PREFIX + "\u00a7ePOWER 网络诊断 @ " + xyz(loc));
+            for (String line : com.example.touhou.power.PowerNetworkManager.describe(loc)) {
+                sender.sendMessage("\u00a78  " + line);
+            }
+            log("[TOUHOU] power @ " + xyz(loc));
+            return;
+        }
         if (!(sender instanceof org.bukkit.entity.Player p)) {
-            sender.sendMessage(PREFIX + "\u00a77控制台看不到方块，请用: /touhou power rebuild");
+            sender.sendMessage(PREFIX + "\u00a77控制台看不到方块，请用: /touhou power <x> <y> <z> 或 /touhou power rebuild");
             return;
         }
         Location loc;
-        if (args.length >= 3) {
-            try {
-                loc = new Location(p.getWorld(),
-                        Integer.parseInt(args[0]), Integer.parseInt(args[1]), Integer.parseInt(args[2]));
-            } catch (NumberFormatException e) {
-                sender.sendMessage(PREFIX + "\u00a7c用法: /touhou power [x y z | rebuild]");
-                return;
-            }
-        } else {
-            org.bukkit.block.Block b = p.getTargetBlockExact(8);
-            loc = b != null ? b.getLocation() : p.getLocation();
-        }
+        org.bukkit.block.Block b = p.getTargetBlockExact(8);
+        loc = b != null ? b.getLocation() : p.getLocation();
         sender.sendMessage(PREFIX + "\u00a7ePOWER 网络诊断");
         for (String line : com.example.touhou.power.PowerNetworkManager.describe(loc)) {
             sender.sendMessage("\u00a78  " + line);
         }
+    }
+
+    // ------------------------------------------------------------------ dreamcatcher
+
+    /**
+     * 幻梦捕捉器诊断 —— <b>POWER 产能设备的无头验证入口</b>。
+     *
+     * <pre>
+     *   /touhou dreamcatcher &lt;x&gt; &lt;y&gt; &lt;z&gt;
+     * </pre>
+     *
+     * <p>一次输出里就有需求要的四件事：<b>四周床的数量 / 当前自身 POWER /
+     * 所在网络的 POWER 总量 / 产出速率（POWER/秒）</b>；另外带上"本轮计时、本轮已产出、
+     * 累计产出、节流参数"，于是"1 张床 8 秒 1 点、4 张床 2 秒 1 点、没床不产出、
+     * 自身缓冲不涨"这四条都能靠<b>隔一段时间敲两次命令</b>对比读出来，不必真人进游戏。
+     *
+     * <p>★ 床数是现场重数的（不走 ticker 的节流缓存）—— 命令看到的一定是此刻的真实情况。
+     */
+    private void dreamcatcher(CommandSender sender, String[] args) {
+        Location loc = resolve(sender, args);
+        if (loc == null) {
+            return;
+        }
+        SlimefunItem item = BlockStorage.check(loc);
+        if (!(item instanceof com.example.touhou.power.DreamCatcher dc)) {
+            sender.sendMessage(PREFIX + "\u00a7c该方块不是幻梦捕捉器（实际 "
+                    + (item == null ? "\u00a7c非 Slimefun 方块" : item.getId()) + "）");
+            return;
+        }
+        sender.sendMessage(PREFIX + "\u00a7e幻梦捕捉器状态");
+        for (String line : dc.describe(loc)) {
+            sender.sendMessage("\u00a78  " + line);
+        }
+        // 单独再打一行"纯 ASCII 数值"，方便从日志里 grep 出时间序列（中文在 GBK 日志里会乱码）
+        log("[TOUHOU] dreamcatcher @ " + xyz(loc)
+                + " beds=" + dc.countBeds(loc)
+                + " self=" + dc.powerCharge(loc) + "/" + dc.powerCapacity(loc)
+                + " produced=" + com.example.touhou.core.TouhouData.getLong(
+                        loc, com.example.touhou.power.DreamCatcher.KEY_PRODUCED, 0L));
+    }
+
+    // ------------------------------------------------------------------ seal
+
+    /**
+     * 梦想封印 集诊断。
+     *
+     * <pre>
+     *   /touhou seal &lt;玩家名&gt;              读该玩家主手/副手的 POWER、上限、可用次数
+     *   /touhou seal probe &lt;x&gt; &lt;y&gt; &lt;z&gt;     用指定坐标做一次"从附近网络取电"的实测
+     *   /touhou seal selfcheck              参数自检（不需要玩家，控制台可用）
+     * </pre>
+     *
+     * <p>★ 为什么要 {@code probe}：控制台没有"手持"这件事，而"充能从哪个网络取"
+     * 恰恰是这次改造里最需要被证明的一环。{@code probe} 在<b>内存里</b>造一个测试用道具，
+     * 然后调<b>与游戏内完全相同</b>的那段取电逻辑（{@code FantasySeal#probeCharge}：
+     * 找最近节点 → 取它所在的网 → 抽电 → 写回道具），把过程与读数全打出来。
+     * 于是"取电确实发生、且取自哪张网"有了可 grep 的证据。
+     */
+    private void seal(CommandSender sender, String[] args) {
+        com.example.touhou.core.FantasySeal seal = AddSlimefunItems.FANTASY_SEAL;
+        if (seal == null) {
+            sender.sendMessage(PREFIX + "\u00a7c梦想封印 集未注册（物品注册失败？看控制台）");
+            return;
+        }
+
+        if (args.length >= 1 && args[0].equalsIgnoreCase("probe")) {
+            Location loc = resolveAny(sender, Arrays.copyOfRange(args, 1, args.length));
+            if (loc == null) {
+                return;
+            }
+            // 内存里的测试道具：克隆物品模板（PDC 里带着粘液 id，与玩家手里那件同源）
+            ItemStack probe = AddItems.FANTASY_SEAL.clone();
+            sender.sendMessage(PREFIX + "\u00a7e梦想封印 集 · 取电实测 @ " + xyz(loc));
+            sender.sendMessage("\u00a77  取电前：");
+            for (String line : seal.describeItem("    测试物品", probe)) {
+                sender.sendMessage("\u00a78" + line);
+            }
+            var result = seal.probeCharge(probe, loc);
+            sender.sendMessage("\u00a77  取自：" + "\u00a7f" + result.detail());
+            sender.sendMessage("\u00a77  本次取到 \u00a7f" + result.taken() + " POWER"
+                    + "\u00a77（" + result.before() + " → " + result.after()
+                    + " / " + result.capacity() + "）");
+            for (String line : seal.describeItem("    取电后", probe)) {
+                sender.sendMessage("\u00a78" + line);
+            }
+            ItemMeta probeMeta = probe.getItemMeta();
+            if (probeMeta != null && probeMeta.getLore() != null) {
+                for (String line : probeMeta.getLore()) {
+                    if (ChatColor.stripColor(line) != null
+                            && ChatColor.stripColor(line).startsWith("POWER:")) {
+                        sender.sendMessage("\u00a77  道具 lore 里那一行：\u00a7f" + line);
+                        break;
+                    }
+                }
+            }
+            log("[TOUHOU] seal probe @ " + xyz(loc) + " taken=" + result.taken()
+                    + " before=" + result.before() + " after=" + result.after()
+                    + " cap=" + result.capacity());
+            return;
+        }
+
+        if (args.length == 0 || args[0].equalsIgnoreCase("selfcheck")) {
+            sender.sendMessage(PREFIX + "\u00a7e梦想封印 集 · 参数自检");
+            for (String line : seal.selfCheck()) {
+                sender.sendMessage("\u00a78  " + line);
+            }
+            log("[TOUHOU] seal selfcheck -> " + seal.getId());
+            return;
+        }
+
+        // 指定玩家：读他主手/副手那件道具
+        org.bukkit.entity.Player target = Bukkit.getPlayerExact(args[0]);
+        if (target == null) {
+            sender.sendMessage(PREFIX + "\u00a7c玩家不在线: " + args[0]
+                    + "\u00a77（用法: /touhou seal <玩家名> | probe <x> <y> <z> | selfcheck）");
+            return;
+        }
+        sender.sendMessage(PREFIX + "\u00a7e梦想封印 集 · " + target.getName() + " 的读数");
+        boolean found = false;
+        for (org.bukkit.inventory.EquipmentSlot slot : new org.bukkit.inventory.EquipmentSlot[]{
+                org.bukkit.inventory.EquipmentSlot.HAND,
+                org.bukkit.inventory.EquipmentSlot.OFF_HAND}) {
+            ItemStack item = target.getInventory().getItem(slot);
+            String label = "  " + (slot == org.bukkit.inventory.EquipmentSlot.HAND ? "主手" : "副手");
+            if (item == null || item.getType().isAir()) {
+                sender.sendMessage("\u00a78" + label + " = （空）");
+                continue;
+            }
+            found = true;
+            for (String line : seal.describeItem(label, item)) {
+                sender.sendMessage("\u00a78  " + line);
+            }
+        }
+        if (!found) {
+            sender.sendMessage(PREFIX + "\u00a77两手里都没有道具；也可以用测试物品自检："
+                    + "\u00a7f/touhou seal probe <x> <y> <z>");
+        }
+        log("[TOUHOU] seal player=" + target.getName()
+                + " mainhand=" + seal.chargeOf(target.getInventory().getItemInMainHand())
+                + "/" + seal.chargeOf(target.getInventory().getItemInOffHand()));
     }
 
     // ------------------------------------------------------------------ remove
@@ -1754,6 +1912,58 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         return null;
     }
 
+    /**
+     * 解析 &lt;x&gt; &lt;y&gt; &lt;z&gt;（arg0..2），<b>不</b>要求该坐标上有粘液方块数据。
+     *
+     * <p>{@link #resolve} 是"这里必须是一个粘液方块"的版本（诊断机器用）；
+     * 而"玩家站的位置 / 取电点"本来就多半是空气或普通方块，用那个版本会被
+     * 一句"该坐标上没有 Slimefun 方块数据"挡回来 —— 所以这里单独开一个宽松版。
+     *
+     * <p>世界的取法（与 {@code /touhou place} 同款约定，另加玩家优先）：
+     * <ol>
+     *   <li>第 4 个参数里写了世界名 ⇒ 用它；</li>
+     *   <li>没写、而命令来源是玩家 ⇒ 用<b>玩家所在世界</b>
+     *       （否则多世界服务器上，玩家敲 {@code power <x y z>} 会算到主世界去）；</li>
+     *   <li>其余情况（控制台）⇒ 第一个世界。</li>
+     * </ol>
+     */
+    private Location resolveAny(CommandSender sender, String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage(PREFIX + "\u00a7c需要坐标: <x> <y> <z> [world]");
+            return null;
+        }
+        int x;
+        int y;
+        int z;
+        try {
+            x = Integer.parseInt(args[0]);
+            y = Integer.parseInt(args[1]);
+            z = Integer.parseInt(args[2]);
+        } catch (NumberFormatException e) {
+            sender.sendMessage(PREFIX + "\u00a7c坐标必须是整数");
+            return null;
+        }
+        World world = null;
+        for (int i = 3; i < args.length; i++) {
+            if (args[i] == null || args[i].startsWith("--")) {
+                continue;
+            }
+            world = Bukkit.getWorld(args[i]);
+            break;
+        }
+        if (world == null && sender instanceof org.bukkit.entity.Player p) {
+            world = p.getWorld();
+        }
+        if (world == null) {
+            world = Bukkit.getWorlds().isEmpty() ? null : Bukkit.getWorlds().get(0);
+        }
+        if (world == null) {
+            sender.sendMessage(PREFIX + "\u00a7c找不到世界");
+            return null;
+        }
+        return new Location(world, x, y, z);
+    }
+
     private static String xyz(Location l) {
         return l.getBlockX() + "," + l.getBlockY() + "," + l.getBlockZ();
     }
@@ -1783,7 +1993,10 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         if (args.length == 1) {
             return filter(List.of("reactor", "autobuild", "clickinfo", "structure", "saizen", "place",
                     "remove", "edit", "gui", "layout", "groups", "tags", "messages", "reload",
-                    "power", "proj", "guide"), args[0]);
+                    "power", "dreamcatcher", "seal", "proj", "guide"), args[0]);
+        }
+        if (args[0].equalsIgnoreCase("seal") && args.length == 2) {
+            return filter(List.of("selfcheck", "probe"), args[1]);
         }
         if (args[0].equalsIgnoreCase("guide") && args.length == 2) {
             return filter(List.of("reactor", "saizen"), args[1]);
@@ -1837,6 +2050,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
     /** 供文档引用：本插件的命令表。 */
     public static List<String> commands() {
         return List.of("reactor", "autobuild", "clickinfo", "structure", "saizen", "place", "remove",
-                "edit", "gui", "layout", "groups", "tags", "messages", "reload", "power", "proj");
+                "edit", "gui", "layout", "groups", "tags", "messages", "reload", "power",
+                "dreamcatcher", "seal", "proj");
     }
 }

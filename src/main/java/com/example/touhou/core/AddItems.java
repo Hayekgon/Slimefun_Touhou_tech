@@ -71,8 +71,15 @@ public final class AddItems {
     /** Ning_Meng__ —— 项目提出者、代码开发者。 */
     public static SlimefunItemStack INFO_NING_MENG;
 
-    /** Flee into Gensokyo：博丽的御币（充能式 360° 追踪弹幕发射器）。 */
-    public static SlimefunItemStack HAKUREI_GOHEI;
+    /**
+     * Flee into Gensokyo：<b>梦想封印 集</b>（充能式 360° 追踪弹幕发射器）。
+     *
+     * <p>★ 2026-09-20 改名 + 改 id：原来是「博丽的御币」/ {@code TOUHOU_PARTY_ITEM_HAKUREI_GOHEI}，
+     * 现在统一到符卡名（英文依据见 {@link FantasySeal} 的类注释，已由用户核对确认）。
+     * ⚠ <b>改 id 的代价</b>：存档里那些老 id 的物品会变成"未知物品"（Slimefun 靠 PDC 里的 id 反查本体），
+     * 这是本次改动的既定代价，不做兼容映射。
+     */
+    public static SlimefunItemStack FANTASY_SEAL;
 
     // ------------------------------------------------------------------ POWER 能源系统
     // 归属 1 级组 POWER（touhou_power）。
@@ -86,6 +93,15 @@ public final class AddItems {
 
     /** POWER存储单元 —— long 精度储能。 */
     public static SlimefunItemStack POWER_STORAGE_UNIT;
+
+    /**
+     * 幻梦捕捉器 —— POWER 体系的第一台<b>产能</b>设备。
+     *
+     * <p>★ 命名由来：「幻梦捕捉器」取的是<b>捕梦网（dreamcatcher）</b>的意象，
+     * 所以英文名就是 <b>Dreamcatcher</b>，id 为
+     * {@code TOUHOU_"物品组POWER"_DREAMCATCHER}（全大写，遵守本项目 id 铁律）。
+     */
+    public static SlimefunItemStack POWER_DREAMCATCHER;
 
     // ------------------------------------------------------------------ 多方块构件
     // 归属 2 级组 COMPLEX_MACHINE，所以 id 前缀统一是 TOUHOU_COMPLEX_MACHINE_。
@@ -285,18 +301,26 @@ public final class AddItems {
                 "&7项目提出者，代码开发者");
 
         // 1 级物品组 PARTY_ITEM（Flee into Gensokyo）
-        // id 规范：TOUHOU_"物品组"_"物品名英文" ⇒ TOUHOU_PARTY_ITEM_HAKUREI_GOHEI
-        HAKUREI_GOHEI = new SlimefunItemStack(
-                "TOUHOU_PARTY_ITEM_HAKUREI_GOHEI",
+        // id 规范：TOUHOU_"物品组"_"物品名英文" ⇒ TOUHOU_PARTY_ITEM_FANTASY_SEAL_CONVERGE
+        //   「夢想封印」= Fantasy Seal；「集」= -Converge-（与 -Scatter- / -Strike- 并列），
+        //   去连字符后即 FANTASY_SEAL_CONVERGE。★ 英文名已由用户核对确认（2026-09-20）。
+        //   ⚠ 物品组仍是 PARTY_ITEM，没跟着改组。
+        // 描述：由用户指定的原文（一句话，不拆行）。
+        //   末尾那几行灰字是"参数放最后"的约定（spec 允许），
+        //   其中 "POWER:" 那一行还有功能：FantasySeal 会就地改写它来显示实时电量
+        //   （见 FantasySeal#renderChargeLore —— 本道具不再是 Rechargeable，
+        //    没有 Slimefun 自带的那行电力显示，所以这一行必须留着）。
+        FANTASY_SEAL = new SlimefunItemStack(
+                "TOUHOU_PARTY_ITEM_FANTASY_SEAL_CONVERGE",
                 Material.FISHING_ROD,
-                "&d博丽的御币",
+                "&d梦想封印 集",
                 "",
-                "&7以灵力为引，向四周撒出&d36&7发追踪弹幕",
-                "&7每发间隔 &d10°&7，绕自身一整圈展开",
-                "&7其中一发正对视线方向",
+                "&7灵梦的符卡梦想封印之一，据说没有几个人能完整的抗下一发",
                 "",
-                "&8充能道具 · 单次发射消耗 &c640 J&8 电力",
-                "&8弹幕命中会清空目标无敌帧");
+                "&8POWER: &7手持时自动充能",
+                "&8充能 &f1 POWER / 2 秒&8（身边 &f4 格&8内要有 POWER 网络）",
+                "&8单次发射消耗 &f1 POWER&8，上限 &f40 POWER",
+                "&8每发之后冷却 &f1.5 秒&8，弹幕追踪 &f120 格");
 
         // 2 级物品组 COMPLEX_MACHINE（多方块大型机器）的构件。
         // 结构层图由用户指定，这里只提供"积木"。
@@ -393,11 +417,11 @@ public final class AddItems {
                 "&8点信息格激活：6 个预留槽同时匹配配方才产出");
 
         // 纯发光用：钓鱼竿上的无限附魔没有实际效果
-        HAKUREI_GOHEI.addUnsafeEnchantment(Enchantment.ARROW_INFINITE, 1);
-        ItemMeta goheiMeta = HAKUREI_GOHEI.getItemMeta();
+        FANTASY_SEAL.addUnsafeEnchantment(Enchantment.ARROW_INFINITE, 1);
+        ItemMeta goheiMeta = FANTASY_SEAL.getItemMeta();
         if (goheiMeta != null) {
             goheiMeta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
-            HAKUREI_GOHEI.setItemMeta(goheiMeta);
+            FANTASY_SEAL.setItemMeta(goheiMeta);
         }
 
         // ------------------------------------------------------------------ POWER（1 级组）
@@ -432,6 +456,27 @@ public final class AddItems {
                 "&7电量按容量比例在网络内自动均衡",
                 "",
                 "&8long 精度，不会像原生电容那样溢出");
+
+        // 幻梦捕捉器：POWER 体系的第一台产能设备（原创机器）。
+        // ★ 英文名 Dreamcatcher = 捕梦网；名称与 id 都按本项目规范：
+        //   TOUHOU_"物品组POWER"_DREAMCATCHER，全大写。
+        POWER_DREAMCATCHER = new SlimefunItemStack(
+                "TOUHOU_POWER_DREAMCATCHER",
+                Material.TARGET,
+                "&c幻梦捕捉器",
+                "",
+                "&7把梦收进标靶，再榨成&cPOWER&7。",
+                "&7它只认四个水平方向上的&f床&7 ——",
+                "&7谁睡得越沉，谁就产得越快。",
+                "",
+                "&7每面各紧贴一张床 ⇒ 效率 &f100%&7，最多四面叠满",
+                "&7一张床：&f8 秒&7 产 &f1 POWER",
+                "&7四张床：&f2 秒&7 产 &f1 POWER",
+                "&7四周没有床：&f不产出",
+                "",
+                "&8自身缓冲 &f15 POWER&8，产出的电优先并入网络",
+                "&8（先送给储能点，实在没人接才留在自己这里）",
+                "&8POWER 体系的第一台产能设备");
 
         // ------------------------------------------------------------------ 标签登记
         // ★ 为什么标签登记在这个"物品模板"层、而不是像最初那样放在 AddSlimefunItems 里：

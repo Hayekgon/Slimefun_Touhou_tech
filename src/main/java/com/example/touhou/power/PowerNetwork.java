@@ -25,6 +25,9 @@ import org.bukkit.block.Block;
  *   <li><b>显式 tick 顺序</b>：见 {@link #tick()} —— 先并网结算，再按容量比例均衡。
  *       原生是"谁先被 tick 谁拿电"，结果不可推理。</li>
  *   <li><b>均衡而不是抢占</b>：总电量按容量比例重分配，不会出现"靠近发电机的电容先满、远处的空着"。</li>
+ *   <li><b>产能设备只捐不取</b>：{@code NodeType.GENERATOR} 的电量计入池子，但它的容量
+ *       既不参与均衡、也不算进均衡基数 —— 所以"产出的电优先流向储能点"，
+ *       只有储能点全装不下时才会回流到发电机自带的缓冲里（详见 {@link #settle()}）。</li>
  * </ol>
  */
 public class PowerNetwork implements HologramOwner {
@@ -142,9 +145,17 @@ public class PowerNetwork implements HologramOwner {
         }
 
         // ---- 汇总容量与电量 ----
+        //
+        // ★ 发电机（NodeType.GENERATOR）在这里被【单独挑出来】，它只捐不取：
+        //   电量计入池子（= 把自己发的电交出来），但【容量不计入 totalCap】、
+        //   也【不进 balance 均衡名单】—— 均衡的比例基数因此只剩"真正的储能点"，
+        //   发电机不会靠自己的缓冲去分走一份电。
+        //   ⚠ 没有发电机时，下面这条路径与改动前<b>逐字等价</b>（generators 为空）：
+        //     totalCap / totalCharge / balance / caps 全都与原来一模一样。
         long totalCap = 0, totalCharge = 0;
         List<Location> balance = new ArrayList<>();
         List<Long> caps = new ArrayList<>();
+        List<Location> generators = new ArrayList<>();
         for (Location loc : ready) {
             PowerComponent pc = PowerComponent.at(loc);
             if (pc == null || pc.powerType() == PowerComponent.NodeType.REPEATER) {
@@ -152,16 +163,37 @@ public class PowerNetwork implements HologramOwner {
             }
             long cap = Math.max(0, pc.powerBalanceCapacity(loc));
             long chg = Math.max(0, Math.min(pc.powerCharge(loc), cap));
+            if (pc.powerType() == PowerComponent.NodeType.GENERATOR) {
+                generators.add(loc);
+                totalCharge += chg;   // 只捐：把电放进池子
+                continue;             // 不取：容量不进 totalCap、位置不进 balance
+            }
             balance.add(loc);
             caps.add(cap);
             totalCap += cap;
             totalCharge += chg;
         }
 
-        lastTotalCapacity = totalCap;
-        lastTotalCharge = totalCharge;
         if (totalCap <= 0) {
-            notes.add("网络无储能节点（只有中继器）");
+            // 池子里一个储能点都没有 ⇒ 发电机<b>无处可捐</b>，这一轮就不捐了：
+            // 产出的电留在自己的缓冲里（这正是"发电机自带 N 点缓冲"的用途）。
+            // ⚠ 这条分支下不做任何写入，所以发电机不会被清零 —— 那是刻意的。
+            long genCap = 0, genCharge = 0;
+            for (Location loc : generators) {
+                PowerComponent pc = PowerComponent.at(loc);
+                if (pc == null) {
+                    continue;
+                }
+                long cap = Math.max(0, pc.powerCapacity(loc));
+                genCap += cap;
+                genCharge += Math.max(0, Math.min(pc.powerCharge(loc), cap));
+            }
+            lastTotalCapacity = genCap;
+            lastTotalCharge = genCharge;
+            notes.add(generators.isEmpty()
+                    ? "网络无储能节点（只有中继器）"
+                    : "网络无储能节点（只有发电机）：产出的 POWER 存进发电机自身缓冲 "
+                            + genCharge + "/" + genCap);
             return notes;
         }
 
@@ -185,9 +217,74 @@ public class PowerNetwork implements HologramOwner {
             }
         }
 
+        // ---- 发电机：把电推给网络之后自身清零；装不下的才回流到自己的缓冲 ----
+        //
+        // ★ 这就是"<b>优先对外输出</b>"的落点：总量里的发电机那部分电，会顺着上面的
+        //   均衡分配落到真正的储能点上；只有当储能点全满时，多出来的才在下面退回发电机。
+        //   （"网络里只有发电机自己"的情形在上面的 totalCap <= 0 分支就已经早退，
+        //     所以它也不会被清零。）
+        long leftover = Math.max(0, totalCharge - assigned);
+        long genCap = 0, genKept = 0;
+        for (Location loc : generators) {
+            PowerComponent pc = PowerComponent.at(loc);
+            if (pc == null) {
+                continue;
+            }
+            long cap = Math.max(0, pc.powerCapacity(loc));
+            long keep = Math.min(leftover, cap);
+            leftover -= keep;
+            genCap += cap;
+            genKept += keep;
+            if (pc.powerCharge(loc) != keep) {
+                pc.powerSetCharge(loc, keep);
+            }
+        }
+
+        // 实测总量 = 储能点实际放置的量 + 发电机缓冲里留下的量。
+        // ⚠ 这里刻意用"刚才算出来的值"而不是再读一遍方块数据：settle 每 tick 都跑，
+        //   多一轮全节点读取纯属浪费；而且数学上与读回来的一致（分配时就 clamp 过了）。
+        //   ★ 也正因为按实际放置量统计，{@code lastTotalCharge <= lastTotalCapacity} 恒成立
+        //     （改动前 totalCharge 的每个分量都已经 clamp 过，所以两者数值完全一致）。
+        lastTotalCapacity = totalCap + genCap;
+        lastTotalCharge = assigned + genKept;
+
         notes.add("网络 #" + id + " 节点 " + nodes.size()
                 + " 储能点 " + balance.size()
-                + " 电量 " + totalCharge + "/" + totalCap);
+                + (generators.isEmpty() ? "" : " 发电机 " + generators.size())
+                + " 电量 " + lastTotalCharge + "/" + lastTotalCapacity);
         return notes;
+    }
+
+    /**
+     * 现算一次"这张网此刻到底有多少电、装得下多少电"——<b>含发电机自身缓冲</b>，导体不计。
+     *
+     * <p>用途是<b>诊断</b>（{@code /touhou power} 与幻梦捕捉器的自检）：{@link #lastTotalCharge()}
+     * 是"上一次结算时"的快照，而命令随时可能被敲，中间可能正好插着一台机器刚产出的电。
+     *
+     * <p>⚠ {@link #settle()} <b>不调用</b>它：那会每 tick 多读一整轮方块数据
+     * （settle 已经从分配结果里算出了同样的数，见那里的注释）。
+     */
+    public Totals measure() {
+        long charge = 0, capacity = 0;
+        int storages = 0, generators = 0;
+        for (Location loc : nodes) {
+            PowerComponent pc = PowerComponent.at(loc);
+            if (pc == null || pc.powerType() == PowerComponent.NodeType.REPEATER) {
+                continue;   // 导体不存电
+            }
+            long cap = Math.max(0, pc.powerCapacity(loc));
+            charge += Math.max(0, Math.min(pc.powerCharge(loc), cap));
+            capacity += cap;
+            if (pc.powerType() == PowerComponent.NodeType.GENERATOR) {
+                generators++;
+            } else {
+                storages++;
+            }
+        }
+        return new Totals(charge, capacity, storages, generators);
+    }
+
+    /** {@link #measure()} 的读数：网络总电量 / 总容量 / 储能点数 / 发电机数。 */
+    public record Totals(long charge, long capacity, int storages, int generators) {
     }
 }

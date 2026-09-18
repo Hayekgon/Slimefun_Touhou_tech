@@ -173,6 +173,151 @@ public final class PowerNetworkManager {
         }
     }
 
+    // ------------------------------------------------------------------ 取电 / 投电（道具与机器用）
+
+    /**
+     * 在 {@code center} 附近找<b>最近的 POWER 节点</b>（切比雪夫半径 {@code radius}）。
+     *
+     * <p>为什么需要它：道具（例如梦想封印 集）<b>不在世界里</b>，它没有自己的方块坐标，
+     * 所以"从哪张网取电"必须由"玩家此刻站在哪"推出来 —— 就是这里。
+     *
+     * <p>扫描方式与 {@link #build(Location)} 的半径跳接一致：<b>由内向外按壳层扫</b>，
+     * 一旦某一层命中就立刻返回该层里欧氏距离最近的那个。这样近处有方块时只需扫
+     * 一小圈（半径 1 的壳层 26 格），而不是老老实实把 9³ 全扫一遍。
+     *
+     * @return 最近的 POWER 节点坐标；半径内没有则返回 {@code null}
+     */
+    public static Location findNearestNode(Location center, int radius) {
+        Location c = TouhouData.norm(center);
+        if (c == null || radius <= 0) {
+            return null;
+        }
+        org.bukkit.World world = c.getWorld();
+        for (int r = 1; r <= radius; r++) {
+            Location best = null;
+            double bestDist = Double.MAX_VALUE;
+            for (int dx = -r; dx <= r; dx++) {
+                for (int dy = -r; dy <= r; dy++) {
+                    for (int dz = -r; dz <= r; dz++) {
+                        // 只看"壳"：切比雪夫距离恰好等于 r 的那些格子
+                        if (Math.max(Math.abs(dx), Math.max(Math.abs(dy), Math.abs(dz))) != r) {
+                            continue;
+                        }
+                        Location cand = TouhouData.norm(c.clone().add(dx, dy, dz));
+                        if (cand == null || PowerComponent.at(cand) == null) {
+                            continue;
+                        }
+                        // 距离用真实位置算（球心是玩家眼睛/身体，不是方块中心），更符合"最近"
+                        double dist = cand.distanceSquared(center);
+                        if (dist < bestDist) {
+                            bestDist = dist;
+                            best = cand;
+                        }
+                    }
+                }
+            }
+            if (best != null) {
+                return best;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 找 {@code center} 附近最近的 POWER 节点所属的<b>网络</b>（半径内没有节点则返回 {@code null}）。
+     *
+     * <p>这就是"道具从哪个网络取电"的答案：<b>离玩家最近的那个节点所在的整张网</b>。
+     */
+    public static PowerNetwork getNetworkNear(Location center, int radius) {
+        Location node = findNearestNode(center, radius);
+        return node == null ? null : getNetwork(node);
+    }
+
+    /**
+     * 从网络里抽出最多 {@code amount} 点 POWER（道具充能 / 耗电机器用）。
+     *
+     * <p>做法是"从有电的节点上依次扣"：<b>不关心是哪个节点</b>，因为下一次
+     * {@link PowerNetwork#settle()} 会按容量比例把剩下的电重新摊平 ——
+     * 所以"从哪扣"在网络上没有可观察的差别，也就不必维护"取电优先级"。
+     *
+     * <p>⚠ 发电机自身缓冲里的电也能被抽走（它本来就是网络的一部分）。
+     *
+     * @return 实际抽到的电量（网络里的电不够时可能小于 {@code amount}）
+     */
+    public static long extractPower(PowerNetwork net, long amount) {
+        if (net == null || amount <= 0) {
+            return 0L;
+        }
+        long got = 0L;
+        for (Location node : net.nodes()) {
+            if (got >= amount) {
+                break;
+            }
+            PowerComponent pc = PowerComponent.at(node);
+            if (pc == null) {
+                continue;
+            }
+            long cap = Math.max(0, pc.powerCapacity(node));
+            if (cap <= 0) {
+                continue;   // 导体
+            }
+            long chg = Math.max(0, Math.min(pc.powerCharge(node), cap));
+            if (chg <= 0) {
+                continue;
+            }
+            long take = Math.min(chg, amount - got);
+            pc.powerSetCharge(node, chg - take);
+            got += take;
+        }
+        return got;
+    }
+
+    /**
+     * 把 {@code amount} 点 POWER <b>投递给网络里除 {@code self} 之外的节点</b>
+     * （幻梦捕捉器的"优先对外输出"用）。
+     *
+     * <p>为什么投递方要排除自己：{@code self} 是调用者的自有缓冲，而"优先对外输出"
+     * 要求的正是"先给别人、自己装不下的才留下"。所以这里只往<b>别人</b>的空位里塞，
+     * 塞不下的部分由调用者自己决定怎么办。
+     *
+     * <p>发电机（{@code GENERATOR}）同样<b>不接受</b>投递：它按约定"只捐不取"，
+     * 否则两台发电机互相投递就会出现莫名其妙的来回搬运。
+     *
+     * @return 实际被接下的电量（可能小于 {@code amount} —— 网络里没有空位了）
+     */
+    public static long depositPower(PowerNetwork net, Location self, long amount) {
+        if (net == null || amount <= 0) {
+            return 0L;
+        }
+        Location skip = TouhouData.norm(self);
+        long left = amount;
+        for (Location node : net.nodes()) {
+            if (left <= 0) {
+                break;
+            }
+            if (node.equals(skip)) {
+                continue;
+            }
+            PowerComponent pc = PowerComponent.at(node);
+            if (pc == null || pc.powerType() == PowerComponent.NodeType.GENERATOR) {
+                continue;
+            }
+            long cap = Math.max(0, pc.powerCapacity(node));
+            if (cap <= 0) {
+                continue;   // 导体
+            }
+            long chg = Math.max(0, Math.min(pc.powerCharge(node), cap));
+            long free = cap - chg;
+            if (free <= 0) {
+                continue;
+            }
+            long put = Math.min(free, left);
+            pc.powerSetCharge(node, chg + put);
+            left -= put;
+        }
+        return amount - left;
+    }
+
     /** 从起点 BFS 出一个连通分量。 */
     private static PowerNetwork build(Location start) {
         PowerNetwork net = new PowerNetwork();
@@ -290,7 +435,7 @@ public final class PowerNetworkManager {
         }
         out.add("网络 #" + net.networkId() + " 节点数=" + net.size()
                 + " 缓存节点=" + cachedNodeCount() + " 缓存网络=" + cachedNetworkCount());
-        int core = 0, rep = 0, sto = 0;
+        int core = 0, rep = 0, sto = 0, gen = 0;
         for (Location n : net.nodes()) {
             PowerComponent pc = PowerComponent.at(n);
             if (pc == null) {
@@ -300,10 +445,17 @@ public final class PowerNetworkManager {
                 case INTEGRATED_CORE -> core++;
                 case REPEATER -> rep++;
                 case STORAGE -> sto++;
+                case GENERATOR -> gen++;
             }
         }
-        out.add("  集成核心=" + core + " 中继器=" + rep + " 存储单元=" + sto);
+        out.add("  集成核心=" + core + " 中继器=" + rep + " 存储单元=" + sto + " 发电机=" + gen);
         out.add("  上次统计 电量=" + net.lastTotalCharge() + "/" + net.lastTotalCapacity());
+        // 现算一遍：命令是随时敲的，而 last* 只是"上一次结算"的快照。
+        // ★ 这里的"总量"含发电机自身缓冲（导体不计），与悬浮字同口径。
+        PowerNetwork.Totals t = net.measure();
+        out.add("  现算总量 电量=" + t.charge() + "/" + t.capacity()
+                + "（储能点=" + t.storages() + " 发电机=" + t.generators()
+                + "，含发电机缓冲）");
         return out;
     }
 

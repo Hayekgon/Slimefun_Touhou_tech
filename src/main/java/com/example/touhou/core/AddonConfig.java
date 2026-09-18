@@ -239,6 +239,21 @@ public final class AddonConfig {
     public String saizenMessageLevel = "off";
 
     /**
+     * 梦想封印 集自己的消息前缀（{@code config.yml} 的 {@code seal.message-prefix}）。
+     *
+     * <p>★ 同样是"不许蹭别人的前缀"：这个道具原先走默认作用域，
+     * 提示顶着「&amp;8[&amp;6灵乌路空反应堆&amp;8]」出来（与祭坛踩过的坑一模一样）。
+     */
+    public String sealPrefix = "&8[&d梦想封印 集&8] &r";
+
+    /**
+     * 梦想封印 集自己的消息档位，默认 {@code off}。
+     *
+     * <p>本道具目前只发 warning（不受档位影响），这一格是给"以后想推常规反馈"留的开关。
+     */
+    public String sealMessageLevel = "off";
+
+    /**
      * 控制台 info 输出总开关（{@code config.yml} 的 {@code logging.console-info}）。
      *
      * <ul>
@@ -383,6 +398,9 @@ public final class AddonConfig {
         //   先读它才能保证"就算反应堆段整段丢了，赛钱箱的配置照样生效"。
         loadSaizenbako(c, cfg);
 
+        // 梦想封印 集那一段同理（只有消息前缀/档位；四个数字在 Items.yml 里，见 loadSeal）。
+        loadSeal(c, cfg);
+
         c.consoleInfo = cfg.getBoolean("logging.console-info", c.consoleInfo);
 
         // 粘液书那一段也放在 reactor: 之前读（与投影同理）：它是"全局"设置，
@@ -513,6 +531,26 @@ public final class AddonConfig {
                 c.saizenLegend = parsed;
             }
         }
+    }
+
+    /**
+     * 读 {@code seal:} 段（梦想封印 集）。
+     *
+     * <p>★ 只读<b>消息</b>相关的两项：道具的四个数字（上限 40 / 消耗 1 / 充能 1 每 2 秒 /
+     * 冷却 1.5 秒）、取电半径、提示节流全部是 {@code ItemSetting}，
+     * Slimefun 会把它们落在 {@code plugins/Slimefun/Items.yml} 的
+     * {@code TOUHOU_PARTY_ITEM_FANTASY_SEAL_CONVERGE} 那一节里 ——
+     * 数值只有一个出处，绝不在这里再抄一份（见 {@code FantasySeal} 的类注释）。
+     *
+     * <p>缺段/缺项时一律保留内置默认值，所以老 config.yml 直接用也不会出问题。
+     */
+    private static void loadSeal(AddonConfig c, FileConfiguration cfg) {
+        ConfigurationSection s = cfg.getConfigurationSection("seal");
+        if (s == null) {
+            return;
+        }
+        c.sealPrefix = s.getString("message-prefix", c.sealPrefix);
+        c.sealMessageLevel = s.getString("messages.level", c.sealMessageLevel);
     }
 
     /**
@@ -655,6 +693,9 @@ public final class AddonConfig {
                         + " / 完成爆 " + particleCompletionBurst,
                 "guide             = 核心物品描述里的材料清单 "
                         + (guideMaterialLore ? "开" : "关")
-                        + "，最多列 " + (guideMaterialKinds <= 0 ? "全部" : guideMaterialKinds + " 种"));
+                        + "，最多列 " + (guideMaterialKinds <= 0 ? "全部" : guideMaterialKinds + " 种"),
+                "seal              = 梦想封印 集 前缀「" + sealPrefix + "」档位 "
+                        + Notify.Level.parse(sealMessageLevel).display()
+                        + "（POWER 刻度在 Items.yml，不在本文件）");
     }
 }
