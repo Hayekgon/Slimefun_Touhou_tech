@@ -114,14 +114,18 @@ public final class AddSlimefunItems {
                 RecipeType.NULL, noRecipe()), plugin);
 
         // 多方块大型机器：反应堆核心
-        // ★ 配方类型从 RecipeType.NULL 换成 TouhouRecipeTypes.REACTOR_CORE：
-        //   只为让粘液书那一页有内容（槽 10 的机器图标 + 底部自定义配方页）。
-        //   配方数组仍是 9 格全空 ⇒ 依旧不可合成，理由见 TouhouRecipeTypes 的类注释。
+        // ★ 保留原有的【增强工作台】配方（强化板 / 鼓胀锭III / 马达 / 下界粘液球 / 碳素）——
+        //   这条配方是刻意设计过的中后期配方，按 spec 的定位这台机器是顶级产能机器，
+        //   不该便宜到随手能做。（曾经被误改成"不可合成"，已还原。）
+        //
+        //   ⚠ 它与"粘液书底部的自定义配方页"互不冲突：那一页来自
+        //     {@code RecipeDisplayItem}（见 {@link RecipePages}），是实现在【物品】上的，
+        //     与配方类型无关；配方类型只决定指南页 <b>槽 10</b> 显示哪台机器、上面 3×3 画什么。
         UTSUHO_REACTOR_CORE = register(new UtsuhoReactorCore(
                 AddGroups.COMPLEX_MACHINE,
                 AddItems.UTSUHO_REACTOR_CORE,
-                TouhouRecipeTypes.REACTOR_CORE,
-                noRecipe()), plugin);
+                RecipeType.ENHANCED_CRAFTING_TABLE,
+                reactorRecipe()), plugin);
 
         // 多方块构件：结构层图由用户指定，这里只把"积木"注册进 2 级组 COMPLEX_MACHINE。
         // ⚠ 配方暂缺（RecipeType.NULL = 不可合成），先用 /sf give 或创造模式拿取；
@@ -211,21 +215,17 @@ public final class AddSlimefunItems {
     /**
      * 反应堆核心的合成配方（<b>当前未被使用</b> —— 保留下来只是为了"想恢复合成时一行就能切回去"）。
      *
-     * <p>★ 为什么不再使用：本次需求是"两个多方块核心都不能是可合成物品"，
-     * 所以核心改用 {@link TouhouRecipeTypes#REACTOR_CORE} 这个自定义配方类型 + 全空配方数组。
-     * 空数组是硬的：{@code RecipeType#register} 对自定义类型本来就不会注册任何东西
-     * （见 {@link TouhouRecipeTypes} 的类注释），再加上 9 格全空 —— <b>两条保险</b>。
+     * <p>★ 当前状态：<b>正在使用</b>（{@code UTSUHO_REACTOR_CORE} 以
+     * {@code RecipeType.ENHANCED_CRAFTING_TABLE} + 本方法注册）。
      *
-     * <p>★ 想恢复"增强工作台可造"：把上面 {@code UTSUHO_REACTOR_CORE} 的注册改回
-     * {@code RecipeType.ENHANCED_CRAFTING_TABLE} + {@code reactorRecipe()} 即可。
-     * 这条配方是刻意设计过的（钢锭 + 强化合金 + 下界之星这类中后期材料，
-     * 因为这台机器按 spec 的定位是顶级产能机器），所以<b>代码保留、不删</b>。
+     * <p>它一度被改成"不可合成"（自定义配方类型 + 全空数组），那是<b>一次误改</b>：
+     * 原因是需求转述时把"祭坛不可合成"错套到了反应堆身上 —— 反应堆<b>原本就有</b>
+     * 这条刻意设计的中后期配方。已还原。
      *
-     * <p>⚠ 改回去会连带丢掉"粘液书底部的自定义配方页"吗？不会 ——
+     * <p>⚠ 想改成不可合成时请先确认：粘液书底部的自定义配方页<b>不会</b>因此丢失 ——
      * 那一页来自 {@code RecipeDisplayItem}（见 {@link RecipePages}），与配方类型无关；
      * 配方类型只决定指南页<b>槽 10</b> 显示哪台机器的图标、以及上面 3×3 网格画什么。
      */
-    @SuppressWarnings("unused")
     private static ItemStack[] reactorRecipe() {
         return new ItemStack[] {
                 SlimefunItems.REINFORCED_PLATE, SlimefunItems.BLISTERING_INGOT_3, SlimefunItems.REINFORCED_PLATE,
