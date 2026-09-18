@@ -889,7 +889,7 @@ public class Saizenbako extends AbstractPowerBlock
             return false;
         }
         boolean on = MultiBlockProjection.toggle(loc, projectionHost(),
-                line -> notifyProjection(p, line), true);
+                line -> notifyProjection(p, line), false);
         if (on) {
             Log.info("[赛钱箱] 开启投影 @ " + TouhouData.xyz(loc)
                     + " 构件 " + MultiBlockProjection.lastCellCount() + " 格");
@@ -897,10 +897,20 @@ public class Saizenbako extends AbstractPowerBlock
         return on;
     }
 
-    /** 投影反馈：有玩家就发消息（祭坛的档位默认 off，所以通常静默），控制台则回显一行。 */
+    /**
+     * 投影反馈。
+     *
+     * <p>★ 用 {@link Notify#warn} 而不是 {@code info}：投影开关是对玩家点击的
+     * <b>直接反馈</b>，而祭坛的消息档位默认是 {@code off}（{@code info} 要求 {@code NORMAL} 档），
+     * 用 info 会让"点了没反应"变成真的没反应 —— 失败原因一个字都不显示。
+     * 实测踩过：结构不完整时 {@code refuse(...)} 的原因被完全静默，
+     * 玩家只看到"图标没变、也没有投影"，无法判断是被拒绝了还是坏了。
+     *
+     * <p>另外这类消息<b>不会刷屏</b>：一次点击最多一条。
+     */
     private static void notifyProjection(Player p, String text) {
         if (p != null) {
-            Notify.info(Notify.saizen(), p, text);
+            Notify.warn(Notify.saizen(), p, text);
         } else {
             Log.command("[投影] " + Notify.plain(text));
         }

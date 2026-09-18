@@ -464,7 +464,7 @@ public class UtsuhoReactorCore extends AGenerator {
             return false;
         }
         boolean on = MultiBlockProjection.toggle(loc, projectionHost(),
-                line -> notifyProjection(p, line), true);
+                line -> notifyProjection(p, line), false);
         if (on) {
             Log.info("[MBREACTOR] 开启投影 @ " + TouhouData.xyz(loc)
                     + " 构件 " + MultiBlockProjection.lastCellCount() + " 格");
@@ -472,10 +472,17 @@ public class UtsuhoReactorCore extends AGenerator {
         return on;
     }
 
-    /** 投影反馈：有玩家就发消息，没玩家（控制台）就写一行命令回显。 */
+    /**
+     * 投影反馈。
+     *
+     * <p>★ 用 {@link Notify#warn} 而不是 {@code info}：投影开关是对玩家点击的
+     * <b>直接反馈</b>，而反应堆的消息档位默认是 {@code important}（{@code info} 要求 {@code NORMAL} 档），
+     * 用 info 会让"点了没反应"变成真的没反应 —— 失败原因一个字都不显示。
+     * 这类消息一次点击最多一条，不会刷屏。
+     */
     private static void notifyProjection(Player p, String text) {
         if (p != null) {
-            Notify.info(p, text);
+            Notify.warn(p, text);
         } else {
             Log.command("[投影] " + Notify.plain(text));
         }

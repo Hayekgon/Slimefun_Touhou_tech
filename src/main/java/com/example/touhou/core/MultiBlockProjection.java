@@ -304,14 +304,18 @@ public final class MultiBlockProjection {
 
         ReactorStructure.Direction dir = structure.isSymmetric()
                 ? ReactorStructure.Direction.NORTH : directionFromData(loc);
-        if (requireCompleteStructure) {
-            ReactorStructure.Result r = structure.check(loc, dir);
-            if (!r.isComplete()) {
-                return refuse(feedback, "&c结构不完整，无法开启投影：&7" + r.summary());
-            }
-            if (r.direction() != null && !structure.isSymmetric()) {
-                dir = r.direction();            // 现场命中的朝向最准
-            }
+        // ★ 结构检测【总是】跑一次：它更重要的作用是"拿到现场命中的准确朝向"。
+        //   是否因为"不完整"而拒绝，才由 requireCompleteStructure 决定。
+        //
+        //   原来这里把两件事绑在一起（requireCompleteStructure=false 时连检测都不跑），
+        //   于是"不要求结构完整"就等于"朝向只能靠落盘数据猜" ——
+        //   机器从没激活过时那个数据根本不存在，投影会画在错误的方向上。
+        ReactorStructure.Result r = structure.check(loc, dir);
+        if (requireCompleteStructure && !r.isComplete()) {
+            return refuse(feedback, "&c结构不完整，无法开启投影：&7" + r.summary());
+        }
+        if (r.isComplete() && r.direction() != null && !structure.isSymmetric()) {
+            dir = r.direction();                // 现场命中的朝向最准
         }
         // ★ 必须拷一份 effectively-final 的副本给 lambda 捕获：
         //   上面那个 if 改过 dir，编译器就不允许它再进闭包了。
