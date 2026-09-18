@@ -1917,8 +1917,8 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
      *   /touhou lily cleanup                          把两张追踪表收干净并打印条目数
      * </pre>
      *
-     * <p>★ 为什么这条命令是<b>必须</b>的：无视重力 / 距离上限 min(120, 模拟距离×16) /
-     * 15 秒时限 / 命中后爆发 / 方向规则 / 真伤 / 追踪清理 —— 这些无头环境下全靠肉眼。
+     * <p>★ 为什么这条命令是<b>必须</b>的：无视重力 / 距离上限 120 /
+     * 12 秒时限 / 命中后爆发 / 方向规则 / 真伤 / 追踪清理 —— 这些无头环境下全靠肉眼。
      * 这里每一条都走<b>与游戏内完全相同</b>的代码路径（{@code MurderousLily} 里的
      * spawnShot / onShotHit / burst / finishShot），不是另写一份演示。
      */
