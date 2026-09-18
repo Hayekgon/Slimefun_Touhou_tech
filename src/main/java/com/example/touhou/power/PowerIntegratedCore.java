@@ -80,27 +80,27 @@ public class PowerIntegratedCore extends SlimefunItem
     /** 是否显示悬浮文字。 */
     public final ItemSetting<Boolean> hologramEnabled = new ItemSetting<>(this, "hologram", true);
     /**
-     * 核心的覆盖半径（切比雪夫）。
+     * 核心的覆盖半径（切比雪夫）。默认 {@code 7}。
      *
-     * <p>★ 默认已从 7 改成 <b>0</b>（2026-09-20，修真实 bug）。
+     * <p>语义：核心本身就相当于一个「调节器」，半径内的 POWER 方块直接并入同一张网，
+     * 不要求逐格贴脸摆放（对齐原生 {@code EnergyRegulator} 的 range 语义）。
      *
-     * <p>当初给核心加半径是为了「对齐原生 {@code EnergyRegulator} 的 range」，
-     * 但代价是：<b>核心自己变成了一个半径 7 的跳接源</b> —— 于是两个核心只要相距
-     * 7 格以内就会互相并入同一张网，哪怕中间一个 POWER 方块都没有。
-     * 用户实测：两座明显没有连接的核心被判成了同一张网，并弹出"检测到存在多核心"。
+     * <h2>★★ 必须知道的副作用：两个核心会被并成一张网</h2>
+     * 因为核心自带半径，<b>两个核心只要互相落在对方的半径内就会并网，哪怕中间
+     * 一个 POWER 方块都没有</b>。届时会弹出「检测到存在多核心，位于（…）」提示 ——
+     * 那不是误报，是这条规则的直接结果。
      *
-     * <p>现在改为 0（核心不再跳接），组网回到「6 面邻接 + 中继器半径跳接」的原始语义。
-     * 之前"孤立核心只算出 1 个节点"的问题由 {@code PowerNetworkManager} 起点的
-     * <b>反向扫描</b>解决（见那里第 ③ 步），不依赖核心自带半径。
+     * <p>而且度量是<b>切比雪夫（立方体）</b>，比原生 Slimefun 的轴向十字宽约 80 倍
+     * （r=7 时 <b>3374</b> 格 vs <b>42</b> 格，完整对照见
+     * {@link PowerComponent#powerJumpRange()}）。所以这里的 7 不是"沿直线 7 格"，
+     * 而是 15×15×15 一整块 —— 核心之间的"感应距离"比直觉上大得多。
      *
-     * <p>★ 度量是<b>切比雪夫距离（立方体）</b>，比原生 Slimefun 的轴向十字宽约 80 倍
-     * （r=7 时 3374 格 vs 42 格，完整对照见 {@link PowerComponent#powerJumpRange()}）。
-     * 这也是当初误判格外严重的原因：这里的 7 不是"沿直线 7 格"，
-     * 而是 15×15×15 = 一整块立方体，两个核心只要都落在对方那块里就并网了。
-     *
-     * <p>想恢复旧行为把这里（以及 {@code items.yml} 里持久化的旧值）改回 7 即可。
+     * <p>★ 曾经把它改成 0 来消除"未连接的核心并网"（2026-09-20），
+     * 随后按用户要求<b>还原为 7</b>：那些核心本来就该连起来，并网是预期行为。
+     * 如果哪天真要关掉它，把这里（以及 {@code items.yml} 里持久化的值）改成 0 即可，
+     * 组网会退回「6 面邻接 + 中继器半径跳接」。
      */
-    public final ItemSetting<Integer> range = new ItemSetting<>(this, "range", 0);
+    public final ItemSetting<Integer> range = new ItemSetting<>(this, "range", 7);
 
     private static final DecimalFormat FMT = new DecimalFormat("#,###");
 
