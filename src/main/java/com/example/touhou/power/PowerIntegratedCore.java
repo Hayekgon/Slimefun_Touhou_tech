@@ -93,6 +93,11 @@ public class PowerIntegratedCore extends SlimefunItem
      * 之前"孤立核心只算出 1 个节点"的问题由 {@code PowerNetworkManager} 起点的
      * <b>反向扫描</b>解决（见那里第 ③ 步），不依赖核心自带半径。
      *
+     * <p>★ 度量是<b>切比雪夫距离（立方体）</b>，比原生 Slimefun 的轴向十字宽约 80 倍
+     * （r=7 时 3374 格 vs 42 格，完整对照见 {@link PowerComponent#powerJumpRange()}）。
+     * 这也是当初误判格外严重的原因：这里的 7 不是"沿直线 7 格"，
+     * 而是 15×15×15 = 一整块立方体，两个核心只要都落在对方那块里就并网了。
+     *
      * <p>想恢复旧行为把这里（以及 {@code items.yml} 里持久化的旧值）改回 7 即可。
      */
     public final ItemSetting<Integer> range = new ItemSetting<>(this, "range", 0);

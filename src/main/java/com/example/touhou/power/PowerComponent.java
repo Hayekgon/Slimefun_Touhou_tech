@@ -64,13 +64,39 @@ public interface PowerComponent {
     }
 
     /**
-     * 半径跳接（切比雪夫距离）：本节点能把多远范围内的 POWER 方块直接连进同一张网。
+     * 半径跳接：本节点能把多远范围内的 POWER 方块直接连进同一张网。
      *
-     * <p>返回 &gt; 0 的节点是「跳接源」：中继器（{@code jump-range}，默认 7）与
-     * 集成核心（{@code range}，默认 7，对齐原生 {@code EnergyRegulator} 的 range）。
-     * 存储单元等纯导体返回 0。
+     * <p>返回 &gt; 0 的节点是「跳接源」：中继器（{@code jump-range}，默认 7）。
+     * 存储单元等纯导体返回 0。集成核心的 {@code range} 默认也是 0
+     * （它一度是 7，导致未连接的核心被误判同网，已改，见 {@code PowerIntegratedCore#range}）。
      *
-     * <p>跳接是<b>双向</b>的：A 在 B 的半径内 ⇒ A、B 同网，无论 BFS 从哪边开始。
+     * <h2>★★ 这里的「半径」= <b>切比雪夫距离</b>（立方体），比原生 Slimefun 宽得多</h2>
+     * 实测反编译 {@code io.github.thebusybiscuit.slimefun4.api.network.Network}
+     * （Slimefun-2026.07），原生的 range 语义是：
+     * <pre>
+     *   discoverNeighbors(l) 沿 <b>6 个轴向各直走 range 格</b>
+     *   （discoverNeighbors(l, ±1,0,0 / 0,±1,0 / 0,0,±1)，逐格 addLocationToNetwork）
+     * </pre>
+     * 也就是一个<b>十字形</b>，而且只有 REGULATOR / CONNECTOR 会扩散、且链式传递。
+     * 三种常见度量在 {@code r = 7} 时能覆盖的格子数：
+     * <table border="1">
+     *   <caption>r=7 的覆盖规模</caption>
+     *   <tr><th>度量</th><th>形状</th><th>格数</th></tr>
+     *   <tr><td>原生 Slimefun</td><td>6 条轴向射线（十字）</td><td><b>42</b></td></tr>
+     *   <tr><td>曼哈顿 |dx|+|dy|+|dz| ≤ r</td><td>正八面体</td><td>~575</td></tr>
+     *   <tr><td><b>本模组：切比雪夫 max(|dx|,|dy|,|dz|) ≤ r</b></td><td>立方体</td><td><b>3374</b></td></tr>
+     *   <tr><td>欧几里得 distance ≤ r</td><td>球</td><td>~1436</td></tr>
+     * </table>
+     * <b>本模组用的是最大的那个 —— 比原生宽约 80 倍。</b>这是<b>刻意</b>的选择：
+     * 「半径 7 格」对人直觉上就该是"周围一圈都算"，而不是"只能沿直线拉"；
+     * 斜向摆的中继器连不上会非常反直觉。代价是建网时每个跳接源要做 15³ 次方块查询
+     * （3374 次，见 {@code PowerRepeater} 的性能提醒）。
+     *
+     * <p>⚠ 写这句话是为了防止后来人（包括我自己）看到「7、与原生一致」就以为行为等价 ——
+     * 语义一致、<b>覆盖范围差 80 倍</b>。
+     *
+     * <p>跳接是<b>双向</b>的：A 在 B 的半径内 ⇒ A、B 同网，无论 BFS 从哪边开始
+     * （实现见 {@code PowerNetworkManager#build} 的 ② 正向与 ③ 反向扫描）。
      */
     default int powerJumpRange() {
         return 0;

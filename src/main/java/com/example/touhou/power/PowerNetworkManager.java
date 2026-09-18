@@ -34,8 +34,13 @@ public final class PowerNetworkManager {
      * 起点反向扫描半径（见 {@link #build(Location)} 第 ③ 步）。
      *
      * <p>必须 <b>&ge; 任何一种 POWER 方块可配置的最大跳接半径</b>，
-     * 否则「半径覆盖起点」的跳接源会被漏掉。当前最大默认值是 7（中继器 {@code jump-range}
-     * 与集成核心 {@code range}），这里留 1 格余量。
+     * 否则「半径覆盖起点」的跳接源会被漏掉。当前最大默认值是 <b>7</b>
+     * （只有中继器的 {@code jump-range}；集成核心的 {@code range} 已改为 0），
+     * 这里留 1 格余量。
+     *
+     * <p>★ 扫描用的是<b>切比雪夫距离（立方体）</b>，与跳接本身的度量一致 ——
+     * 与原生 Slimefun 的轴向十字不同，对照表见
+     * {@link PowerComponent#powerJumpRange()}。
      */
     private static final int REVERSE_SCAN_RADIUS = 8;
 
