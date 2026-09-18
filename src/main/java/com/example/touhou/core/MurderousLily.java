@@ -1317,7 +1317,12 @@ public class MurderousLily extends PartyItem {
 
     /** 激光一次爆发的粒子点数（供估算打印；取样口径与 {@link #fireLaser} 一致）。 */
     private int laserParticleEstimate() {
-        int rings = (int) Math.floor(configuredLaserLength() / BEAM_VISUAL_STEP);
+        // 与 fireLaser 的取样严格同源：0.5 格一环，每环 1 个中轴点 + BEAM_RING_POINTS 个管壁点
+        double want = configuredLaserLength();
+        int rings = 0;
+        for (double d = BEAM_VISUAL_STEP; d <= want + 1.0E-6; d += BEAM_VISUAL_STEP) {
+            rings++;
+        }
         return rings * (1 + BEAM_RING_POINTS);
     }
 
