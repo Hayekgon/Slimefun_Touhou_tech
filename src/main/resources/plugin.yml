@@ -1,0 +1,34 @@
+name: Touhou
+author: YourName
+description: TH Tech — Slimefun4 addon for Touhou-flavoured tech (multiblock reactor, machines, materials)
+main: com.example.touhou.Touhou
+version: ${project.version}
+api-version: '1.20'
+depend:
+  - Slimefun
+softdepend:
+  - GuizhanLibPlugin
+
+commands:
+  touhou:
+    description: TH Tech main command (reactor debug / structure / layout)
+    usage: |
+      /touhou reactor <x> <y> <z> [info|test <n>|activate|mode|buildmode|throttle]   反应堆状态机调试
+      /touhou autobuild <x> <y> <z> [manual|auto] [n]            构建模式时间线验证（无头推 tick）
+      /touhou clickinfo <x> <y> <z>                              模拟点击 GUI 信息格（激活）
+      /touhou structure <x> <y> <z>                              只检测多方块结构
+      /touhou place <x> <y> <z> <sfId>                           无玩家放置粘液方块
+      /touhou remove <x> <y> <z>                                 删除方块 + Slimefun 方块数据
+      /touhou clickpart <x> <y> <z> [reset]                      模拟右键构件（自动构建检测入口）
+      /touhou gui [x y z]                                        GUI 锁槽自检
+      /touhou layout                                             反应堆 GUI 布局自检
+      /touhou groups                                             物品组层级
+      /touhou reload                                             重载 config.yml
+    aliases: [th]
+    permission: touhou.command
+    permission-message: You lack the permission touhou.command
+
+permissions:
+  touhou.command:
+    description: Allows the /touhou commands
+    default: op

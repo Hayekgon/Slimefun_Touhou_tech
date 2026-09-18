@@ -1,0 +1,19 @@
+# ---- build output ----
+/out/
+/build/
+*.jar
+*.class
+
+# ---- scratch / temp ----
+/_verify_out/
+/_verify_src/
+/_sfy/
+/_jv.txt
+autotest-result.log
+
+# ---- IDE / OS ----
+.idea/
+*.iml
+.vscode/
+Thumbs.db
+Desktop.ini
