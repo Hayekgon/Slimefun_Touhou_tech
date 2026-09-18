@@ -81,6 +81,19 @@ public final class AddItems {
      */
     public static SlimefunItemStack FANTASY_SEAL;
 
+    /**
+     * 杀意的百合：<b>杀意的百合</b>（一支箭 → 命中点爆发：激光 + 喷泉 + 12 支追踪箭）。
+     *
+     * <p>★ 英文名取 <b>Murderous Lily</b>（东方 Project 里纯狐的符卡「殺意の百合」），
+     * id 按本项目铁律 {@code TOUHOU_"物品组PARTY_ITEM"_"英文名"} ⇒
+     * {@code TOUHOU_PARTY_ITEM_MURDEROUS_LILY}。
+     *
+     * <p>★ 与梦想封印 集的关系：<b>物品组、材质、附魔光效、整套 POWER 数据全部沿用</b>
+     * （POWER 数据的唯一出处是 {@link PartyItem} 基类，见那个类的注释）。
+     * 差别的只有描述与"打出去之后发生什么"。
+     */
+    public static SlimefunItemStack MURDEROUS_LILY;
+
     // ------------------------------------------------------------------ POWER 能源系统
     // 归属 1 级组 POWER（touhou_power）。
     // 材质按你的要求分别引用原生物品：能源调节器头 / 货运节点头 / 红色混凝土。
@@ -327,6 +340,27 @@ public final class AddItems {
                 "&8单次发射消耗 &f1 POWER&8，上限 &f40 POWER",
                 "&8每发之后冷却 &f1.5 秒&8，弹幕追踪 &f120 格");
 
+        // 1 级物品组 PARTY_ITEM（Flee into Gensokyo）的第二件符卡。
+        // id 规范：TOUHOU_"物品组"_"物品名英文" ⇒ TOUHOU_PARTY_ITEM_MURDEROUS_LILY
+        //   「杀意的百合」= 纯狐（Junko）的符卡「殺意の百合」，英文取 Murderous Lily。
+        // 描述：★ 用户给定的原文，【逐字】照抄、不拆行、不改写。
+        //   末尾几行灰字是"参数放最后"的约定（spec 允许）；其中 "POWER:" 那一行有功能：
+        //   MurderousLily 会就地改写它来显示实时电量（见 PartyItem#renderChargeLore）。
+        // 材质：与梦想封印 集【完全一样】（FLOWER_BANNER_PATTERN + 附魔光效），
+        //   光效同样靠 setup() 末尾那段 addUnsafeEnchantment + HIDE_ENCHANTS 做出来。
+        MURDEROUS_LILY = new SlimefunItemStack(
+                "TOUHOU_PARTY_ITEM_MURDEROUS_LILY",
+                Material.FLOWER_BANNER_PATTERN,
+                "&d杀意的百合",
+                "",
+                "&7她纯粹愤怒具象化的弹幕，或者说，她就是愤怒本身。",
+                "&7嫦娥啊，你看到了吗。",
+                "",
+                "&8POWER: &7手持时自动充能（当前与梦想封印 集同款口径）",
+                "&8充能 &f5 POWER / 2 秒&8（身边 &f4 格&8内要有 POWER 网络）",
+                "&8单次发射消耗 &f1 POWER&8，上限 &f40 POWER",
+                "&8每发之后冷却 &f1.5 秒&8，箭矢至多 &f120 格 / 12 秒");
+
         // 2 级物品组 COMPLEX_MACHINE（多方块大型机器）的构件。
         // 结构层图由用户指定，这里只提供"积木"。
         REACTOR_FRAME = new SlimefunItemStack(
@@ -424,11 +458,20 @@ public final class AddItems {
         // 附魔光效：给物品挂一个"没有任何实际效果"的附魔，再用 HIDE_ENCHANTS 把附魔行藏掉，
         //   于是只剩图标外圈那层光晕。
         //   ★ 与材质无关：任何材质都能这样发光，光效完全来自这里。
+        //   ★ 两件符卡共用同一段做法（材质都是 FLOWER_BANNER_PATTERN）——
+        //     杀意的百合的光效必须与梦想封印 集一模一样。
         FANTASY_SEAL.addUnsafeEnchantment(Enchantment.ARROW_INFINITE, 1);
         ItemMeta sealMeta = FANTASY_SEAL.getItemMeta();
         if (sealMeta != null) {
             sealMeta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
             FANTASY_SEAL.setItemMeta(sealMeta);
+        }
+
+        MURDEROUS_LILY.addUnsafeEnchantment(Enchantment.ARROW_INFINITE, 1);
+        ItemMeta lilyMeta = MURDEROUS_LILY.getItemMeta();
+        if (lilyMeta != null) {
+            lilyMeta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
+            MURDEROUS_LILY.setItemMeta(lilyMeta);
         }
 
         // ------------------------------------------------------------------ POWER（1 级组）

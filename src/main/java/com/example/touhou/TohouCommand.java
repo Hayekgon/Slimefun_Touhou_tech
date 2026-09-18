@@ -31,7 +31,9 @@ import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -83,6 +85,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
             case "power" -> power(sender, Arrays.copyOfRange(args, 1, args.length));
             case "dreamcatcher", "dc" -> dreamcatcher(sender, Arrays.copyOfRange(args, 1, args.length));
             case "seal", "gohei", "fantasyseal" -> seal(sender, Arrays.copyOfRange(args, 1, args.length));
+            case "lily", "murderouslily" -> lily(sender, Arrays.copyOfRange(args, 1, args.length));
             case "autobuild" -> autobuild(sender, Arrays.copyOfRange(args, 1, args.length));
             case "reactor" -> reactor(sender, Arrays.copyOfRange(args, 1, args.length));
             case "clickinfo" -> clickInfo(sender, Arrays.copyOfRange(args, 1, args.length));
@@ -160,6 +163,13 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         s.sendMessage("\u00a77/touhou seal <玩家名>                读玩家主手/副手「梦想封印 集」的 POWER、上限、可用次数");
         s.sendMessage("\u00a77/touhou seal probe <x> <y> <z>       在指定坐标做一次真实的取电实测（内存测试物品）");
         s.sendMessage("\u00a77/touhou seal selfcheck              梦想封印 集的参数自检（控制台可用）");
+        s.sendMessage("\u00a77/touhou lily selfcheck               杀意的百合：参数 / 方向规则 / 追踪表自检");
+        s.sendMessage("\u00a77/touhou lily dir <面>                只验证激光方向裁决（不碰世界）");
+        s.sendMessage("\u00a77/touhou lily beam <x> <y> <z> <面>   按某个面探激光长度（是否被物块截断）");
+        s.sendMessage("\u00a77/touhou lily fire <x> <y> <z> <dx> <dy> <dz> [玩家] [--force]   完整发射仿真");
+        s.sendMessage("\u00a77/touhou lily laser <x> <y> <z> <面> [玩家]   实弹激光：真伤 + 排除发射者");
+        s.sendMessage("\u00a77/touhou lily impact <x> <y> <z> [玩家]        只做命中点爆发（激光+喷泉+追踪箭）");
+        s.sendMessage("\u00a77/touhou lily cleanup               把两张追踪表收干净并打印条目数");
         s.sendMessage("\u00a77/touhou guide [reactor|saizen]   粘液书自定义配方页的内容自检（展示列表 + 可合成性核查）");
         s.sendMessage("\u00a77/touhou place <x> <y> <z> <sfId> [world] [--force]");
         s.sendMessage("\u00a77/touhou remove <x> <y> <z>            删除方块 + Slimefun 方块数据（setblock 清不掉）");
@@ -1883,7 +1893,548 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         }
     }
 
+    // ------------------------------------------------------------------ lily（杀意的百合）
+
+    /**
+     * 杀意的百合诊断 —— 无头验证三段行为与"追踪表不泄漏"。
+     *
+     * <pre>
+     *   /touhou lily selfcheck                        参数自检（控制台可用）
+     *   /touhou lily dir &lt;面&gt;                       只验证方向裁决（不碰世界、不生成实体）
+     *   /touhou lily beam &lt;x&gt; &lt;y&gt; &lt;z&gt; &lt;面&gt; [world]   按某个面探一次激光长度，并打印前 3 格样本
+     *   /touhou lily fire &lt;x&gt; &lt;y&gt; &lt;z&gt; &lt;dx&gt; &lt;dy&gt; &lt;dz&gt; [玩家] [world]
+     *                                                完整发射仿真（真箭 → 命中 → 阶段二 → 清理）
+     *   /touhou lily fire &lt;x&gt; &lt;y&gt; &lt;z&gt; &lt;yaw&gt; &lt;pitch&gt; --angles [玩家] [world]
+     *   /touhou lily fire &lt;x&gt; &lt;y&gt; &lt;z&gt; &lt;dx&gt; &lt;dy&gt; &lt;dz&gt; [玩家] [world] --force
+     *                                                强制在 2 tick 后终止（验证"没命中也要清理"）
+     *   /touhou lily fire &lt;x&gt; &lt;y&gt; &lt;z&gt; &lt;dx&gt; &lt;dy&gt; &lt;dz&gt; --norig
+     *                                                不搭台架：观察"没命中就不爆发"那条路径
+     *   /touhou lily fire ... --debug                 逐 tick 打印区块/实体读数（排查用）
+     *   /touhou lily laser &lt;x&gt; &lt;y&gt; &lt;z&gt; &lt;面&gt; [玩家] [world]
+     *                                                实弹激光：验证真伤 + "不伤害发射者"
+     *   /touhou lily impact &lt;x&gt; &lt;y&gt; &lt;z&gt; [玩家] [world]
+     *                                                只做命中点爆发（激光+喷泉+12 支追踪箭）
+     *   /touhou lily cleanup                          把两张追踪表收干净并打印条目数
+     * </pre>
+     *
+     * <p>★ 为什么这条命令是<b>必须</b>的：无视重力 / 距离上限 min(120, 模拟距离×16) /
+     * 15 秒时限 / 命中后爆发 / 方向规则 / 真伤 / 追踪清理 —— 这些无头环境下全靠肉眼。
+     * 这里每一条都走<b>与游戏内完全相同</b>的代码路径（{@code MurderousLily} 里的
+     * spawnShot / onShotHit / burst / finishShot），不是另写一份演示。
+     */
+    private void lily(CommandSender sender, String[] args) {
+        com.example.touhou.core.MurderousLily lily = AddSlimefunItems.MURDEROUS_LILY;
+        if (lily == null) {
+            sender.sendMessage(PREFIX + "\u00a7c杀意的百合未注册（物品注册失败？看控制台）");
+            return;
+        }
+        String action = args.length == 0 ? "selfcheck" : args[0].toLowerCase();
+
+        if (action.equals("selfcheck")) {
+            sender.sendMessage(PREFIX + "\u00a7e杀意的百合 · 参数自检");
+            for (String line : lily.selfCheck()) {
+                sender.sendMessage("\u00a78  " + line);
+            }
+            sender.sendMessage("\u00a77  方向规则 = " + com.example.touhou.core.MurderousLilyListener.directionRule());
+            for (String line : com.example.touhou.core.MurderousLilyListener.describe()) {
+                sender.sendMessage("\u00a78    监听 " + line);
+            }
+            log("[TOUHOU] lily selfcheck -> " + lily.getId()
+                    + " trackedShots=" + com.example.touhou.core.MurderousLily.trackedShotCount()
+                    + " trackedTrackers=" + com.example.touhou.core.MurderousLily.trackedTrackerCount());
+            return;
+        }
+
+        if (action.equals("cleanup")) {
+            int before = com.example.touhou.core.MurderousLily.trackedShotCount()
+                    + com.example.touhou.core.MurderousLily.trackedTrackerCount();
+            lily.clearAllTracked();
+            int after = com.example.touhou.core.MurderousLily.trackedShotCount()
+                    + com.example.touhou.core.MurderousLily.trackedTrackerCount();
+            sender.sendMessage(PREFIX + "\u00a7e追踪表清理：" + before + " → " + after);
+            log("[TOUHOU] lily cleanup before=" + before + " after=" + after);
+            return;
+        }
+
+        if (action.equals("dir")) {
+            if (args.length < 2) {
+                sender.sendMessage(PREFIX + "\u00a7c用法: /touhou lily dir <面名|NONE>");
+                return;
+            }
+            org.bukkit.block.BlockFace face = parseFace(args[1]);
+            org.bukkit.util.Vector dir = com.example.touhou.core.MurderousLily
+                    .laserDirection(face);
+            sender.sendMessage(PREFIX + "\u00a7e方向裁决 · 面=" + args[1].toUpperCase()
+                    + "（" + (face == null ? "按实体处理" : face.name()) + "）");
+            sender.sendMessage("\u00a77  激光/喷泉方向 = "
+                    + com.example.touhou.core.MurderousLily.fmt(dir));
+            sender.sendMessage("\u00a78  规则：" + com.example.touhou.core.MurderousLilyListener.directionRule());
+            log("[TOUHOU] lily dir face=" + args[1].toUpperCase()
+                    + " dir=" + com.example.touhou.core.MurderousLily.fmt(dir));
+            return;
+        }
+
+        if (action.equals("beam")) {
+            String[] rest = Arrays.copyOfRange(args, 1, args.length);
+            Location loc = resolveAny(sender, rest);
+            if (loc == null) {
+                return;
+            }
+            org.bukkit.block.BlockFace face = rest.length >= 4 ? parseFace(rest[3]) : null;
+            var probe = lily.probeBeam(loc, face);
+            sender.sendMessage(PREFIX + "\u00a7e激光几何探测 @ " + xyz(loc)
+                    + "  面=" + (probe.face() == null ? "(实体)" : probe.face().name()));
+            sender.sendMessage("\u00a77  方向 = " + com.example.touhou.core.MurderousLily.fmt(probe.direction()));
+            sender.sendMessage("\u00a77  实际长度 = " + String.format("%.2f", probe.length())
+                    + " 格" + (probe.blockedAt() < 0 ? "，未被截断"
+                            : "，被实体方块截断于第 " + probe.blockedAt() + " 格"));
+            sender.sendMessage("\u00a77  真伤 = " + probe.damage());
+            sender.sendMessage("\u00a78  前 3 格样本（每 0.25 格一格：方块类型 / 能不能穿光）：");
+            for (int i = 1; i <= 12; i++) {
+                Location p = loc.clone().add(probe.direction().clone().multiply(i * 0.25D));
+                org.bukkit.block.Block b = p.getWorld().getBlockAt(p);
+                boolean pass = com.example.touhou.core.MurderousLily
+                        .beamPassable(p.getWorld(), p, 0.5D);
+                sender.sendMessage("\u00a78    " + String.format("%.2f", i * 0.25D)
+                        + " 格 → " + b.getType() + (pass ? " 可穿" : " 挡住"));
+            }
+            log("[TOUHOU] lily beam @ " + xyz(loc) + " face="
+                    + (probe.face() == null ? "ENTITY" : probe.face().name())
+                    + " dir=" + com.example.touhou.core.MurderousLily.fmt(probe.direction())
+                    + " length=" + String.format("%.2f", probe.length())
+                    + " blockedAt=" + probe.blockedAt());
+            return;
+        }
+
+        if (action.equals("fire")) {
+            lilyFire(sender, lily, Arrays.copyOfRange(args, 1, args.length));
+            return;
+        }
+
+        if (action.equals("laser")) {
+            String[] rest = Arrays.copyOfRange(args, 1, args.length);
+            Location loc = resolveAny(sender, rest);
+            if (loc == null) {
+                return;
+            }
+            org.bukkit.block.BlockFace face = rest.length >= 4 ? parseFace(rest[3]) : null;
+            String nameHint = rest.length >= 5 ? rest[4] : null;
+            Object[] pick = ensureShooter(nameHint, loc);
+            org.bukkit.entity.LivingEntity who = (org.bukkit.entity.LivingEntity) pick[0];
+            boolean fakeMade = Boolean.TRUE.equals(pick[1]);
+            if (who == null) {
+                sender.sendMessage(PREFIX + "\u00a7c需要一个在线玩家，或让本命令临时造一个发射者"
+                        + "（不指定玩家名时它会自己造）");
+                return;
+            }
+            org.bukkit.util.Vector dir = com.example.touhou.core.MurderousLily.laserDirection(face);
+            // ★ 光路上再放一头牛当"对照组"：僵尸（发射者）应该被排除、牛应该真的掉血
+            Set<org.bukkit.block.Block> placed = new HashSet<>();
+            java.util.List<org.bukkit.entity.Entity> spawned = new ArrayList<>();
+            if (placeTestBlock(loc.clone().add(dir.clone().multiply(6.0D)), Material.STONE, placed)) {
+                org.bukkit.entity.Cow cow = loc.getWorld().spawn(
+                        loc.clone().add(dir.clone().multiply(3.0D)), org.bukkit.entity.Cow.class,
+                        c -> {
+                            c.setAI(false);
+                            c.setSilent(true);
+                            c.setPersistent(false);
+                            c.setCollidable(false);
+                        });
+                spawned.add(cow);
+            }
+            var r = lily.testLaser(who, loc, face);
+            sender.sendMessage(PREFIX + "\u00a7e实弹激光 @ " + xyz(loc)
+                    + "  面=" + (face == null ? "(实体)" : face.name())
+                    + "  发射者=" + who.getType()
+                    + (fakeMade ? "（临时造的，用完即删）" : "（真人）"));
+            sender.sendMessage("\u00a77  方向 = " + com.example.touhou.core.MurderousLily.fmt(r.direction()));
+            sender.sendMessage("\u00a77  长度 = " + String.format("%.2f", r.length()) + " 格"
+                    + (r.blockedAt() < 0 ? "，未被截断" : "，截断于第 " + r.blockedAt() + " 格"));
+            sender.sendMessage("\u00a77  AABB 内可命中实体 = " + r.inBeam()
+                    + "，其中因【是发射者本人】被排除 = " + r.excluded()
+                    + "，实际扣血 = " + r.damaged() + "（每个 " + r.damage() + " 真伤）");
+            sender.sendMessage("\u00a78  预期：发射者（" + who.getType()
+                    + "）必须落在 excluded 里；对照组那几头牛必须是 damaged");
+            clearTestBlocks(placed);
+            for (org.bukkit.entity.Entity e : spawned) {
+                removeFakeShooter(e);
+            }
+            if (fakeMade) {
+                removeFakeShooter(who);
+            }
+            log("[TOUHOU] lily laser @ " + xyz(loc) + " face="
+                    + (face == null ? "ENTITY" : face.name())
+                    + " len=" + String.format("%.2f", r.length())
+                    + " inBeam=" + r.inBeam() + " excluded=" + r.excluded()
+                    + " damaged=" + r.damaged() + " damage=" + r.damage());
+            return;
+        }
+
+        if (action.equals("impact")) {
+            String[] rest = Arrays.copyOfRange(args, 1, args.length);
+            Location loc = resolveAny(sender, rest);
+            if (loc == null) {
+                return;
+            }
+            String nameHint = rest.length >= 4 ? rest[3] : null;
+            Object[] pick = ensureShooter(nameHint, loc);
+            org.bukkit.entity.LivingEntity who = (org.bukkit.entity.LivingEntity) pick[0];
+            boolean fakeMade = Boolean.TRUE.equals(pick[1]);
+            if (who == null) {
+                sender.sendMessage(PREFIX + "\u00a7c需要一个在线玩家，或让本命令临时造一个发射者"
+                        + "（不指定玩家名时它会自己造）");
+                return;
+            }
+            sender.sendMessage(PREFIX + "\u00a7e阶段二爆发 @ " + xyz(loc) + "  发射者=" + who.getType()
+                    + (fakeMade ? "（临时造的，用完即删）" : "（真人）"));
+            var report = lily.burstFrom(who, loc, new org.bukkit.util.Vector(0, 1, 0),
+                    "命令直接触发");
+            sender.sendMessage("\u00a77  方向 = " + com.example.touhou.core.MurderousLily
+                    .fmt(report.direction()));
+            sender.sendMessage("\u00a77  激光长度 = " + String.format("%.2f", report.beamLength())
+                    + " 格，真伤 " + report.beamDamage());
+            sender.sendMessage("\u00a77  喷泉 = " + report.fountain() + " 粒子，追踪箭 = "
+                    + report.trackers() + " 支");
+            if (fakeMade) {
+                removeFakeShooter(who);
+            }
+            log("[TOUHOU] lily impact @ " + xyz(loc)
+                    + " len=" + String.format("%.2f", report.beamLength())
+                    + " trackers=" + report.trackers() + " fountain=" + report.fountain());
+            return;
+        }
+
+        sender.sendMessage(PREFIX + "\u00a77用法: /touhou lily <selfcheck|dir <面>|beam <x> <y> <z> <面>|"
+                + "fire <x> <y> <z> <dx> <dy> <dz> [玩家] [--force]|"
+                + "laser <x> <y> <z> <面> [玩家]|impact <x> <y> <z> [玩家]|cleanup>");
+    }
+
+    /**
+     * {@code /touhou lily fire} 的完整发射仿真。
+     *
+     * <p>参数解析顺序：坐标 3 个 → 方向 3 个（向量，或用 {@code --angles} 表示 yaw/pitch）
+     * → 可选玩家名 → 可选世界名 → 可选 {@code --force}。
+     */
+    private void lilyFire(CommandSender sender, com.example.touhou.core.MurderousLily lily,
+                          String[] args) {
+        if (args.length < 6) {
+            sender.sendMessage(PREFIX + "\u00a7c用法: /touhou lily fire <x> <y> <z> <dx> <dy> <dz>"
+                    + " [玩家] [世界] [--force | --angles]");
+            return;
+        }
+        boolean angles = false;
+        boolean force = false;
+        boolean noRig = false;
+        boolean debug = false;
+        boolean chase = false;
+        boolean atSpawn = false;
+        List<String> rest = new ArrayList<>();
+        for (String a : args) {
+            if (a == null) {
+                continue;
+            }
+            if (a.equalsIgnoreCase("--angles")) {
+                angles = true;
+            } else if (a.equalsIgnoreCase("--force")) {
+                force = true;
+            } else if (a.equalsIgnoreCase("--norig")) {
+                noRig = true;      // 不搭台架：用来观察"没命中"的那条路径（要求射向开阔方向）
+            } else if (a.equalsIgnoreCase("--debug")) {
+                debug = true;      // 逐 tick 打印箭矢读数（排查"箭为什么不动"）
+            } else if (a.equalsIgnoreCase("--chase")) {
+                chase = true;      // 无头跟随模式：让临时发射者跟着箭飞（否则 Paper 不 tick 它）
+            } else if (a.equalsIgnoreCase("--at-spawn")) {
+                atSpawn = true;    // 起点改用"世界出生点 + 偏移"，让箭落在服务端活跃区块内
+            } else {
+                rest.add(a);
+            }
+        }
+        if (rest.size() < 6) {
+            sender.sendMessage(PREFIX + "\u00a7c坐标与方向都要给全（共 6 个数字）");
+            return;
+        }
+        Location loc = resolveAny(sender, rest.subList(0, 3).toArray(new String[0]));
+        if (loc == null) {
+            return;
+        }
+        if (atSpawn) {
+            // ★ 为什么需要它：Paper 的实体激活范围（spigot.yml 的 entity-activation-range）
+            //   让"附近没有玩家"的实体不被 tick —— 实测远处放的箭 ticksLived 恒为 0。
+            //   而世界出生点附近的区块始终是活跃区块，所以把测试点搬过去，箭才会真的飞。
+            //   参数含义变成"相对出生点的偏移"（x/y/z，y 用给定值直接取绝对高度更容易命中空气）。
+            Location spawn = loc.getWorld().getSpawnLocation();
+            loc = new Location(loc.getWorld(),
+                    spawn.getBlockX() + (int) Double.parseDouble(rest.get(0)),
+                    (int) Double.parseDouble(rest.get(1)),
+                    spawn.getBlockZ() + (int) Double.parseDouble(rest.get(2)));
+            sender.sendMessage("\u00a78  （--at-spawn：出生点 " + xyz(spawn)
+                    + " + 偏移 " + rest.get(0) + "/" + rest.get(1) + "/" + rest.get(2)
+                    + " ⇒ 实际起点 " + xyz(loc) + "）");
+        }
+        double a1;
+        double a2;
+        double a3;
+        try {
+            a1 = Double.parseDouble(rest.get(3));
+            a2 = Double.parseDouble(rest.get(4));
+            a3 = Double.parseDouble(rest.get(5));
+        } catch (NumberFormatException e) {
+            sender.sendMessage(PREFIX + "\u00a7c方向必须是数字");
+            return;
+        }
+        org.bukkit.util.Vector dir = angles
+                ? fromAngles(a1, a2) : new org.bukkit.util.Vector(a1, a2, a3);
+        if (dir.lengthSquared() < 1.0E-9) {
+            sender.sendMessage(PREFIX + "\u00a7c方向不能是零向量");
+            return;
+        }
+        // 后面的可选参数：第 7 个是世界名（Bukkit.getWorld 认得出）就当世界，否则当玩家名
+        World worldOverride = null;
+        String whoHint = null;
+        for (int i = 6; i < rest.size(); i++) {
+            World w = Bukkit.getWorld(rest.get(i));
+            if (w != null && worldOverride == null && whoHint == null) {
+                worldOverride = w;
+                loc = new Location(w, loc.getX(), loc.getY(), loc.getZ());
+            } else if (whoHint == null) {
+                whoHint = rest.get(i);
+            }
+        }
+        // 发射者：优先用真人；无头测试服没人时临时造一个僵尸（用完就删）
+        // ★ 造型位置刻意抬高 2 格：僵尸的碰撞箱与箭的出生点重叠时，实测那支箭会被服务端
+        //   在约 1.4 秒后移除（且位置一动不动）—— 抬高之后箭就能正常飞。
+        Object[] shooterPick = ensureShooter(whoHint, loc.clone().add(0.0D, 2.0D, 0.0D));
+        org.bukkit.entity.LivingEntity who = (org.bukkit.entity.LivingEntity) shooterPick[0];
+        boolean fakeMade = Boolean.TRUE.equals(shooterPick[1]);
+        if (who == null) {
+            sender.sendMessage(PREFIX + "\u00a7c需要一个在线玩家，或让本命令临时造一个发射者"
+                    + "（不指定玩家名时它会自己造）");
+            return;
+        }
+        if (fakeMade) {
+            sender.sendMessage("\u00a78  （没有在线玩家：临时造了 " + who.getType()
+                    + " 当发射者，用完即删）");
+        }
+        if (!loc.getChunk().isLoaded()) {
+            sender.sendMessage(PREFIX + "\u00a7e所在区块未加载，先加载它：" + xyz(loc));
+            return;
+        }
+        org.bukkit.util.Vector d = dir.clone().normalize();
+        // 测试台架：正前方 2 格放一块石头（保证这支箭一定命中），
+        //           反方向 8 格再放一块（给激光一个"可被物块阻挡"的机会）
+        Set<org.bukkit.block.Block> placed = new HashSet<>();
+        // ★ 命中靶放在【正前方 2 格】：箭速 1.25 格/tick ⇒ 第 2 tick 就命中。
+        //   为什么这么近：无头（没有玩家）的服务端里，一支新生成的箭会在约 20 tick 后
+        //   被服务端自行移除（实测 tick=268 时收到 EntityRemoveFromWorldEvent，
+        //   原因见交付报告），所以"飞行演示"不能依赖长距离飞行 ——
+        //   命中判定、方向裁决、阶段二爆发全都必须在头几 tick 内完成。
+        //   而"飞得出多远"另行用 --norig 的自由飞行读数验证（在那 20 tick 里足够看出在动，
+        //   距离上限本身也能在 selfcheck 里读到）。
+        Location faceBlock = loc.clone().add(d.clone().multiply(2.0D));
+        Location beamBlock = loc.clone().add(d.clone().multiply(-8.0D));
+        String rigText;
+        if (noRig) {
+            rigText = "台架：本发【不搭台架】（--norig）—— 用来观察「没命中」那条路径与自由飞行读数";
+        } else {
+            placeTestBlock(faceBlock, Material.STONE, placed);
+            placeTestBlock(beamBlock, Material.STONE, placed);
+            rigText = "台架：正前方 2 格 " + xyz(faceBlock) + " 放了 " + Material.STONE
+                    + "（保证头几 tick 内命中）；反方向 8 格 " + xyz(beamBlock)
+                    + " 放了 " + Material.STONE + "（给激光一个截断点）";
+        }
+
+        sender.sendMessage(PREFIX + "\u00a7e杀意的百合 · 完整发射仿真 @ " + xyz(loc));
+        final String shooterKind = who.getType().toString() + (fakeMade ? "（临时造的）" : "（真人）");
+        final String boomDir = com.example.touhou.core.MurderousLily.fmt(d);
+        final String rigLine = rigText;
+        sender.sendMessage("\u00a77  发射者 = " + shooterKind + "   方向 = " + boomDir);
+        sender.sendMessage("\u00a78  " + rigLine);
+        sender.sendMessage("\u00a78  箭要真的飞出去，结果会在几十 tick 后自己打出来（命令不阻塞主线程）");
+
+        // ★ 异步交付：仿真跨很多 tick，绝不能在主线程上等（那会卡死服务端，实测踩过）
+        final org.bukkit.entity.LivingEntity shooterRef = who;
+        final Set<org.bukkit.block.Block> placedRef = placed;
+        final String whereText = xyz(loc);
+        if (chase && fakeMade) {
+            sender.sendMessage("\u00a78  无头跟随模式（--chase）：临时发射者会跟着箭飞，"
+                    + "这样 Paper 才会 tick 那支箭（否则附近没玩家的箭一动不动）");
+        }
+        lily.simulateFire(who, loc, d, force, chase, sim -> {
+            for (String line : sim.lines()) {
+                sender.sendMessage("\u00a78  " + line);
+            }
+            clearTestBlocks(placedRef);
+            new org.bukkit.scheduler.BukkitRunnable() {
+                @Override
+                public void run() {
+                    removeFakeShooter(shooterRef);   // 临时发射者用完即删
+                }
+                // 5 秒后再删：追踪箭的索敌还引用着它，让它们自然过期更干净
+            }.runTaskLater(Touhou.getInstance(), 120L);
+            log("[TOUHOU] lily fire @ " + whereText + " dir=" + boomDir
+                    + " speed=" + String.format("%.3f", sim.initialSpeed())
+                    + " gravity=" + sim.gravity()
+                    + " travelled=" + String.format("%.2f", sim.travelled())
+                    + " ticks=" + sim.elapsedTicks()
+                    + " reason=" + (sim.report() == null ? "?" : sim.report().reason().name())
+                    + " absorbed=" + sim.absorbedHits()
+                    + " trackedBefore=" + sim.trackedBefore()
+                    + " trackersNow=" + sim.trackersNow()
+                    + " trackedAfter=" + sim.trackedAfter());
+        });
+        if (debug) {
+            // ★ 排查"箭为什么一动不动"用的：打印那一格的区块加载状态。
+            //   本机实测的结论写在交付报告里 —— 无头（没有玩家）时 Paper 不会 tick 远处的实体，
+            //   所以那一格的区块哪怕 loaded=true，箭也只是"存在但不被 tick"。
+            final Location dbgLoc = loc.clone();
+            for (int i = 1; i <= 6; i++) {
+                final int n = i;
+                new org.bukkit.scheduler.BukkitRunnable() {
+                    @Override
+                    public void run() {
+                        org.bukkit.World w = dbgLoc.getWorld();
+                        int cx = dbgLoc.getBlockX() >> 4;
+                        int cz = dbgLoc.getBlockZ() >> 4;
+                        log("[LILY-DBG] tick+" + n
+                                + " chunk=(" + cx + "," + cz + ")"
+                                + " isChunkLoaded=" + w.isChunkLoaded(cx, cz)
+                                + " nearby=" + w.getNearbyEntities(dbgLoc, 4, 4, 4).size());
+                    }
+                }.runTaskLater(Touhou.getInstance(), i);
+            }
+        }
+    }
+
     // ------------------------------------------------------------------ 工具
+
+    /** 解析方块面名（认不出 / 写了 NONE 都返回 {@code null} = "按实体处理"，方向恒向上）。 */
+    private static org.bukkit.block.BlockFace parseFace(String raw) {
+        if (raw == null || raw.equalsIgnoreCase("none") || raw.equalsIgnoreCase("entity")) {
+            return null;
+        }
+        for (org.bukkit.block.BlockFace f : org.bukkit.block.BlockFace.values()) {
+            if (f.name().equalsIgnoreCase(raw)) {
+                return f;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 由 yaw / pitch 造方向向量（与 {@code Location#getDirection()} 同一套角度约定）。
+     *
+     * <p>yaw：0 = +Z(南)，顺时针为正（与 Minecraft 一致）；
+     * pitch：-90 = 正上，90 = 正下（与 Minecraft 一致）。
+     */
+    private static org.bukkit.util.Vector fromAngles(double yawDeg, double pitchDeg) {
+        double yaw = Math.toRadians(yawDeg);
+        double pitch = Math.toRadians(pitchDeg);
+        double cosPitch = Math.cos(pitch);
+        return new org.bukkit.util.Vector(-Math.sin(yaw) * cosPitch, -Math.sin(pitch),
+                Math.cos(yaw) * cosPitch);
+    }
+
+    /**
+     * 挑一个在线玩家：给了名字就按名字找，否则取第一个在线的。
+     *
+     * <p>★ 没有在线玩家时返回 {@code null} —— 要不要造"临时发射者"由调用方决定
+     * （见 {@link #ensureShooter}：只有 lily 的仿真路径才需要它）。
+     */
+    private static org.bukkit.entity.Player pickPlayer(String nameHint) {
+        if (nameHint != null && !nameHint.isBlank()) {
+            org.bukkit.entity.Player p = Bukkit.getPlayerExact(nameHint);
+            if (p != null) {
+                return p;
+            }
+        }
+        for (org.bukkit.entity.Player p : Bukkit.getOnlinePlayers()) {
+            return p;
+        }
+        return null;
+    }
+
+    /**
+     * 拿一个可用的发射者；没有在线玩家时<b>临时造一个生物</b>（默认僵尸，用完即删）。
+     *
+     * <p>★ 为什么要造：{@code Projectile#setShooter} 收的是 {@code ProjectileSource}，
+     * <b>生物也满足</b>（{@code LivingEntity extends ProjectileSource}），
+     * 而无头测试服平时没有玩家在线。造一个临时生物当发射者，
+     * 就能把"不伤害发射者"这条规则也验证掉 —— 而且比玩家更省事：
+     * 生物默认没有 AI、不会乱跑（本命令还会显式关掉 AI 与碰撞）。
+     *
+     * <p>⚠ 它<b>只</b>用于命令仿真；游戏内正常路径永远用的是真实玩家。
+     *
+     * @return {@code [0]=LivingEntity, [1]=Boolean 是否本次新建的}
+     */
+    private static Object[] ensureShooter(String nameHint, Location at) {
+        org.bukkit.entity.Player p = pickPlayer(nameHint);
+        if (p != null) {
+            return new Object[]{p, Boolean.FALSE};
+        }
+        if (nameHint != null && !nameHint.isBlank()) {
+            return new Object[]{null, Boolean.FALSE};   // 指名要谁却没找到：不造替代品
+        }
+        if (at == null || at.getWorld() == null) {
+            return new Object[]{null, Boolean.FALSE};
+        }
+        try {
+            org.bukkit.entity.Zombie mob = at.getWorld().spawn(at, org.bukkit.entity.Zombie.class,
+                    z -> {
+                        z.setAI(false);            // 不许乱跑：它要一直站在原点当"靶子"
+                        z.setSilent(true);
+                        z.setPersistent(false);    // 别进存档
+                        z.setCollidable(false);    // 别把箭撞飞
+                        z.setRemoveWhenFarAway(true);
+                    });
+            return new Object[]{mob, Boolean.TRUE};
+        } catch (RuntimeException e) {
+            Log.warn("[TOUHOU] 造临时发射者失败（本次仿真需要发射者）: " + e);
+            return new Object[]{null, Boolean.FALSE};
+        }
+    }
+
+    /** 把临时发射者从世界里删掉（只在"确认它是本次造的"时调用）。 */
+    private static void removeFakeShooter(org.bukkit.entity.Entity fake) {
+        if (fake == null) {
+            return;
+        }
+        try {
+            fake.remove();
+        } catch (RuntimeException e) {
+            Log.warn("[TOUHOU] 移除临时发射者失败: " + e);
+        }
+    }
+
+    /**
+     * 在指定格放一块测试方块，并记进 {@code placed} 以便事后恢复。
+     *
+     * <p>★ 只在原来是空气的位置放（绝不覆盖玩家的建筑），且事后一定恢复成空气。
+     *
+     * @return {@code true} = 真的放下了（原来是空气）；{@code false} = 那一格本来就有东西
+     */
+    private static boolean placeTestBlock(Location loc, Material material,
+                                          Set<org.bukkit.block.Block> placed) {
+        if (loc == null || loc.getWorld() == null) {
+            return false;
+        }
+        org.bukkit.block.Block b = loc.getWorld().getBlockAt(loc);
+        if (!b.getType().isAir()) {
+            return false;   // 已经不是空气：不动它（可能本来就是墙，那更好）
+        }
+        b.setType(material, false);
+        placed.add(b);
+        return true;
+    }
+
+    /** 把测试方块恢复成空气（命令的最后一步，避免给世界留下垃圾）。 */
+    private static void clearTestBlocks(Set<org.bukkit.block.Block> placed) {
+        for (org.bukkit.block.Block b : placed) {
+            if (b.getType() != Material.AIR) {
+                b.setType(Material.AIR, false);
+            }
+        }
+        placed.clear();
+    }
 
     /** 解析 &lt;x&gt; &lt;y&gt; &lt;z&gt;（arg0..2），校验该坐标确实有粘液方块数据。 */
     private Location resolve(CommandSender sender, String[] args) {
@@ -1993,10 +2544,24 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         if (args.length == 1) {
             return filter(List.of("reactor", "autobuild", "clickinfo", "structure", "saizen", "place",
                     "remove", "edit", "gui", "layout", "groups", "tags", "messages", "reload",
-                    "power", "dreamcatcher", "seal", "proj", "guide"), args[0]);
+                    "power", "dreamcatcher", "seal", "lily", "proj", "guide"), args[0]);
         }
         if (args[0].equalsIgnoreCase("seal") && args.length == 2) {
             return filter(List.of("selfcheck", "probe"), args[1]);
+        }
+        if (args[0].equalsIgnoreCase("lily") && args.length == 2) {
+            return filter(List.of("selfcheck", "dir", "beam", "fire", "laser", "impact",
+                    "cleanup"), args[1]);
+        }
+        if (args[0].equalsIgnoreCase("lily") && args.length == 3
+                && args[1].equalsIgnoreCase("dir")) {
+            return filter(Arrays.stream(org.bukkit.block.BlockFace.values())
+                    .map(Enum::name).collect(Collectors.toList()), args[2]);
+        }
+        if (args[0].equalsIgnoreCase("lily") && args.length == 5
+                && (args[1].equalsIgnoreCase("beam") || args[1].equalsIgnoreCase("laser"))) {
+            return filter(Arrays.stream(org.bukkit.block.BlockFace.values())
+                    .map(Enum::name).collect(Collectors.toList()), args[4]);
         }
         if (args[0].equalsIgnoreCase("guide") && args.length == 2) {
             return filter(List.of("reactor", "saizen"), args[1]);
@@ -2051,6 +2616,6 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
     public static List<String> commands() {
         return List.of("reactor", "autobuild", "clickinfo", "structure", "saizen", "place", "remove",
                 "edit", "gui", "layout", "groups", "tags", "messages", "reload", "power",
-                "dreamcatcher", "seal", "proj");
+                "dreamcatcher", "seal", "lily", "proj");
     }
 }

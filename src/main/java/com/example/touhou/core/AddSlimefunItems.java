@@ -45,6 +45,13 @@ public final class AddSlimefunItems {
     public static SlimefunItem INFO_NING_MENG;
     /** 梦想封印 集（Flee into Gensokyo，POWER 充能道具）。 */
     public static FantasySeal FANTASY_SEAL;
+    /**
+     * 杀意的百合（Flee into Gensokyo 的第二件符卡）。
+     *
+     * <p>它继承 {@link PartyItem}，所以 POWER 刻度与取电链路与梦想封印 集<b>共用一份声明</b>；
+     * 设置各落在 {@code Items.yml} 自己的 id 分节里。
+     */
+    public static MurderousLily MURDEROUS_LILY;
 
     // 多方块构件（归属 2 级组 COMPLEX_MACHINE）
     public static SlimefunItem REACTOR_FRAME;
@@ -193,6 +200,18 @@ public final class AddSlimefunItems {
                 RecipeType.ENHANCED_CRAFTING_TABLE,
                 goheiRecipe()), plugin);
 
+        // 杀意的百合：PARTY_ITEM 组的第二件符卡（用户 spec 里的「杀意的百合」）。
+        // ★ 它【沿用】梦想封印 集的整套 POWER 数据 —— 那 8 个 ItemSetting 的声明与读取
+        //   都在 PartyItem 基类里，本类不各写一份（见 PartyItem 的类注释）。
+        //   物品组 / 材质 / 附魔光效同样沿用（见 AddItems）。
+        // ★ 配方目前与梦想封印 集同一形状（竖着一条），因为 spec 没有给配方；
+        //   要改配方只动下面这个方法即可（与 goheiRecipe 并列）。
+        MURDEROUS_LILY = register(new MurderousLily(
+                AddGroups.PARTY_ITEM,
+                AddItems.MURDEROUS_LILY,
+                RecipeType.ENHANCED_CRAFTING_TABLE,
+                lilyRecipe()), plugin);
+
         // ------------------------------------------------------------------ POWER 能源系统
         // ⚠ 配方暂缺（RecipeType.NULL），先用 /sf give 拿取；给了配方再填。
         POWER_INTEGRATED_CORE = register(new PowerIntegratedCore(
@@ -218,6 +237,25 @@ public final class AddSlimefunItems {
     private static ItemStack[] goheiRecipe() {
         return new ItemStack[] {
                 null, AddItems.LOGIC_SINGULARITY, null,
+                null, SlimefunItems.REINFORCED_PLATE, null,
+                null, SlimefunItems.ELECTRIC_MOTOR, null
+        };
+    }
+
+    /**
+     * 杀意的百合的配方：与梦想封印 集<b>同一形状</b>（竖着一条）。
+     *
+     * <p>★ spec 没有给这件道具的配方，所以按"同组同档次的符卡"处理：
+     * 形状照抄，只把顶端的材料换成反应堆另一种产物口径也无从谈起 —— 先保持一致。
+     * 想改配方只需要改这一个方法（注册处不动）。
+     * ⚠ 与梦想封印 集<b>用同一个 {@link ItemStack}[] 形状</b>会不会撞配方？
+     * 不会：Slimefun 的增强工作台按"9 格图案 + 配方类型"匹配，
+     * 两件物品的图案一模一样 ⇒ 后注册的那个会覆盖前一个。
+     * 所以这里把顶端材料改成 {@code CARBONADO}，让两张配方可区分（真实可合成）。
+     */
+    private static ItemStack[] lilyRecipe() {
+        return new ItemStack[] {
+                null, SlimefunItems.CARBONADO, null,
                 null, SlimefunItems.REINFORCED_PLATE, null,
                 null, SlimefunItems.ELECTRIC_MOTOR, null
         };
@@ -280,6 +318,7 @@ public final class AddSlimefunItems {
                                 + "," + INFO_TEAM_SHANGHAI_ALICE.getId()
                                 + "," + INFO_NING_MENG.getId()))
                 + " / " + (FANTASY_SEAL == null ? "梦想封印 集=未注册" : "梦想封印 集=OK")
+                + " / " + (MURDEROUS_LILY == null ? "杀意的百合=未注册" : "杀意的百合=OK")
                 + " / " + (REACTOR_INPUT_PORT == null ? "输入接口=未注册" : "输入接口=OK")
                 + " / " + (REACTOR_OUTPUT_PORT == null ? "输出接口=未注册" : "输出接口=OK")
                 + " / POWER=" + (POWER_INTEGRATED_CORE == null ? "未注册"

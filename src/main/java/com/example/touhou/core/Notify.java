@@ -184,6 +184,17 @@ public final class Notify {
     }
 
     /**
+     * 杀意的百合作用域 —— 前缀与档位独立（{@code config.yml} 的 {@code lily:} 段）。
+     *
+     * <p>★ 与 {@link #seal()} 同理：一个道具的消息前缀不该来自另一件道具，
+     * 也不该蹭反应堆的（那是赛钱箱踩过的老路）。
+     */
+    public static Scope lily() {
+        AddonConfig cfg = AddonConfig.get();
+        return new Scope(cfg.lilyPrefix, cfg.lilyMessageLevel);
+    }
+
+    /**
      * 指定作用域的 warning / error —— <b>永远输出</b>。
      *
      * <p>判据：玩家主动做了一件事但没成功。这类必须说，否则玩家只看到"点了没反应"。

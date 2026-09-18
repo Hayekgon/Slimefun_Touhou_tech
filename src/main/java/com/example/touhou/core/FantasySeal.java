@@ -3,11 +3,9 @@ package com.example.touhou.core;
 import com.example.touhou.Touhou;
 import com.example.touhou.power.PowerNetwork;
 import com.example.touhou.power.PowerNetworkManager;
-import com.example.touhou.power.PowerStorageUnit;
 import io.github.thebusybiscuit.slimefun4.api.events.PlayerRightClickEvent;
 import io.github.thebusybiscuit.slimefun4.api.items.ItemGroup;
 import io.github.thebusybiscuit.slimefun4.api.items.ItemSetting;
-import io.github.thebusybiscuit.slimefun4.api.items.SlimefunItem;
 import io.github.thebusybiscuit.slimefun4.api.items.SlimefunItemStack;
 import io.github.thebusybiscuit.slimefun4.api.recipes.RecipeType;
 import io.github.thebusybiscuit.slimefun4.core.handlers.ItemUseHandler;
@@ -16,31 +14,19 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
 import org.bukkit.Location;
-import org.bukkit.NamespacedKey;
 import org.bukkit.Particle;
-import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.AbstractArrow.PickupStatus;
 import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.Arrow;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
-import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.PlayerInventory;
-import org.bukkit.inventory.meta.ItemMeta;
-import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.scheduler.BukkitRunnable;
-import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Vector;
 
 /**
@@ -58,7 +44,7 @@ import org.bukkit.util.Vector;
  * 电量改走本插件的 POWER 体系：
  * <ul>
  *   <li>持久化在<b>物品自己的 PDC</b>，键串与 POWER 体系同一套
- *       （{@link PowerStorageUnit#KEY_CHARGE} = {@code touhou:power-charge}）——
+ *       （{@link com.example.touhou.power.PowerStorageUnit#KEY_CHARGE} = {@code touhou:power-charge}）——
  *       道具不在世界里，所以用不了方块数据（{@link TouhouData} 那一套只对方块有效）；</li>
  *   <li>充能来源是<b>玩家附近最近的 POWER 网络</b>：手持时每隔
  *       {@code charge-interval-seconds}（默认 2 秒）从那张网里"抽"走
@@ -91,8 +77,16 @@ import org.bukkit.util.Vector;
  *   cooldown-millis          = 1500 每发之后 1.5 秒冷却
  * </pre>
  * ⚠ 满电 40 POWER ÷ 1 POWER/次 = <b>40 次</b>使用（不是 80 次 —— 口径见交付报告）。
+ *
+ * <h2>★ 与「杀意的百合」共用的一套 POWER 数据</h2>
+ * 上面这四行、加上 {@code charge-wireless} / {@code charge-range} /
+ * {@code hint-throttle-seconds}，现在<b>只有一份声明</b>——在 {@link PartyItem} 里，
+ * 本类与 {@link MurderousLily} 都继承它（用户要求的「数据等沿用」）。
+ * 本类自己<b>没有改动任何数值、key、默认值与提示文案</b>：
+ * 那次重构只是把字段与私有方法原样上移，道具 id 也没变，
+ * 所以 {@code Items.yml} 里 {@code TOUHOU_PARTY_ITEM_FANTASY_SEAL_CONVERGE} 那一节的键一个都没变。
  */
-public class FantasySeal extends SlimefunItem {
+public class FantasySeal extends PartyItem {
 
     // ------------------------------------------------------------------ 可配置项（写入 items.yml）
 
@@ -111,45 +105,7 @@ public class FantasySeal extends SlimefunItem {
     /** 与纵轴夹角（度）。90 = 水平圆盘。 */
     private final ItemSetting<Integer> verticalAngle = setting("vertical-angle", 90);
 
-    // ---- POWER 刻度（spec 的四个数字，全部可配） ----
-
-    /** 道具自身的 POWER 缓冲上限。 */
-    private final ItemSetting<Integer> powerCapacity = setting("power-capacity", 40);
-    /** 单次发射消耗的 POWER。 */
-    private final ItemSetting<Integer> powerCost = setting("power-cost", 1);
-    /**
-     * 每个充能节拍充入多少 POWER。
-     *
-     * <p>★ 2026-09-20 按用户要求从 1 改成 <b>5</b>：于是 5 POWER / 2 秒，
-     * 16 秒（8 个节拍）正好从空充到上限 40 ——「每次充能需要 16s」这条 spec
-     * 与「上限 40 POWER」就此咬合。
-     *
-     * <p>⚠ 改这里的默认值<b>不会</b>影响已经跑过的服务端：ItemSetting 的值会被
-     * Slimefun 持久化到 {@code plugins/Slimefun/Items.yml}，那边的旧值优先。
-     * 必须同时改 Items.yml（或删掉那个键）。
-     */
-    private final ItemSetting<Integer> chargePerCycle = setting("charge-per-cycle", 5);
-    /** 充能节拍的间隔（秒）：每隔这么久取一次电。 */
-    private final ItemSetting<Integer> chargeIntervalSeconds = setting("charge-interval-seconds", 2);
-    /** 发射后的冷却（毫秒）。spec：1.5 秒。 */
-    private final ItemSetting<Integer> cooldownMillis = setting("cooldown-millis", 1500);
-    /**
-     * 是否启用<b>无线充电</b>：手持时站在 POWER 网络附近自动充能。
-     *
-     * <p>★ 默认 {@code false} —— 2026-09-20 按用户要求<b>关闭</b>这项能力。
-     * 「靠近电网就自动充能」不该长在一件符卡道具上，用户后续会单独做一台
-     * <b>无线供电器</b>来提供它。
-     *
-     * <p>所以这里<b>保留实现、只关开关</b>（而不是删代码）：
-     * 底层取电链路 —— {@link com.example.touhou.power.PowerNetworkManager#extractPower}
-     * 与本类的取电入口 —— 原封不动，那台机器直接复用即可。
-     * 想临时恢复：把 {@code items.yml} 的 {@code charge-wireless} 改成 {@code true}。
-     */
-    private final ItemSetting<Boolean> chargeWireless = setting("charge-wireless", false);
-    /** 取电的搜索半径（格，切比雪夫）：玩家周围这个范围内最近的 POWER 节点所在的网。 */
-    private final ItemSetting<Integer> chargeRange = setting("charge-range", 4);
-    /** "附近没有网络 / 网络没电"这类提示的最小间隔（秒）—— 节流，避免刷屏。 */
-    private final ItemSetting<Integer> hintThrottleSeconds = setting("hint-throttle-seconds", 15);
+    // ---- POWER 刻度与取电参数：全部继承自 PartyItem（见那个类的注释）----
 
     // ------------------------------------------------------------------ 常量
 
@@ -166,246 +122,55 @@ public class FantasySeal extends SlimefunItem {
     private static final double STEER_FACTOR = 0.25D;
     private static final double INERTIA_FACTOR = 0.8D;
 
-    /** 各项默认值（与 ItemSetting 的默认值同源，配置读取兜底时也用它们）。 */
-    private static final int DEFAULT_CAPACITY = 40;
-    private static final int DEFAULT_COST = 1;
-    private static final int DEFAULT_PER_CYCLE = 1;
-    private static final int DEFAULT_INTERVAL_SECONDS = 2;
-    private static final int DEFAULT_COOLDOWN_MILLIS = 1500;
-    private static final int DEFAULT_RANGE = 4;
-    private static final int DEFAULT_HINT_SECONDS = 15;
-
-    /**
-     * 道具 POWER 的 PDC 键。
-     *
-     * <p>★ 字样直接取自 {@link PowerStorageUnit#KEY_CHARGE}（{@code touhou:power-charge}），
-     * 而不是再手写一遍字符串 —— "POWER 体系共用一套键"这件事必须只有一个出处。
-     */
-    private static final NamespacedKey CHARGE_KEY = Objects.requireNonNull(
-            NamespacedKey.fromString(PowerStorageUnit.KEY_CHARGE),
-            "非法的 POWER 电量键: " + PowerStorageUnit.KEY_CHARGE);
-
     /**
      * lore 里那一行实时电量的<b>纯文本前缀</b>。
      *
      * <p>刷新时是"找到以它开头的那一行就地替换"，所以物品模板里必须先放一行
      * （见 {@code AddItems}）—— 这样玩家在第一次充能之前也能看到这一行。
      * 比对前会 {@code stripColor}，因此颜色码不参与匹配。
+     *
+     * <p>★ 这个字面量现在只在 {@link #loreLabel()} 一处被交给 {@link PartyItem}
+     * （公共的 lore 刷新逻辑在那边），本类不再自己实现改写。
      */
     private static final String LORE_LABEL = "POWER:";
 
     /** 本道具发射出的、仍在飞行中的弹幕 UUID（异步制导线程也读写，故用并发集合）。 */
     private static final Set<UUID> TRACKED_ARROWS = ConcurrentHashMap.newKeySet();
 
-    /** 发射冷却到期时刻（毫秒，按玩家记）。 */
-    private static final Map<UUID, Long> COOLDOWN = new ConcurrentHashMap<>();
-
-    /** 上一次给该玩家发"充能失败"提示的时刻（毫秒）—— 提示节流用。 */
-    private static final Map<UUID, Long> HINT_AT = new ConcurrentHashMap<>();
-
-    /** 冷却表的清理门槛（毫秒）：早已过期的记录留着没意义。 */
-    private static final long COOLDOWN_KEEP_MILLIS = 60_000L;
-
-    /** 充能循环的任务句柄（只起一次）。 */
-    private BukkitTask chargeTask;
-
     public FantasySeal(ItemGroup itemGroup, SlimefunItemStack item, RecipeType recipeType, ItemStack[] recipe) {
         super(itemGroup, item, recipeType, recipe);
         addItemHandler((ItemUseHandler) this::onUse);
     }
 
+    // ---- POWER 刻度 / 取电参数 / 充能循环 / 发射冷却闸：全部继承自 PartyItem ----
+    //   （用户要求的「数据等沿用」：那 8 个 ItemSetting 与整条取电链路在 PartyItem 里
+    //    只有一份声明，本类不再各写一份常量；设置仍然落在 items.yml 的本道具 id 分节里。）
+
+    /**
+     * lore 里那一行实时电量的前缀（见 {@link PartyItem#loreLabel()}）。
+     *
+     * <p>★ 仍然是 {@code "POWER:"} —— 一个字符都没改，所以物品模板里那一行照样被就地改写。
+     */
+    @Override
+    protected String loreLabel() {
+        return LORE_LABEL;
+    }
+
+    /** 控制台日志里本道具的名字（充能循环启动/异常都会带上它）。 */
+    @Override
+    protected String itemLabel() {
+        return "梦想封印 集";
+    }
+
+    /** 本道具的消息作用域（前缀/档位取自 config.yml 的 {@code seal:} 段）。 */
+    @Override
+    protected Notify.Scope scope() {
+        return Notify.seal();
+    }
+
     /** 供 {@link FantasySealArrowListener} 判定"这是不是本道具发射的弹幕"。 */
     public static boolean isTrackedArrow(Arrow arrow) {
         return arrow != null && TRACKED_ARROWS.contains(arrow.getUniqueId());
-    }
-
-    private <T> ItemSetting<T> setting(String key, T defaultValue) {
-        ItemSetting<T> s = new ItemSetting<>(this, key, defaultValue);
-        addItemSetting(s);
-        return s;
-    }
-
-    // ------------------------------------------------------------------ 道具 POWER 读写
-
-    /**
-     * 读道具里的 POWER。
-     *
-     * <p>全程只碰 {@link ItemStack} / PDC，<b>不碰方块数据</b> —— 所以它可以在任何线程、
-     * 任何"没有方块"的上下文里安全调用（例如命令自检里那个只存在于内存里的测试物品）。
-     */
-    public long chargeOf(ItemStack item) {
-        if (item == null || item.getType().isAir()) {
-            return 0L;
-        }
-        ItemMeta meta = item.getItemMeta();
-        if (meta == null) {
-            return 0L;
-        }
-        Long v = meta.getPersistentDataContainer().get(CHARGE_KEY, PersistentDataType.LONG);
-        return v == null ? 0L : Math.max(0L, v);
-    }
-
-    /** 写道具里的 POWER（自动 clamp 到 {@code [0, 上限]}），并刷新 lore 里那一行实时电量。 */
-    public void setChargeOf(ItemStack item, long charge) {
-        if (item == null || item.getType().isAir()) {
-            return;
-        }
-        ItemMeta meta = item.getItemMeta();
-        if (meta == null) {
-            return;
-        }
-        long cap = configuredCapacity();
-        long value = Math.max(0L, Math.min(charge, cap));
-        meta.getPersistentDataContainer().set(CHARGE_KEY, PersistentDataType.LONG, value);
-        renderChargeLore(meta, value, cap);
-        item.setItemMeta(meta);
-    }
-
-    /** 当前 POWER 还能发射几次（{@code power-cost <= 0} 视为不消耗，返回 {@code Long.MAX_VALUE}）。 */
-    public long usesOf(ItemStack item) {
-        long cost = configuredCost();
-        return cost <= 0 ? Long.MAX_VALUE : chargeOf(item) / cost;
-    }
-
-    /**
-     * 刷新 lore 里那一行"POWER: x/y（可用 n 次）"。
-     *
-     * <p>就地替换<b>以 {@link #LORE_LABEL} 开头</b>的那一行；找不到就追加到末尾。
-     * ★ 这一行是"充能看得见"的唯一途径（本类不再是 {@code Rechargeable}，
-     * 也就没有 Slimefun 自带的那行电力显示），所以每次改电量都必须走这里。
-     */
-    private void renderChargeLore(ItemMeta meta, long charge, long cap) {
-        List<String> lore = meta.getLore() == null
-                ? new ArrayList<>() : new ArrayList<>(meta.getLore());
-        long cost = configuredCost();
-        String line = ChatColor.DARK_GRAY + LORE_LABEL + " " + ChatColor.WHITE + charge
-                + ChatColor.DARK_GRAY + "/" + ChatColor.WHITE + cap
-                + ChatColor.GRAY + "（可用 " + (cost <= 0 ? "∞" : charge / cost) + " 次）";
-        for (int i = 0; i < lore.size(); i++) {
-            String plain = ChatColor.stripColor(lore.get(i));
-            if (plain != null && plain.startsWith(LORE_LABEL)) {
-                lore.set(i, line);
-                meta.setLore(lore);
-                return;
-            }
-        }
-        lore.add(line);
-        meta.setLore(lore);
-    }
-
-    // ------------------------------------------------------------------ 充能循环
-
-    /**
-     * 启动充能循环（由 {@link Touhou#onEnable()} 在物品注册之后调用一次）。
-     *
-     * <p>★ 为什么<b>不</b>在构造器里起任务：本类的构造器跑在 {@code onEnable} 的物品注册阶段，
-     * 那一刻插件还不算"已启用"；而且那个时机与世界状态无关，起任务属于"越早越容易出怪事"。
-     * 显式由主类调用，一眼就能看出"谁在什么时候把它开起来的"。
-     *
-     * <p>循环体只做一件事：给<b>手持</b>本道具的在线玩家从附近网络取电。
-     */
-    public void startCharging() {
-        if (chargeTask != null) {
-            return;
-        }
-        // ★ 2026-09-20 按用户要求关闭【无线充电】：
-        //   本道具不再"站在 POWER 网络附近就自动充能"。底层取电链路保持可用，
-        //   等用户那台专用的「无线供电器」做好后直接复用。
-        if (!Boolean.TRUE.equals(chargeWireless.getValue())) {
-            Log.info("[SEAL] 无线充电已关闭（charge-wireless=false）——"
-                    + "本道具当前不会自动充能，等专用的无线供电器");
-            return;
-        }
-        long period = Math.max(1, configuredIntervalSeconds()) * 20L;   // 真实 tick，20/秒
-        chargeTask = new BukkitRunnable() {
-            @Override
-            public void run() {
-                chargeAll();
-            }
-        }.runTaskTimer(Touhou.getInstance(), period, period);
-        Log.info("[SEAL] 充能循环已启动：每 " + configuredIntervalSeconds() + " 秒为手持者取 "
-                + configuredPerCycle() + " POWER（搜索半径 " + configuredRange()
-                + " 格，提示节流 " + configuredHintSeconds() + " 秒）");
-    }
-
-    private void chargeAll() {
-        long now = System.currentTimeMillis();
-        // 顺手清理两张按玩家记的表（早已过期的记录留着没意义）
-        COOLDOWN.entrySet().removeIf(e -> e.getValue() < now - COOLDOWN_KEEP_MILLIS);
-        HINT_AT.entrySet().removeIf(e -> now - e.getValue()
-                > Math.max(60_000L, configuredHintSeconds() * 1000L));
-        for (Player p : Bukkit.getOnlinePlayers()) {
-            try {
-                chargeHeld(p, now);
-            } catch (RuntimeException e) {
-                // 单个玩家的异常绝不能中断整轮循环（更不能把 BukkitTask 打死）
-                Log.warn("[梦想封印 集] 充能异常 @ " + p.getName() + ": " + e);
-            }
-        }
-    }
-
-    /** 主手 + 副手都算"手持"（把符卡放副手是常见用法）。 */
-    private void chargeHeld(Player p, long now) {
-        PlayerInventory inv = p.getInventory();
-        chargeOne(p, inv, EquipmentSlot.HAND, now);
-        chargeOne(p, inv, EquipmentSlot.OFF_HAND, now);
-    }
-
-    /**
-     * 给一格里的道具取一次电。
-     *
-     * <p>★ 这里是"充能从哪个网络取"的完整答案：
-     * <b>以玩家眼睛为球心 → 最近的一个 POWER 节点 → 那个节点所在的整张网</b>。
-     * 取不到就什么都不做（只给一次节流提示），道具电量保持不变。
-     */
-    private void chargeOne(Player p, PlayerInventory inv, EquipmentSlot slot, long now) {
-        ItemStack item = inv.getItem(slot);
-        if (!isSeal(item)) {
-            return;
-        }
-        long cap = configuredCapacity();
-        long cur = Math.min(chargeOf(item), cap);
-        if (cur >= cap) {
-            return;   // 满了：不取电、也不提示
-        }
-        int range = configuredRange();
-        Location origin = p.getEyeLocation();
-        PowerNetwork net = PowerNetworkManager.getNetworkNear(origin, range);
-        if (net == null) {
-            hint(p, now, "&c附近 " + range + " 格内没有 POWER 网络，无法充能"
-                    + " &7（把 POWER 方块放到脚边即可）");
-            return;
-        }
-        long want = Math.min(configuredPerCycle(), cap - cur);
-        long got = PowerNetworkManager.extractPower(net, want);
-        if (got <= 0) {
-            hint(p, now, "&e最近的 POWER 网络 #" + net.networkId() + " 里没有电"
-                    + " &7（需要发电机或已充能的存储单元）");
-            return;
-        }
-        setChargeOf(item, cur + got);
-        inv.setItem(slot, item);   // 写回格子（CraftItemStack 本来是镜像，这一步只是保险）
-    }
-
-    /** 节流过的 warning：同一个玩家 {@code hint-throttle-seconds} 秒内最多一条。 */
-    private void hint(Player p, long now, String text) {
-        long throttle = Math.max(0, configuredHintSeconds()) * 1000L;
-        Long last = HINT_AT.get(p.getUniqueId());
-        if (last != null && throttle > 0 && now - last < throttle) {
-            return;
-        }
-        HINT_AT.put(p.getUniqueId(), now);
-        // ★ 玩家可见反馈一律走 Notify.warn：这是"玩家主动做了一件事但没成功"。
-        //   Notify.info/important 那两档在默认配置下是【静默】的（见 Notify 的四档语义）。
-        Notify.warn(Notify.seal(), p, text);
-    }
-
-    /** 是不是本道具（按粘液 id 反查：PDC 里带着 id 的任何 ItemStack 都认）。 */
-    private boolean isSeal(ItemStack item) {
-        if (item == null || item.getType().isAir()) {
-            return false;
-        }
-        return SlimefunItem.getByItem(item) instanceof FantasySeal;
     }
 
     // ------------------------------------------------------------------ 交互
@@ -416,44 +181,25 @@ public class FantasySeal extends SlimefunItem {
         ItemStack item = event.getItem();
         long now = System.currentTimeMillis();
 
-        if (!canUse(p, false)) {
-            Notify.warn(Notify.seal(), p, "&c你没有权限使用该道具!");
+        if (!passPermission(p)) {
+            Notify.warn(scope(), p, "&c你没有权限使用该道具!");
             return;
         }
 
-        // ---- 冷却闸：spec 要求 1.5 秒，必须真拦住连发（原来的实现没有任何冷却） ----
-        long until = COOLDOWN.getOrDefault(p.getUniqueId(), 0L);
-        if (now < until) {
-            // 玩家按了道具但没反应：这是"操作失败"，必须告诉他为什么
-            Notify.warn(Notify.seal(), p, "&c尚未冷却完毕 &7（还需 "
-                    + String.format("%.1f", (until - now) / 1000.0) + " 秒）");
+        // ---- 冷却闸 + POWER 闸：spec 要求 1.5 秒冷却，两件符卡共用 PartyItem 里那一段 ----
+        if (!passGate(p, item, now)) {
             return;
         }
-
-        long cost = configuredCost();
-        long charge = chargeOf(item);
-        if (charge < cost) {
-            Notify.warn(Notify.seal(), p, "&cPOWER 不足 &7（" + charge + "/" + cost
-                    + "）—— 手持它靠近 POWER 网络会自动充能");
-            return;
-        }
-
-        if (cost > 0) {
-            setChargeOf(item, charge - cost);
-        }
-        COOLDOWN.put(p.getUniqueId(), now + Math.max(0, configuredCooldownMillis()));
         fire(p, item);
     }
 
     // ------------------------------------------------------------------ 发射（spec 部分，未改动）
 
     private void fire(Player p, ItemStack item) {
-        ItemMeta meta = item.getItemMeta();
-        int power = meta == null ? 0 : meta.getEnchantLevel(Enchantment.ARROW_DAMAGE);
-        int sharpness = meta == null ? 0 : meta.getEnchantLevel(Enchantment.DAMAGE_ALL);
-        float damage = basicDamage.getValue().floatValue()
-                + powerAmplifier.getValue().floatValue() * power
-                + sharpnessAmplifier.getValue().floatValue() * sharpness;
+        // ★ 伤害公式抽到了 PartyItem#arrowDamage：基础值 + 力量×0.8 + 锋利×0.4，
+        //   算式与抽取前逐字相同，只是「杀意的百合」的箭矢也走这一段（不再各写一套）。
+        float damage = arrowDamage(item, basicDamage.getValue(), powerAmplifier.getValue(),
+                sharpnessAmplifier.getValue());
 
         Location origin = handLocation(p);
         int count = Math.max(1, bulletCount.getValue());
@@ -644,98 +390,29 @@ public class FantasySeal extends SlimefunItem {
         }));
     }
 
+    // ------------------------------------------------------------------ 工具
+    //
+    // ★ sync / handLocation / isTargetable 已上移到 PartyItem（两件符卡共用同一套实现，
+    //   逻辑一字未改）；untrack 留在这里，因为它改的是本类自己的弹幕追踪表。
+
     private static void untrack(Arrow arrow) {
         TRACKED_ARROWS.remove(arrow.getUniqueId());
     }
 
-    // ------------------------------------------------------------------ 工具
-
-    /** 回到主线程执行（制导循环跑在异步线程）。 */
-    private static void sync(Runnable r) {
-        if (Bukkit.isPrimaryThread()) {
-            r.run();
-        } else {
-            Bukkit.getScheduler().runTask(Touhou.getInstance(), r);
-        }
-    }
-
-    /** 手持位置：眼位向脚位回拉 30%。 */
-    private static Location handLocation(Player p) {
-        Location eye = p.getEyeLocation();
-        Location feet = p.getLocation();
-        eye.add(feet.subtract(eye).multiply(0.3).toVector());
-        return eye;
-    }
-
-    private static boolean isTargetable(Entity e) {
-        if (!e.isValid() || e.isDead() || !(e instanceof LivingEntity le) || le.isInvulnerable()) {
-            return false;
-        }
-        if (e instanceof ArmorStand stand && (stand.isMarker() || stand.isSmall())) {
-            return false;
-        }
-        return true;
-    }
-
-    // ------------------------------------------------------------------ 配置读取（一律带兜底）
-
-    private long configuredCapacity() {
-        Integer v = powerCapacity == null ? null : powerCapacity.getValue();
-        return Math.max(1, v == null ? DEFAULT_CAPACITY : v);
-    }
-
-    /** 单次消耗（≥0；0 = 不耗电，允许但会退化成"无限连发"，不推荐）。 */
-    public long configuredCost() {
-        Integer v = powerCost == null ? null : powerCost.getValue();
-        return Math.max(0, v == null ? DEFAULT_COST : v);
-    }
-
-    private int configuredPerCycle() {
-        Integer v = chargePerCycle == null ? null : chargePerCycle.getValue();
-        return Math.max(1, v == null ? DEFAULT_PER_CYCLE : v);
-    }
-
-    private int configuredIntervalSeconds() {
-        Integer v = chargeIntervalSeconds == null ? null : chargeIntervalSeconds.getValue();
-        return Math.max(1, v == null ? DEFAULT_INTERVAL_SECONDS : v);
-    }
-
-    private int configuredCooldownMillis() {
-        Integer v = cooldownMillis == null ? null : cooldownMillis.getValue();
-        return v == null ? DEFAULT_COOLDOWN_MILLIS : v;
-    }
-
-    private int configuredRange() {
-        Integer v = chargeRange == null ? null : chargeRange.getValue();
-        return Math.max(1, v == null ? DEFAULT_RANGE : v);
-    }
-
-    private int configuredHintSeconds() {
-        Integer v = hintThrottleSeconds == null ? null : hintThrottleSeconds.getValue();
-        return v == null ? DEFAULT_HINT_SECONDS : v;
-    }
+    // ------------------------------------------------------------------ 配置读取
+    //
+    // ★ 公共的 8 个刻度（上限 / 单次消耗 / 充能速率 / 间隔 / 冷却 / 无线开关 / 取电半径 /
+    //   提示节流）连同它们的兜底读取全部在 PartyItem 里，本类不再各写一份
+    //   （这正是「数据等沿用」的做法：只有一个出处，改一处两件符卡一起变）。
+    //   下面只有本类独有的跟踪半径 —— 它没有兜底读取，因为 ItemSetting 一旦注册
+    //   就总会有值（注册时 Slimefun 会把默认值写回 Items.yml）。
 
     // ------------------------------------------------------------------ 诊断
 
-    /** 供 /touhou 命令无头验证：把关键参数与自检结果打出来。 */
-    public List<String> selfCheck() {
+    /** 供 /touhou 命令无头验证：本道具独有的参数（公共 POWER 部分由 {@link PartyItem#selfCheck()} 补）。 */
+    @Override
+    protected List<String> describeSelf() {
         List<String> out = new ArrayList<>();
-        out.add("FantasySeal id=" + getId() + " itemName=" + getItemName());
-        out.add("  material        = " + getItem().getType());
-        out.add("  能源            = 自研 POWER（不实现 Rechargeable），键 " + CHARGE_KEY);
-        out.add("  powerCapacity   = " + configuredCapacity() + " POWER（满电可用 "
-                + (configuredCost() <= 0 ? "∞" : configuredCapacity() / configuredCost()) + " 次）");
-        out.add("  powerCost       = " + configuredCost() + " POWER / 发");
-        out.add("  charge          = " + configuredPerCycle() + " POWER / "
-                + configuredIntervalSeconds() + " 秒（取电半径 " + configuredRange()
-                + " 格；提示节流 " + configuredHintSeconds() + " 秒）");
-        // 这一行是"充能循环到底起没起来"的唯一证据：启动日志走 Log.info，
-        // 而 logging.console-info 默认是 false（那条会静默），命令回显则不受开关影响。
-        out.add("  chargeLoop      = " + (chargeTask == null
-                ? "未启动（只会在主类 onEnable 注册完成后启动）"
-                : "运行中（每 " + Math.max(1, configuredIntervalSeconds()) * 20L + " tick 一轮，"
-                        + "在线玩家 " + Bukkit.getOnlinePlayers().size() + " 人）"));
-        out.add("  cooldown        = " + configuredCooldownMillis() + " ms");
         out.add("  trackRange      = " + trackRange.getValue());
         out.add("  maxDistance     = " + maxDistance.getValue());
         out.add("  bulletCount     = " + bulletCount.getValue()
@@ -746,8 +423,6 @@ public class FantasySeal extends SlimefunItem {
                 + sharpnessAmplifier.getValue() + "×锋利");
         out.add("  straightTicks   = " + STRAIGHT_TICKS + ", period = " + PERIOD_TRACETIME + "t");
         out.add("  trackedArrows   = " + TRACKED_ARROWS.size());
-        Optional<ItemGroup> g = Optional.ofNullable(getItemGroup());
-        out.add("  itemGroup       = " + g.map(x -> x.getKey().toString()).orElse("(无)"));
         return out;
     }
 
@@ -804,23 +479,5 @@ public class FantasySeal extends SlimefunItem {
                 "最近节点 " + TouhouData.xyz(node) + "（网络 #" + net.networkId() + "，节点数 "
                         + net.size() + "，距离 " + String.format("%.2f", node.distance(origin))
                         + " 格，搜索半径 " + range + " 格）");
-    }
-
-    /** 供命令输出：一件道具的 POWER 读数（玩家手持的、命令造的测试物品都走它）。 */
-    public List<String> describeItem(String label, ItemStack item) {
-        long cap = configuredCapacity();
-        long cost = configuredCost();
-        long charge = chargeOf(item);
-        List<String> out = new ArrayList<>();
-        out.add(label + " = " + (item == null || item.getType().isAir()
-                ? "（空）" : item.getType().toString()));
-        out.add("  当前 POWER   = " + charge + " / " + cap);
-        out.add("  单次消耗     = " + cost + " POWER");
-        out.add("  可用次数     = " + (cost <= 0 ? "∞（配置里 power-cost = 0）" : charge / cost));
-        out.add("  充能         = " + configuredPerCycle() + " POWER / "
-                + configuredIntervalSeconds() + " 秒（手持时自动，搜索半径 "
-                + configuredRange() + " 格）");
-        out.add("  冷却         = " + configuredCooldownMillis() + " ms / 发");
-        return out;
     }
 }

@@ -254,6 +254,22 @@ public final class AddonConfig {
     public String sealMessageLevel = "off";
 
     /**
+     * 杀意的百合自己的消息前缀（{@code config.yml} 的 {@code lily.message-prefix}）。
+     *
+     * <p>★ 与梦想封印 集同理：这两件是同一组（PARTY_ITEM）的两件符卡，
+     * 但前缀各自独立 —— 否则玩家分不清是哪件道具在说话。
+     */
+    public String lilyPrefix = "&8[&d杀意的百合&8] &r";
+
+    /**
+     * 杀意的百合自己的消息档位，默认 {@code off}。
+     *
+     * <p>它的玩家可见反馈只有 warning（{@link Notify#warn} 不受档位影响）
+     * 与"已发射"那条常规反馈；后者默认不推，避免每打一发就刷一行。
+     */
+    public String lilyMessageLevel = "off";
+
+    /**
      * 控制台 info 输出总开关（{@code config.yml} 的 {@code logging.console-info}）。
      *
      * <ul>
@@ -400,6 +416,9 @@ public final class AddonConfig {
 
         // 梦想封印 集那一段同理（只有消息前缀/档位；四个数字在 Items.yml 里，见 loadSeal）。
         loadSeal(c, cfg);
+
+        // 杀意的百合那一段（同样只有消息前缀/档位；道具自己的数值也在 Items.yml 里）。
+        loadLily(c, cfg);
 
         c.consoleInfo = cfg.getBoolean("logging.console-info", c.consoleInfo);
 
@@ -554,6 +573,26 @@ public final class AddonConfig {
     }
 
     /**
+     * 读 {@code lily:} 段（杀意的百合）。
+     *
+     * <p>★ 与 {@link #loadSeal} 完全同构，只读<b>消息</b>相关的两项：
+     * 道具的 POWER 刻度与全部弹幕参数都是 {@code ItemSetting}，落在
+     * {@code plugins/Slimefun/Items.yml} 的 {@code TOUHOU_PARTY_ITEM_MURDEROUS_LILY} 一节里
+     * —— 数值只有一个出处，绝不在这里再抄一份。
+     *
+     * <p>其中的 POWER 刻度还与梦想封印 集<b>共用同一份声明</b>（{@link PartyItem}），
+     * 所以"数据等沿用"这件事在代码里是一处而不是两处。
+     */
+    private static void loadLily(AddonConfig c, FileConfiguration cfg) {
+        ConfigurationSection s = cfg.getConfigurationSection("lily");
+        if (s == null) {
+            return;
+        }
+        c.lilyPrefix = s.getString("message-prefix", c.lilyPrefix);
+        c.lilyMessageLevel = s.getString("messages.level", c.lilyMessageLevel);
+    }
+
+    /**
      * 把明显不合法的配置挡下来并改成安全值。
      *
      * <p>真实踩点：`MachineFuel` 的进程 tick 必须 > 0（`FuelOperation` 构造器里有
@@ -696,6 +735,9 @@ public final class AddonConfig {
                         + "，最多列 " + (guideMaterialKinds <= 0 ? "全部" : guideMaterialKinds + " 种"),
                 "seal              = 梦想封印 集 前缀「" + sealPrefix + "」档位 "
                         + Notify.Level.parse(sealMessageLevel).display()
-                        + "（POWER 刻度在 Items.yml，不在本文件）");
+                        + "（POWER 刻度在 Items.yml，不在本文件）",
+                "lily              = 杀意的百合 前缀「" + lilyPrefix + "」档位 "
+                        + Notify.Level.parse(lilyMessageLevel).display()
+                        + "（与 seal 共用 PartyItem 的 POWER 刻度，同样不在本文件）");
     }
 }

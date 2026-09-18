@@ -400,6 +400,71 @@ seal:
     level: off
 
 # ============================================================================
+# 杀意的百合（TOUHOU_PARTY_ITEM_MURDEROUS_LILY）
+#   纯狐的符卡「殺意の百合」，英文 Murderous Lily。三段行为：
+#     阶段一：右键射出一支【无视重力】的箭（伤害 16，普通箭矢伤害），
+#             每 tick 伴随 5 个火焰粒子；
+#             销毁规则（★ 2026-09-21 用户口径）：
+#               ① 与发射者的距离 >= min(max-distance, 模拟距离 × 16) ⇒ 立即销毁
+#               ② 飞行时间 >= max-seconds（默认 15 秒）             ⇒ 立即销毁
+#               ③ 命中方块或实体                                    ⇒ 进入阶段二
+#             （不做区块加载检测 —— 早期那条 isChunkLoaded 判据已按要求删除）
+#     阶段二（命中点爆发，三件事同时发生）：
+#             ① 激光：长 12 格、直径 1 格、可被实体方块截断，命中 32【真伤】；
+#             ② 喷泉：命中点周围 300 个火焰粒子（纯视觉）；
+#             ③ 12 支追踪箭：每 tick 2 个粒子、追踪半径 12 格、存活 5 秒，
+#                伤害 12（普通箭矢伤害）。
+#
+#   ★★ 方向规则（用户原文有歧义，按"外法线向外"实现）：
+#     击中方块 ⇒ 取该面的【外法线向外】（击中北面 ⇒ 激光/喷泉朝北，
+#     也就是从被打中的那个面喷出来）。理由写在那段代码的注释里：
+#     若按字面"朝南"射进方块内部，激光第 0 格就被刚命中的方块自己挡住，
+#     长度恒为 0，与"12 格长 + 可被物块阻挡"直接矛盾。
+#     击中实体 ⇒ 没有面 ⇒ 始终向上。
+#
+#   ★★ 两种伤害模型【并存】，这是刻意的：
+#     · 阶段一的箭（16）与 12 支追踪箭（12）走【普通箭矢伤害】通道 ——
+#       与梦想封印 集完全同一条路径（arrow.setDamage + setShooter），
+#       护甲/无敌帧/保护插件的 EntityDamageByEntityEvent 全部照常生效，
+#       排除发射者由原版箭矢自己完成；
+#     · 激光（32）走【真伤】通道 —— setHealth 绕过护甲与无敌帧，
+#       代价是它不发伤害事件；所以代码额外发一个 TrueDamageProbeEvent
+#       （标准 EntityDamageByEntityEvent 的子类）让保护插件能拦截。
+#
+#   ★★ 不伤害发射者：exclude-shooter 默认 true，
+#     激光的 AABB 结算与追踪箭的索敌【两处】都排除发射者本人。
+#     队伍/队友概念 spec 没提，不做推测性实现。
+#
+#   ★★ 这套 POWER 数据与梦想封印 集【共用一份声明】（PartyItem 基类）：
+#      上限 40 / 单发 1 / 充能 5 每 2 秒 / 冷却 1.5 秒 / 取电半径 4 格 /
+#      提示节流 15 秒 / charge-wireless=false（同样不自动充能）。
+#      它们与下面这些弹幕参数一样都是 ItemSetting，落在
+#      plugins/Slimefun/Items.yml 的 TOUHOU_PARTY_ITEM_MURDEROUS_LILY 一节里：
+#        power-capacity / power-cost / charge-per-cycle / charge-interval-seconds /
+#        cooldown-millis / charge-wireless / charge-range / hint-throttle-seconds
+#        basic-damage 16        power-amplifier 0.0      sharpness-amplifier 0.0
+#        max-distance 120       max-seconds 15           trail-particles 5
+#        laser-length 12        laser-diameter 1.0       laser-damage 32
+#        fountain-particles 300 tracker-count 12         tracker-damage 12
+#        tracker-range 12       tracker-seconds 5        tracker-particles 2
+#        exclude-shooter true
+#      数值只保留那一处出处，这里不复制（复制出来的那份一定会漂移）。
+#
+#   ★ 无头验证：/touhou lily selfcheck | dir <面> | beam <x> <y> <z> <面> |
+#     fire <x> <y> <z> <dx> <dy> <dz> [玩家] [--force] |
+#     laser <x> <y> <z> <面> [玩家] | impact <x> <y> <z> [玩家] | cleanup
+# ============================================================================
+lily:
+  # 道具【自己】的消息前缀。
+  #   ★ 与梦想封印 集分开：同组的两件符卡各自说话，玩家才分得清是谁。
+  message-prefix: "&8[&d杀意的百合&8] &r"
+  messages:
+    # 道具自己的消息档位：off / important / normal / all。
+    #   ★ 默认 off：warning（没权限/冷却中/POWER 不足）永远输出、不受档位影响；
+    #     "已发射"那条属于常规反馈，默认不推 —— 否则每打一发就刷一行。
+    level: off
+
+# ============================================================================
 # 幻梦捕捉器（TOUHOU_POWER_DREAMCATCHER）—— POWER 体系的第一台产能设备
 #   原创机器（不是东方原作要素）：名字取「捕梦网 dreamcatcher」的意象，
 #   把梦收进标靶里榨成 POWER。

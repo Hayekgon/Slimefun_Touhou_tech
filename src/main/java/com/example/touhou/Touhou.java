@@ -6,6 +6,7 @@ import com.example.touhou.core.StructureBuildListener;
 import com.example.touhou.core.AddItems;
 import com.example.touhou.core.AddSlimefunItems;
 import com.example.touhou.core.FantasySealArrowListener;
+import com.example.touhou.core.MurderousLilyListener;
 import com.example.touhou.core.PortGuiListener;
 import com.example.touhou.core.ReactorManager;
 import com.example.touhou.core.SaizenbakoRecipes;
@@ -55,6 +56,8 @@ public class Touhou extends JavaPlugin implements SlimefunAddon {
 
         // 4. 监听器：梦想封印 集的弹幕无敌帧处理
         getServer().getPluginManager().registerEvents(new FantasySealArrowListener(), this);
+        //    杀意的百合：阶段一命中 → 阶段二爆发；区块卸载/实体离场 → 追踪表清理；无敌帧
+        getServer().getPluginManager().registerEvents(new MurderousLilyListener(), this);
         //    物流接口界面的拖拽拦截（按槽拦截挡不住拖拽，见 PortGuiListener 注释）
         getServer().getPluginManager().registerEvents(new PortGuiListener(), this);
         //    结构变动（放置/破坏/爆炸）→ 触发一次检测（见 StructureBuildListener 注释）
@@ -70,6 +73,13 @@ public class Touhou extends JavaPlugin implements SlimefunAddon {
             //   放到注册之后、onEnable 的末尾启动，时序最直观，也不存在
             //   "任务已经跑起来、物品却还没注册好"的窗口（见 FantasySeal#startCharging）。
             AddSlimefunItems.FANTASY_SEAL.startCharging();
+        }
+        // 无头自检 + 充能循环：杀意的百合（与梦想封印 集同一套 PartyItem 逻辑）
+        if (AddSlimefunItems.MURDEROUS_LILY != null) {
+            for (String line : AddSlimefunItems.MURDEROUS_LILY.selfCheck()) {
+                Log.info("[LILY] " + line);
+            }
+            AddSlimefunItems.MURDEROUS_LILY.startCharging();
         }
 
         // 结构预热：层图写错会在启动时就被发现，而不是等玩家放下机器才炸

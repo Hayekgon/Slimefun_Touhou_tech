@@ -37,8 +37,8 @@ public class FantasySealArrowListener implements Listener {
         if (!(e.getEntity() instanceof LivingEntity target)) {
             return;
         }
-        if (target.getNoDamageTicks() > 0) {
-            target.setNoDamageTicks(0);
-        }
+        // ★ 判据与清零动作都在 PartyItem.clearNoDamageTicks（两件符卡共用同一套）：
+        //   本监听器只负责"认领本道具的弹幕"，行为与抽取前逐字相同。
+        PartyItem.clearNoDamageTicks(target);
     }
 }
