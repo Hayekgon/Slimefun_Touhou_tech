@@ -232,11 +232,23 @@ public final class MultiBlockProjection {
         }
         HashMap<String, ItemStack> map = genericMapping(structure);
         if (fallbackMapping != null) {
-            // 兜底只补"通用映射认不出来"的那些格（不覆盖已经认出来的）
+            // 兜底只补"通用映射认不出来"的那些格（不覆盖已经认出来的）。
+            //
+            // ★ 这里**不能**用 HashMap#putIfAbsent（真实缺陷，2026-09-18 修）：
+            //   genericMapping 会给结构里出现的**每一个** id 都 put 一次 ——
+            //   认不出来时 put 的是 null。而 putIfAbsent 判的是"键在不在"，
+            //   不是"值是不是 null"，所以在"键已存在且值为 null"时它什么都不做，
+            //   宿主的 displayMapping() 永远补不进去，那份显式映射成了死配置。
+            //   判据必须是"值为 null 才覆盖"。
             HashMap<String, ItemStack> extra = fallbackMapping.get();
             if (extra != null) {
                 for (Map.Entry<String, ItemStack> e : extra.entrySet()) {
-                    map.putIfAbsent(e.getKey(), e.getValue());
+                    if (e.getValue() == null) {
+                        continue;                   // 宿主自己也没解析出来，不必覆盖
+                    }
+                    if (map.get(e.getKey()) == null) {
+                        map.put(e.getKey(), e.getValue());
+                    }
                 }
             }
         }
