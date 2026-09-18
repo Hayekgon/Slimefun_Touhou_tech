@@ -310,9 +310,14 @@ public final class AddItems {
         //   其中 "POWER:" 那一行还有功能：FantasySeal 会就地改写它来显示实时电量
         //   （见 FantasySeal#renderChargeLore —— 本道具不再是 Rechargeable，
         //    没有 Slimefun 自带的那行电力显示，所以这一行必须留着）。
+        // 材质：附魔光效的纸。
+        //   ★ 2026-09-20 按用户要求从 FISHING_ROD（仿钓鱼竿的握持手感）改成 PAPER。
+        //   ★ 注意「附魔光效」不是材质自带的，而是靠 setup() 末尾那段
+        //     addUnsafeEnchantment + HIDE_ENCHANTS 做出来的 —— 换材质不会丢光效，
+        //     但**别把那段发光块删了**，删了纸就只是一张普通的纸。
         FANTASY_SEAL = new SlimefunItemStack(
                 "TOUHOU_PARTY_ITEM_FANTASY_SEAL_CONVERGE",
-                Material.FISHING_ROD,
+                Material.PAPER,
                 "&d梦想封印 集",
                 "",
                 "&7灵梦的符卡梦想封印之一，据说没有几个人能完整的抗下一发",
@@ -416,12 +421,14 @@ public final class AddItems {
                 "&8多方块核心 · 使用自研 POWER 能源",
                 "&8点信息格激活：6 个预留槽同时匹配配方才产出");
 
-        // 纯发光用：钓鱼竿上的无限附魔没有实际效果
+        // 附魔光效：给物品挂一个"没有任何实际效果"的附魔，再用 HIDE_ENCHANTS 把附魔行藏掉，
+        //   于是只剩图标外圈那层光晕 —— 这就是「附魔光效的纸」的实现方式。
+        //   ★ 与材质无关：PAPER 自身没有光效，光效完全来自这里。
         FANTASY_SEAL.addUnsafeEnchantment(Enchantment.ARROW_INFINITE, 1);
-        ItemMeta goheiMeta = FANTASY_SEAL.getItemMeta();
-        if (goheiMeta != null) {
-            goheiMeta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
-            FANTASY_SEAL.setItemMeta(goheiMeta);
+        ItemMeta sealMeta = FANTASY_SEAL.getItemMeta();
+        if (sealMeta != null) {
+            sealMeta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
+            FANTASY_SEAL.setItemMeta(sealMeta);
         }
 
         // ------------------------------------------------------------------ POWER（1 级组）
