@@ -138,7 +138,7 @@ public class MurderousLily extends PartyItem {
      * 阶段一那支箭的飞行速度（格/tick）。
      *
      * <p>与 {@link FantasySeal} 同值：原版箭矢的正常速度。
-     * 1.25 格/tick ⇒ 120 格要飞 96 tick（4.8 秒），所以"12 秒存在上限"通常不是先到的那个条件
+     * 1.25 格/tick ⇒ 120 格要飞 96 tick（4.8 秒），所以"15 秒存在上限"通常不是先到的那个条件
      * （除非箭被卡住、或所在区块没在 tick）。
      */
     private static final float ARROW_SPEED = 1.25F;
