@@ -133,6 +133,19 @@ public class FantasySeal extends SlimefunItem {
     private final ItemSetting<Integer> chargeIntervalSeconds = setting("charge-interval-seconds", 2);
     /** 发射后的冷却（毫秒）。spec：1.5 秒。 */
     private final ItemSetting<Integer> cooldownMillis = setting("cooldown-millis", 1500);
+    /**
+     * 是否启用<b>无线充电</b>：手持时站在 POWER 网络附近自动充能。
+     *
+     * <p>★ 默认 {@code false} —— 2026-09-20 按用户要求<b>关闭</b>这项能力。
+     * 「靠近电网就自动充能」不该长在一件符卡道具上，用户后续会单独做一台
+     * <b>无线供电器</b>来提供它。
+     *
+     * <p>所以这里<b>保留实现、只关开关</b>（而不是删代码）：
+     * 底层取电链路 —— {@link com.example.touhou.power.PowerNetworkManager#extractPower}
+     * 与本类的取电入口 —— 原封不动，那台机器直接复用即可。
+     * 想临时恢复：把 {@code items.yml} 的 {@code charge-wireless} 改成 {@code true}。
+     */
+    private final ItemSetting<Boolean> chargeWireless = setting("charge-wireless", false);
     /** 取电的搜索半径（格，切比雪夫）：玩家周围这个范围内最近的 POWER 节点所在的网。 */
     private final ItemSetting<Integer> chargeRange = setting("charge-range", 4);
     /** "附近没有网络 / 网络没电"这类提示的最小间隔（秒）—— 节流，避免刷屏。 */
@@ -293,6 +306,14 @@ public class FantasySeal extends SlimefunItem {
      */
     public void startCharging() {
         if (chargeTask != null) {
+            return;
+        }
+        // ★ 2026-09-20 按用户要求关闭【无线充电】：
+        //   本道具不再"站在 POWER 网络附近就自动充能"。底层取电链路保持可用，
+        //   等用户那台专用的「无线供电器」做好后直接复用。
+        if (!Boolean.TRUE.equals(chargeWireless.getValue())) {
+            Log.info("[SEAL] 无线充电已关闭（charge-wireless=false）——"
+                    + "本道具当前不会自动充能，等专用的无线供电器");
             return;
         }
         long period = Math.max(1, configuredIntervalSeconds()) * 20L;   // 真实 tick，20/秒

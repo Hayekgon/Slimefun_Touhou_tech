@@ -82,11 +82,20 @@ public class PowerIntegratedCore extends SlimefunItem
     /**
      * 核心的覆盖半径（切比雪夫）。
      *
-     * <p>原生 {@code EnergyRegulator} 也带一个 range（{@code EnergyNet.getRange()}，默认 7），
-     * 它是「调节器能覆盖多大一片」的定义。这里对齐这个语义：核心本身就是一张网的锚点，
-     * 半径内的 POWER 方块直接并入，不再要求逐格贴脸摆放。
+     * <p>★ 默认已从 7 改成 <b>0</b>（2026-09-20，修真实 bug）。
+     *
+     * <p>当初给核心加半径是为了「对齐原生 {@code EnergyRegulator} 的 range」，
+     * 但代价是：<b>核心自己变成了一个半径 7 的跳接源</b> —— 于是两个核心只要相距
+     * 7 格以内就会互相并入同一张网，哪怕中间一个 POWER 方块都没有。
+     * 用户实测：两座明显没有连接的核心被判成了同一张网，并弹出"检测到存在多核心"。
+     *
+     * <p>现在改为 0（核心不再跳接），组网回到「6 面邻接 + 中继器半径跳接」的原始语义。
+     * 之前"孤立核心只算出 1 个节点"的问题由 {@code PowerNetworkManager} 起点的
+     * <b>反向扫描</b>解决（见那里第 ③ 步），不依赖核心自带半径。
+     *
+     * <p>想恢复旧行为把这里（以及 {@code items.yml} 里持久化的旧值）改回 7 即可。
      */
-    public final ItemSetting<Integer> range = new ItemSetting<>(this, "range", 7);
+    public final ItemSetting<Integer> range = new ItemSetting<>(this, "range", 0);
 
     private static final DecimalFormat FMT = new DecimalFormat("#,###");
 
