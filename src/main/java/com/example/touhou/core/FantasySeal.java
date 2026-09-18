@@ -86,8 +86,8 @@ import org.bukkit.util.Vector;
  * <pre>
  *   power-capacity           = 40   道具自身的 POWER 缓冲上限
  *   power-cost               = 1    单次使用消耗 1 POWER
- *   charge-per-cycle         = 1    每 {@code charge-interval-seconds} 秒充 1 POWER
- *   charge-interval-seconds  = 2    于是 16 秒充 8 POWER = 8 次使用
+ *   charge-per-cycle         = 5    每 {@code charge-interval-seconds} 秒充 5 POWER
+ *   charge-interval-seconds  = 2    于是 16 秒充 40 POWER = 一次充能正好填满
  *   cooldown-millis          = 1500 每发之后 1.5 秒冷却
  * </pre>
  * ⚠ 满电 40 POWER ÷ 1 POWER/次 = <b>40 次</b>使用（不是 80 次 —— 口径见交付报告）。
@@ -117,8 +117,18 @@ public class FantasySeal extends SlimefunItem {
     private final ItemSetting<Integer> powerCapacity = setting("power-capacity", 40);
     /** 单次发射消耗的 POWER。 */
     private final ItemSetting<Integer> powerCost = setting("power-cost", 1);
-    /** 每个充能节拍充入多少 POWER。 */
-    private final ItemSetting<Integer> chargePerCycle = setting("charge-per-cycle", 1);
+    /**
+     * 每个充能节拍充入多少 POWER。
+     *
+     * <p>★ 2026-09-20 按用户要求从 1 改成 <b>5</b>：于是 5 POWER / 2 秒，
+     * 16 秒（8 个节拍）正好从空充到上限 40 ——「每次充能需要 16s」这条 spec
+     * 与「上限 40 POWER」就此咬合。
+     *
+     * <p>⚠ 改这里的默认值<b>不会</b>影响已经跑过的服务端：ItemSetting 的值会被
+     * Slimefun 持久化到 {@code plugins/Slimefun/Items.yml}，那边的旧值优先。
+     * 必须同时改 Items.yml（或删掉那个键）。
+     */
+    private final ItemSetting<Integer> chargePerCycle = setting("charge-per-cycle", 5);
     /** 充能节拍的间隔（秒）：每隔这么久取一次电。 */
     private final ItemSetting<Integer> chargeIntervalSeconds = setting("charge-interval-seconds", 2);
     /** 发射后的冷却（毫秒）。spec：1.5 秒。 */
