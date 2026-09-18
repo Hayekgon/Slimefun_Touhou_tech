@@ -283,6 +283,15 @@ public final class AddonConfig {
     public boolean consoleInfo = false;
 
     /**
+     * 「POWER供给单元」的<b>服务器总开关</b>（{@code supply.enabled}，默认开）。
+     *
+     * <p>关掉之后这台机器<b>不再给玩家无线充电</b>，但它仍然是普通的 POWER 节点
+     * （照常并网、储能）—— 所以关它不会让已经摆好的机器变成"坏方块"，
+     * 只是停掉"无线送电给玩家"这一个功能。
+     */
+    public boolean supplyEnabled = true;
+
+    /**
      * 赛钱箱机器逻辑的运作间隔（Slimefun tick）。
      *
      * <p>机器每 tick 都要做「读 6 根木桩 → 镜像到预留槽 → 比对配方」，
@@ -421,6 +430,7 @@ public final class AddonConfig {
         loadLily(c, cfg);
 
         c.consoleInfo = cfg.getBoolean("logging.console-info", c.consoleInfo);
+        c.supplyEnabled = cfg.getBoolean("supply.enabled", c.supplyEnabled);
 
         // 粘液书那一段也放在 reactor: 之前读（与投影同理）：它是"全局"设置，
         // 不该因为 reactor 段整段丢了就让物品描述里的材料清单一并消失。

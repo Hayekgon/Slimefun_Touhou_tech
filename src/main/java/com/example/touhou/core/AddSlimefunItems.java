@@ -5,6 +5,7 @@ import com.example.touhou.power.DreamCatcher;
 import com.example.touhou.power.PowerIntegratedCore;
 import com.example.touhou.power.PowerRepeater;
 import com.example.touhou.power.PowerStorageUnit;
+import com.example.touhou.power.PowerSupplyUnit;
 import io.github.thebusybiscuit.slimefun4.api.items.SlimefunItem;
 import io.github.thebusybiscuit.slimefun4.api.recipes.RecipeType;
 import io.github.thebusybiscuit.slimefun4.implementation.SlimefunItems;
@@ -75,6 +76,14 @@ public final class AddSlimefunItems {
     public static PowerStorageUnit POWER_STORAGE_UNIT;
     /** 幻梦捕捉器（POWER 体系的第一台产能设备）。 */
     public static DreamCatcher POWER_DREAMCATCHER;
+    /**
+     * POWER供给单元（POWER 体系的<b>无线供电器</b>）。
+     *
+     * <p>★ 梦想封印 集 / 杀意的百合的 {@code charge-wireless} 保持 {@code false}
+     * （那是"道具自带无线充电"，已废弃）；无线充电能力落在这台机器上 ——
+     * 它扫描附近的玩家，把电写进他们手上的 {@code PartyItem}。
+     */
+    public static PowerSupplyUnit POWER_SUPPLY_UNIT;
 
     public static void setup(Touhou plugin) {
         // ★ 自定义配方类型要先建好：它是两个多方块核心的"指南配方页"载体，物品构造器就要吃它
@@ -230,6 +239,14 @@ public final class AddSlimefunItems {
         //    配方同样暂缺 —— 它跟另外三件 POWER 设备保持一致的拿取方式。
         POWER_DREAMCATCHER = register(new DreamCatcher(
                 AddGroups.POWER, AddItems.POWER_DREAMCATCHER,
+                RecipeType.NULL, noRecipe()), plugin);
+
+        //    POWER供给单元：POWER 体系的无线供电器（节点类型 STORAGE）。
+        //    配方同样暂缺 —— 与另外四件 POWER 设备保持一致的拿取方式（/sf give）。
+        //    ★ 它给玩家手上那件 PartyItem 充电（梦想封印 集 / 杀意的百合都算），
+        //      判据是基类多态，不是逐个 id —— 见 PowerSupplyUnit 的类注释。
+        POWER_SUPPLY_UNIT = register(new PowerSupplyUnit(
+                AddGroups.POWER, AddItems.POWER_SUPPLY_UNIT,
                 RecipeType.NULL, noRecipe()), plugin);
     }
 

@@ -116,6 +116,19 @@ public final class AddItems {
      */
     public static SlimefunItemStack POWER_DREAMCATCHER;
 
+    /**
+     * POWER供给单元 —— POWER 体系的<b>无线供电器</b>。
+     *
+     * <p>★ 它是"梦想封印 集 原来那套无线充电"的接棒者：道具自带的无线充电已按用户要求
+     * <b>关闭</b>（{@code PartyItem} 的 {@code charge-wireless} 保持 {@code false}），
+     * 用户当初就说"后续我会单独制作无线供电器"—— 这就是那台机器。
+     *
+     * <p>id 为 {@code TOUHOU_"物品组POWER"_"英文名"} ⇒ {@code TOUHOU_POWER_POWER_SUPPLY_UNIT}
+     * （双 POWER 是本项目 id 铁律的字面结果，与 {@code TOUHOU_POWER_POWER_INTEGRATED_CORE}
+     * 等三件同一形态，刻意<b>不</b>自作主张简化）。
+     */
+    public static SlimefunItemStack POWER_SUPPLY_UNIT;
+
     // ------------------------------------------------------------------ 多方块构件
     // 归属 2 级组 COMPLEX_MACHINE，所以 id 前缀统一是 TOUHOU_COMPLEX_MACHINE_。
     // 这四个是搭建"旧地狱-灵乌路空反应堆"结构的构件（结构层图由用户指定）。
@@ -528,6 +541,25 @@ public final class AddItems {
                 "&8自身缓冲 &f15 POWER&8，产出的电优先并入网络",
                 "&8（先送给储能点，实在没人接才留在自己这里）",
                 "&8POWER 体系的第一台产能设备");
+
+        // POWER供给单元：把网络里的电无线送给附近玩家手持的符卡。
+        // ★ 材质是海晶灯（按需求）；它是 POWER 一族里第一台"对外供电"的机器，
+        //   所以描述里必须写清"给谁充、多大范围、多久一次"——它没有 GUI。
+        POWER_SUPPLY_UNIT = new SlimefunItemStack(
+                "TOUHOU_POWER_POWER_SUPPLY_UNIT",
+                Material.SEA_LANTERN,
+                "&cPOWER供给单元",
+                "",
+                "&7把 POWER 网络里的电无线送给",
+                "&7附近玩家手持的符卡。",
+                "",
+                "&7半径 &f4 格&7（立方体范围，含斜向与上下）",
+                "&7每 &f2 秒&7 为范围内每位玩家充 &f5 POWER",
+                "&7主手与副手都算，各自独立充能",
+                "",
+                "&8自身缓冲 &f5 POWER&8，缓冲不够时从网络现取",
+                "&8机器与网络都没电时静默待机，不刷提示",
+                "&8没有界面：状态看 &f/touhou supply <x> <y> <z>");
 
         // ------------------------------------------------------------------ 标签登记
         // ★ 为什么标签登记在这个"物品模板"层、而不是像最初那样放在 AddSlimefunItems 里：
