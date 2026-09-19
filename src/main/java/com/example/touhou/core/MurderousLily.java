@@ -64,7 +64,7 @@ import org.bukkit.util.Vector;
  *       · 每 tick 伴随 5 个 FLAME 粒子
  *       · 销毁规则（★ 2026-09-21 用户口径）：
  *           ① 与发射者的距离 >= min(max-distance, 模拟距离 × 16) ⇒ 立即销毁
- *           ② 飞行时间 >= max-seconds（默认 15 秒）             ⇒ 立即销毁
+ *           ② 飞行时间 >= max-seconds（默认 8 秒）              ⇒ 立即销毁
  *           ③ 命中方块或实体                                    ⇒ 进入阶段二
  *         （<b>不做区块加载检测</b>：早期版本那条 {@code isChunkLoaded} 判据已被用户要求删除）
  *   阶段二（命中瞬间，以命中点为原点同时发生三件事）：
@@ -125,7 +125,7 @@ import org.bukkit.util.Vector;
  * <ol>
  *   <li>命中方块或实体 → {@link MurderousLilyListener} 记录命中、{@link #tickShot} 当 tick 结算；</li>
  *   <li>飞满距离上限（{@code min(max-distance, 模拟距离 × 16)}）→ 周期任务里判；</li>
- *   <li>飞行时间到（{@code max-seconds}，默认 15 秒）→ 周期任务里判
+ *   <li>飞行时间到（{@code max-seconds}，默认 8 秒）→ 周期任务里判
  *       （毫秒与 tick 两个口径互为保险）。</li>
  * </ol>
  * 另外 {@link MurderousLilyListener} 与 {@link #cleanupRemoved} 兜住"实体因为任何其它原因
@@ -667,7 +667,7 @@ public class MurderousLily extends PartyItem {
             }
         }
 
-        // ④ 销毁规则二：飞行时间 >= max-seconds（默认 15 秒）。
+        // ④ 销毁规则二：飞行时间 >= max-seconds（默认 8 秒）。
         //    毫秒与 tick 两个口径互为保险（谁先到用谁），避免服务端卡顿时时间口径漂移。
         if (now - shot.startedAt >= Math.max(1, configuredMaxSeconds()) * 1000L
                 || tick >= shot.deadlineTick) {
@@ -703,7 +703,7 @@ public class MurderousLily extends PartyItem {
         HIT_ENTITY("命中实体"),
         /** 与发射者的距离达到上限（{@code min(max-distance, 模拟距离×16)}）。 */
         DISTANCE("飞满距离上限"),
-        /** 飞行时间到（{@code max-seconds}，默认 15 秒）。 */
+        /** 飞行时间到（{@code max-seconds}，默认 8 秒）。 */
         TIME("飞行时间到"),
         /** 实体被移除（{@code /kill}、插件清理、区块卸载导致服务端回收…）。 */
         REMOVED("实体被服务端/插件移除"),
