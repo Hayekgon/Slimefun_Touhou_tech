@@ -48,27 +48,30 @@ public class MurderousLilyListener implements Listener {
      * 按 Bukkit 约定只读的监听器放 MONITOR，保证它在所有改伤害的插件之后跑。
      *
      * <p>★ {@code ignoreCancelled = true}：命中事件被取消（某个插件拦下了这次命中）时
-     * 不该爆发。而阶段一那支箭的<b>清理</b>不会因此被跳过 ——
-     * 箭随后会被服务端移除，{@link #onEntityRemove} 与周期任务的存活判定都会兜住。
+     * 不该爆发。而箭矢的<b>清理</b>不会因此被跳过 ——
+     * 箭随后会被服务端移除，{@link #onEntityRemove} 与周期任务的判定都会兜住。
      */
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
-    public void onShotHit(ProjectileHitEvent e) {
+    public void onProjectileHit(ProjectileHitEvent e) {
         if (!(e.getEntity() instanceof Arrow arrow)) {
-            return;
-        }
-        if (!MurderousLily.isTrackedShot(arrow)) {
             return;
         }
         MurderousLily lily = AddSlimefunItems.MURDEROUS_LILY;
         if (lily == null) {
             return;
         }
-        Block block = e.getHitBlock();
-        BlockFace face = e.getHitBlockFace();
-        Entity hit = e.getHitEntity();
         // 命中点就用箭自己的位置：方块命中时它贴在命中面上，实体命中时它在实体身上
         Location point = arrow.getLocation().clone();
-        lily.onShotHit(arrow, block, face, hit, point);
+
+        // ① 阶段一那支箭：记录命中，阶段二由周期任务在同一 tick 结算
+        if (MurderousLily.isTrackedShot(arrow)) {
+            lily.onShotHit(arrow, e.getHitBlock(), e.getHitBlockFace(), e.getHitEntity(), point);
+            return;
+        }
+        // ② 追踪箭：★ 2026-09-21 用户要求 —— 命中后以命中点为中心喷 50 个火焰粒子
+        if (MurderousLily.isTrackedTracker(arrow)) {
+            lily.onTrackerHit(arrow, point);
+        }
     }
 
     /**
@@ -163,7 +166,7 @@ public class MurderousLilyListener implements Listener {
     /** 供诊断：这个类一共监听了哪些事件。 */
     public static List<String> describe() {
         return List.of(
-                "ProjectileHitEvent（阶段一命中 → 摘表 + 阶段二爆发）",
+                "ProjectileHitEvent（阶段一命中 → 摘表 + 阶段二爆发；追踪箭命中 → 50 粒子小喷泉）",
                 "ChunkUnloadEvent（区块卸载 → 清理该区块内在途弹幕的追踪表）",
                 "EntityRemoveFromWorldEvent（实体离场兜底 → 摘表）",
                 "EntityDamageByEntityEvent（本道具箭矢命中 → 清无敌帧）");

@@ -167,7 +167,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         s.sendMessage("\u00a77/touhou lily dir <面>                只验证激光方向裁决（不碰世界）");
         s.sendMessage("\u00a77/touhou lily beam <x> <y> <z> <面>   按某个面探激光长度（是否被物块截断）");
         s.sendMessage("\u00a77/touhou lily fire <x> <y> <z> <dx> <dy> <dz> [玩家] [--force]   完整发射仿真");
-        s.sendMessage("\u00a77/touhou lily laser <x> <y> <z> <面> [玩家]   实弹激光：真伤 + 排除发射者");
+        s.sendMessage("\u00a77/touhou lily laser <x> <y> <z> <面> [玩家]   实弹激光：弹射物范围伤害 + 排除发射者");
         s.sendMessage("\u00a77/touhou lily impact <x> <y> <z> [玩家]        只做命中点爆发（激光+喷泉+追踪箭）");
         s.sendMessage("\u00a77/touhou lily cleanup               把两张追踪表收干净并打印条目数");
         s.sendMessage("\u00a77/touhou guide [reactor|saizen]   粘液书自定义配方页的内容自检（展示列表 + 可合成性核查）");
@@ -1911,14 +1911,14 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
      *                                                不搭台架：观察"没命中就不爆发"那条路径
      *   /touhou lily fire ... --debug                 逐 tick 打印区块/实体读数（排查用）
      *   /touhou lily laser &lt;x&gt; &lt;y&gt; &lt;z&gt; &lt;面&gt; [玩家] [world]
-     *                                                实弹激光：验证真伤 + "不伤害发射者"
+     *                                                实弹激光：验证弹射物范围伤害 + "不伤害发射者"
      *   /touhou lily impact &lt;x&gt; &lt;y&gt; &lt;z&gt; [玩家] [world]
      *                                                只做命中点爆发（激光+喷泉+12 支追踪箭）
      *   /touhou lily cleanup                          把两张追踪表收干净并打印条目数
      * </pre>
      *
      * <p>★ 为什么这条命令是<b>必须</b>的：无视重力 / 距离上限 min(120, 模拟距离×16) /
-     * 15 秒时限 / 命中后爆发 / 方向规则 / 真伤 / 追踪清理 —— 这些无头环境下全靠肉眼。
+     * 8 秒时限 / 命中后爆发 / 方向规则 / 弹射物范围伤害 / 追踪清理 —— 这些无头环境下全靠肉眼。
      * 这里每一条都走<b>与游戏内完全相同</b>的代码路径（{@code MurderousLily} 里的
      * spawnShot / onShotHit / burst / finishShot），不是另写一份演示。
      */
@@ -1988,7 +1988,8 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage("\u00a77  实际长度 = " + String.format("%.2f", probe.length())
                     + " 格" + (probe.blockedAt() < 0 ? "，未被截断"
                             : "，被实体方块截断于第 " + probe.blockedAt() + " 格"));
-            sender.sendMessage("\u00a77  真伤 = " + probe.damage());
+            sender.sendMessage("\u00a77  命中点范围伤害 = " + probe.damage()
+                    + " 点弹射物伤害（球半径 " + probe.impactRadius() + " 格）");
             sender.sendMessage("\u00a78  前 3 格样本（每 0.25 格一格：方块类型 / 能不能穿光）：");
             for (int i = 1; i <= 12; i++) {
                 Location p = loc.clone().add(probe.direction().clone().multiply(i * 0.25D));
@@ -2052,7 +2053,8 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
                     + (r.blockedAt() < 0 ? "，未被截断" : "，截断于第 " + r.blockedAt() + " 格"));
             sender.sendMessage("\u00a77  AABB 内可命中实体 = " + r.inBeam()
                     + "，其中因【是发射者本人】被排除 = " + r.excluded()
-                    + "，实际扣血 = " + r.damaged() + "（每个 " + r.damage() + " 真伤）");
+                    + "，实际扣血 = " + r.damaged() + "（每个 " + r.damage()
+                    + " 弹射物伤害，球半径 " + r.impactRadius() + " 格）");
             sender.sendMessage("\u00a78  预期：发射者（" + who.getType()
                     + "）必须落在 excluded 里；对照组那几头牛必须是 damaged");
             clearTestBlocks(placed);
@@ -2091,8 +2093,12 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
                     "命令直接触发");
             sender.sendMessage("\u00a77  方向 = " + com.example.touhou.core.MurderousLily
                     .fmt(report.direction()));
-            sender.sendMessage("\u00a77  激光长度 = " + String.format("%.2f", report.beamLength())
-                    + " 格，真伤 " + report.beamDamage());
+            sender.sendMessage("\u00a77  激光（几何）= " + String.format("%.2f", report.beamLength())
+                    + " 格长" + (report.beamBlockedAt() < 0 ? "，未被截断"
+                            : "，截断于第 " + report.beamBlockedAt() + " 格"));
+            sender.sendMessage("\u00a77  命中点范围伤害 = " + report.impactDamage()
+                    + " 点弹射物伤害，球半径 " + lily.probeBeam(loc, null).impactRadius()
+                    + " 格，实际扣血 " + report.damaged() + " 个实体");
             sender.sendMessage("\u00a77  喷泉 = " + report.fountain() + " 粒子，追踪箭 = "
                     + report.trackers() + " 支");
             if (fakeMade) {
