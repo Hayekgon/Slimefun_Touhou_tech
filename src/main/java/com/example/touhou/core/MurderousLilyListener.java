@@ -68,10 +68,35 @@ public class MurderousLilyListener implements Listener {
             lily.onShotHit(arrow, e.getHitBlock(), e.getHitBlockFace(), e.getHitEntity(), point);
             return;
         }
-        // ② 追踪箭：★ 2026-09-21 用户要求 —— 命中后以命中点为中心喷 50 个火焰粒子
+        // ② 追踪箭：★ 用户要求 —— 命中后喷 50 个火焰粒子 +
+        //    以命中点为球心（tracker-impact-radius，默认 3）格内
+        //    （tracker-impact-damage，默认 24）点弹射物范围伤害，并在 2 tick 后消失。
+        //    ★ 幂等由 MurderousLily.onTrackerHit 内部的"已结算"标记保证：
+        //      箭多活 2 tick 期间若再来一次命中事件，那次会被静默丢掉（duplicate=true）。
         if (MurderousLily.isTrackedTracker(arrow)) {
-            lily.onTrackerHit(arrow, point);
+            MurderousLily.TrackerHit hit = lily.onTrackerHit(arrow, point);
+            if (hit.duplicate()) {
+                lastTrackerHit = "（重复命中已被幂等保护忽略）";
+            } else {
+                lastTrackerHit = "粒子 " + hit.particles() + "、范围伤害 " + hit.damage()
+                        + " 点 / 球半径 " + hit.radius() + " 格、实际扣血 "
+                        + hit.damaged() + " 个实体";
+            }
         }
+    }
+
+    /**
+     * 最近一次追踪箭命中的读数（诊断用；{@code /touhou lily tracers} 打印它）。
+     *
+     * <p>★ 为什么要有它：追踪箭命中发生在玩家人群里，控制台看不见；
+     * 把这一行留成静态读数，命令就能在不进游戏的情况下证明
+     * "范围伤害真的结算了、而且只结算了一次"。
+     */
+    private static volatile String lastTrackerHit = "（本次启动还没有追踪箭命中过）";
+
+    /** 最近一次追踪箭命中的读数（供命令打印）。 */
+    public static String lastTrackerHitSummary() {
+        return lastTrackerHit;
     }
 
     /**
@@ -166,7 +191,7 @@ public class MurderousLilyListener implements Listener {
     /** 供诊断：这个类一共监听了哪些事件。 */
     public static List<String> describe() {
         return List.of(
-                "ProjectileHitEvent（阶段一命中 → 摘表 + 阶段二爆发；追踪箭命中 → 50 粒子小喷泉）",
+                "ProjectileHitEvent（阶段一命中 → 摘表 + 阶段二爆发；追踪箭命中 → 50 粒子 + 3 格 24 点范围伤害，2 tick 后消失）",
                 "ChunkUnloadEvent（区块卸载 → 清理该区块内在途弹幕的追踪表）",
                 "EntityRemoveFromWorldEvent（实体离场兜底 → 摘表）",
                 "EntityDamageByEntityEvent（本道具箭矢命中 → 清无敌帧）");

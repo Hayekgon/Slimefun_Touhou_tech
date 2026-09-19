@@ -175,6 +175,15 @@ public class MurderousLily extends PartyItem {
     private static final int TRACKER_HIT_FOUNTAIN = 50;
 
     /**
+     * 追踪箭命中后<b>多久移除</b>（tick）。
+     *
+     * <p>★ 用户 2026-09-21 修正口径：<b>不是立即消失，而是 2 tick 后消失</b> ——
+     * 这 2 tick 正好留出"原版结算直接命中伤害（12 点）"的窗口，
+     * 所以那 12 点照旧走原版路径，我们不需要自己另造一套命中伤害结算。
+     */
+    private static final long TRACKER_DESPAWN_DELAY_TICKS = 2L;
+
+    /**
      * 本次发射的<b>距离上限</b>（格）：{@code min(max-distance, 模拟距离 × 16)}。
      *
      * <p>★ 这是用户 2026-09-21 定的销毁规则之一。
@@ -241,24 +250,39 @@ public class MurderousLily extends PartyItem {
      */
     private final ItemSetting<Double> laserDiameter = setting("laser-diameter", 3.0);
     /**
-     * 命中后的<b>范围伤害半径</b>（格）：以命中点为球心，这个半径内的可命中实体全部吃伤害。
+     * <b>落点</b>范围伤害的半径（格）：以命中点为球心，这个半径内的可命中实体全部吃伤害。
      *
-     * <p>★ 2026-09-21 用户口径：3 格。
+     * <p>★ 2026-09-21 用户口径：3 → <b>6</b> 格。
+     * ⚠ 这是「阶段一那支箭命中点」那一组的参数；衍生箭命中用的是另一组
+     * {@code tracker-impact-*}，两组<b>互不影响</b>（刻意不共用，免得改一个连带改另一个）。
      */
-    private final ItemSetting<Double> impactRadius = setting("impact-radius", 3.0D);
+    private final ItemSetting<Double> impactRadius = setting("impact-radius", 6.0D);
     /**
-     * 范围伤害数值。★ 2026-09-21 用户口径：<b>24</b> 点，伤害类型是<b>弹射物伤害</b>。
+     * <b>落点</b>范围伤害的数值。★ 2026-09-21 用户口径：24 → <b>40</b> 点，仍是<b>弹射物伤害</b>。
      *
      * <p>⚠ 这一项取代了原先的 {@code laser-damage}（32 真伤）：
      * 现在走的是原版伤害通道（护甲/无敌帧/保护插件全部照常生效），<b>不再是真伤</b>。
      */
-    private final ItemSetting<Integer> impactDamage = setting("impact-damage", 24);
+    private final ItemSetting<Integer> impactDamage = setting("impact-damage", 40);
     /** 喷泉粒子总数（纯视觉）。★ 2026-09-21 用户口径：<b>400</b>（原 300）。 */
     private final ItemSetting<Integer> fountainParticles = setting("fountain-particles", 400);
     /** 追踪箭数量。 */
     private final ItemSetting<Integer> trackerCount = setting("tracker-count", 12);
-    /** 追踪箭的伤害（<b>普通箭矢伤害</b>）。 */
+    /** 追踪箭的伤害（<b>普通箭矢伤害</b>，直接命中那一下，★ 保留）。 */
     private final ItemSetting<Integer> trackerDamage = setting("tracker-damage", 12);
+    /**
+     * 追踪箭<b>命中时</b>那一圈范围伤害的半径（格）。
+     *
+     * <p>★ 2026-09-21 用户口径：<b>3</b> 格。与落点那组（{@link #impactRadius}）是<b>两组独立参数</b>。
+     */
+    private final ItemSetting<Double> trackerImpactRadius = setting("tracker-impact-radius", 3.0D);
+    /**
+     * 追踪箭<b>命中时</b>那一圈范围伤害的数值。
+     *
+     * <p>★ 2026-09-21 用户口径：<b>24</b> 点弹射物伤害，<b>追加</b>在原有的直接命中伤害（12）之外
+     * ——「也可以」读作追加而不是替换，所以直接命中那 12 点照旧保留（见 {@link #trackerDamage}）。
+     */
+    private final ItemSetting<Integer> trackerImpactDamage = setting("tracker-impact-damage", 24);
     /**
      * 追踪箭的<b>速度倍率</b>（相对 {@link #TRACKER_SPEED} = 1.0）。
      *
@@ -322,6 +346,20 @@ public class MurderousLily extends PartyItem {
     private static final long FINISHED_KEEP_MILLIS = 60_000L;
     private static volatile long finishedCleanedAt;
 
+    /**
+     * 已结算过"命中"的追踪箭 UUID（幂等保护）。
+     *
+     * <p>★ 为什么需要它：追踪箭命中后要再存活 {@value #TRACKER_DESPAWN_DELAY_TICKS} tick
+     * （用户口径），这期间它仍在世界里、可能再次触发 {@code ProjectileHitEvent}
+     * （方块表面二次碰撞 / 擦到第二个实体）。没有这道标记，那一圈范围伤害与 50 个粒子
+     * 就会被放两遍甚至更多遍。
+     *
+     * <p>它不是"重复造轮子"：{@link #TRACKED_ARROWS} 摘除虽然也能挡住监听器的判据，
+     * 但"表里没有"与"从未登记"两种情况在别的路径上语义重合，
+     * 用一个独立标记让"这一发只结算一次"有单一出处。
+     */
+    private static final Set<UUID> TRACKER_HIT_DONE = ConcurrentHashMap.newKeySet();
+
     /** 每次爆发的现场报告（键 = 阶段一箭矢的 UUID）；供无头仿真回读，避免重复结算。 */
     private static final Map<UUID, BurstReport> BURSTS = new ConcurrentHashMap<>();
 
@@ -341,7 +379,7 @@ public class MurderousLily extends PartyItem {
         final Location origin;
         /** 出膛方向（单位向量）。 */
         final Vector direction;
-        /** 生成时刻（毫秒；12 秒上限用）。 */
+        /** 生成时刻（毫秒；飞行时限用）。 */
         final long startedAt;
         /** 到这一 tick 必须结束（tick 口径的兜底，与毫秒口径互为保险）。 */
         final long deadlineTick;
@@ -392,8 +430,21 @@ public class MurderousLily extends PartyItem {
 
         Shot(UUID shooterId, LivingEntity shooter, Location origin, Vector direction,
              long startedAt, long deadlineTick, BukkitTask task, float arrowDamage) {
+            this(shooterId, shooter, origin, direction, startedAt, deadlineTick, task,
+                    arrowDamage, null);
+        }
+
+        /**
+         * 全参构造器（多一个"直接实体"）。
+         *
+         * <p>用它的地方是<b>衍生箭命中</b>那一次范围伤害：那里没有"阶段一的箭"，
+         * 但有一支真实存在的衍生箭可以当 {@code DamageSource} 的直接实体。
+         */
+        Shot(UUID shooterId, LivingEntity shooter, Location origin, Vector direction,
+             long startedAt, long deadlineTick, BukkitTask task, float arrowDamage, Arrow arrow) {
             this.shooterId = shooterId;
             this.shooter = shooter;
+            this.arrow = arrow;
             this.origin = origin;
             this.direction = direction;
             this.startedAt = startedAt;
@@ -434,14 +485,16 @@ public class MurderousLily extends PartyItem {
      * @param direction     裁决出来的方向
      * @param beamLength    激光实际长度（被截断后）
      * @param beamBlockedAt 截断发生在第几格（-1 = 没被截断）
-     * @param impactDamage  命中点范围伤害的数值（弹射物伤害）
+     * @param impactDamage  落点范围伤害的数值（弹射物伤害）
+     * @param impactRadius  落点范围伤害的球半径（格）
      * @param trackers      放出的追踪箭数量
      * @param fountain      喷泉粒子数
-     * @param damaged       被范围伤害实际扣血的实体数（★ 2026-09-21 新增）
+     * @param damaged       被落点范围伤害实际扣血的实体数
      */
     public record BurstReport(FinishReason reason, String hitDetail, Location origin,
                               Vector direction, double beamLength, int beamBlockedAt,
-                              double impactDamage, int trackers, int fountain, int damaged) {
+                              double impactDamage, double impactRadius, int trackers,
+                              int fountain, int damaged) {
     }
 
     // ------------------------------------------------------------------ 构造与契约实现
@@ -690,7 +743,7 @@ public class MurderousLily extends PartyItem {
         Location loc = arrow.isValid() ? arrow.getLocation() : shot.origin;
         finishShot(arrow, reason, null, null);
         BurstReport report = new BurstReport(reason, "-", loc, new Vector(0, 1, 0),
-                0.0D, -1, 0.0D, 0, 0, 0);
+                0.0D, -1, 0.0D, 0.0D, 0, 0, 0);
         BURSTS.put(arrow.getUniqueId(), report);
         notifySim(this, arrow.getUniqueId(), shot, report);
     }
@@ -836,7 +889,7 @@ public class MurderousLily extends PartyItem {
      */
     BurstReport burst(Shot shot, Location origin, Vector dir, String hitDetail) {
         if (origin == null || origin.getWorld() == null) {
-            return new BurstReport(FinishReason.FORCED, "坐标无效", origin, dir, 0, -1, 0, 0, 0, 0);
+            return new BurstReport(FinishReason.FORCED, "坐标无效", origin, dir, 0, -1, 0, 0, 0, 0, 0);
         }
         // ① 激光（先把长度算出来，报告要用）
         double[] beam = fireLaser(shot, origin, dir);
@@ -850,7 +903,8 @@ public class MurderousLily extends PartyItem {
         //      （实测：顺序反过来时这一条打出的是"实际扣血 0 个"，因为球里当时确实还没人。）
         int damaged = damageSphere(shot, origin);
         return new BurstReport(FinishReason.HIT_BLOCK, hitDetail, origin.clone(), dir.clone(),
-                beam[0], (int) beam[1], configuredImpactDamage(), trackers, fountain, damaged);
+                beam[0], (int) beam[1], (double) configuredImpactDamage(),
+                configuredImpactRadius(), trackers, fountain, damaged);
     }
 
     // ---- ① 激光 ----
@@ -911,30 +965,55 @@ public class MurderousLily extends PartyItem {
     }
 
     /**
-     * 命中点的<b>范围伤害</b>：以命中点为球心、{@code impact-radius}（默认 3）格为半径，
-     * 对范围内每个可命中实体造成 {@code impact-damage}（默认 24）点 <b>弹射物伤害</b>。
+     * <b>落点范围伤害</b>（阶段一那支箭的命中点）：
+     * 以命中点为球心、{@code impact-radius}（默认 <b>6</b>）格为半径，
+     * 对范围内每个可命中实体造成 {@code impact-damage}（默认 <b>40</b>）点 <b>弹射物伤害</b>。
      *
-     * <p>★ 2026-09-21 用户口径。与旧实现（沿激光 AABB 结算 32 真伤）的区别：
-     * <ul>
-     *   <li>范围从"激光那条管子"改成"以落点为球心的球"；</li>
-     *   <li>伤害类型从<b>真伤</b>改成<b>弹射物伤害</b> —— 也就是走<b>原版伤害通道</b>
-     *       （{@code Damageable#damage(amount, DamageSource)}，DamageType = {@code ARROW}），
-     *       于是护甲、抗性、附魔、无敌帧、保护插件的 {@code EntityDamageByEntityEvent}
-     *       <b>全部照常生效</b>。因此 {@code TrueDamageProbeEvent} 那套探测事件不再需要，
-     *       已一并移除（本道具现在<b>没有任何真伤</b>）。</li>
-     * </ul>
+     * <p>★ 用户 2026-09-21 第二次调整：半径 3 → 6、伤害 24 → 40（仍是弹射物伤害，不是真伤）。
+     *
+     * <p>★ 伤害类型是<b>弹射物伤害</b> —— 走<b>原版伤害通道</b>
+     * （{@code Damageable#damage(amount, DamageSource)}），于是护甲、抗性、附魔、无敌帧、
+     * 保护插件的 {@code EntityDamageByEntityEvent} <b>全部照常生效</b>。
      *
      * <p>★ 不伤害发射者（可配置，默认开）：球内的发射者本人被跳过并计入反向探针。
      *
      * @return 实际被扣血的实体数（诊断用）
      */
     int damageSphere(Shot ctx, Location origin) {
-        World world = origin == null ? null : origin.getWorld();
+        // ★ 显式把伤害转成 double：它来自 int 型的 ItemSetting，不转的话重载解析会挑中
+        //   两参版本（也就是本方法自己）→ 变成无限递归，而不是编译错误。
+        return damageSphere(ctx, origin, configuredImpactRadius(),
+                (double) configuredImpactDamage(), ctx == null ? null : ctx.arrow);
+    }
+
+    /**
+     * <b>通用的球体范围伤害</b>（两个调用点共用这一份实现，绝不写两份）。
+     *
+     * <p>落点那次与衍生箭命中那次都用它，只是参数不同：
+     * <pre>
+     *   落点      ：球心 = 箭的命中点，半径 = impact-radius（6），        伤害 = impact-damage（40）
+     *   衍生箭命中：球心 = 那支衍生箭的命中点，半径 = tracker-impact-radius（3），
+     *               伤害 = tracker-impact-damage（24）
+     * </pre>
+     *
+     * <p>参数里之所以把 {@code targetCtx}（谁的上下文：发射者/那支箭）与
+     * {@code center}（球心在哪）分开，是因为衍生箭命中时"那支箭"与"球心"是同一个点，
+     * 而落点那次球心就是原始那支箭的命中点 —— 两者语义清楚地区分开更好读。
+     *
+     * @param ctx        提供"发射者 + 直接实体"的上下文（可以是那条原始发射的上下文，
+     *                   也可以是专门为衍生箭造的一份）
+     * @param center     球心
+     * @param radius     球半径（格）
+     * @param damage     每个目标的伤害
+     * @param direct     伤害的"直接实体"（那支箭；没有就 null）
+     * @return 实际被扣血的实体数
+     */
+    int damageSphere(Shot ctx, Location center, double radius, double damage, Entity direct) {
+        World world = center == null ? null : center.getWorld();
         if (world == null) {
             return 0;
         }
-        double damage = configuredImpactDamage();
-        double radius = Math.max(0.1D, configuredImpactRadius());
+        radius = Math.max(0.1D, radius);
         if (damage <= 0.0D) {
             return 0;
         }
@@ -942,18 +1021,18 @@ public class MurderousLily extends PartyItem {
         LivingEntity causing = ctx == null ? null : ctx.shooter;
         int damaged = 0;
         Set<UUID> seen = new HashSet<>();
-        for (Entity e : world.getNearbyEntities(origin, radius, radius, radius)) {
+        for (Entity e : world.getNearbyEntities(center, radius, radius, radius)) {
             if (!isTargetable(e) || !seen.add(e.getUniqueId())) {
                 continue;
             }
-            if (e.getLocation().distanceSquared(origin) > radius * radius) {
+            if (e.getLocation().distanceSquared(center) > radius * radius) {
                 continue;   // getNearbyEntities 给的是立方体，这里按球收紧
             }
             if (shooterProtected() && isShooter(e, shooterId)) {
                 noteShooterHit(ctx);   // 反向探针：正常永远不该有人走到下一步
                 continue;
             }
-            if (damageProjectile(e, damage, causing, origin, ctx == null ? null : ctx.arrow)) {
+            if (damageProjectile(e, damage, causing, center, direct)) {
                 damaged++;
             }
         }
@@ -1142,6 +1221,15 @@ public class MurderousLily extends PartyItem {
     }
 
     /**
+     * 衍生箭的<b>实弹测试入口</b>（{@code /touhou lily tracers} 用）：真的放出 12 支追踪箭并启动制导。
+     *
+     * @return 实际放出的支数
+     */
+    public int fireTrackersForTest(LivingEntity shooter, Location origin) {
+        return fireTrackers(shooter, origin, new Vector(0, 1, 0));
+    }
+
+    /**
      * 追踪箭的制导循环（每批一条，2 tick 一跳、<b>异步</b>）。
      *
      * <p>与 {@link FantasySeal} 的制导循环同构：起手 {@code tracker-guide-delay-seconds}
@@ -1297,33 +1385,105 @@ public class MurderousLily extends PartyItem {
     }
 
     /**
-     * <b>追踪箭命中时的小喷泉</b>：以命中点（方块或实体）为中心喷 50 个火焰粒子。
+     * <b>追踪箭命中时</b>的处理：小喷泉 + 一圈范围伤害 + <b>2 tick 后消失</b>。
      *
-     * <p>★ 2026-09-21 用户口径：「衍生箭矢命中后也会以命中方块或实体为中心，
-     * 以喷泉状释放 50 个火焰粒子」。
-     * 由 {@link MurderousLilyListener} 在本道具的追踪箭命中时调用（主线程）。
+     * <p>★ 用户 2026-09-21 第二次调整（含一次修正），三件事：
+     * <ol>
+     *   <li><b>保留</b>原有的「以命中点为中心喷 50 个 FLAME 粒子」（上一轮的要求，用户没让删）；</li>
+     *   <li><b>新增</b>「以命中点为球心、{@code tracker-impact-radius}（默认 3）格内每个目标
+     *       {@code tracker-impact-damage}（默认 24）点弹射物伤害」；</li>
+     *   <li><b>命中后 2 tick 消失</b>（用户修正口径：不是立即消失）——
+     *       留出原版结算直接命中伤害（12 点）的窗口，所以那 12 点<b>照旧走原版路径</b>，
+     *       我们不需要自己另造一套命中伤害结算。</li>
+     * </ol>
      *
-     * <p>同时把该箭从追踪箭表里摘掉 —— 命中的箭马上就没了，
-     * 留着条目就是泄漏（这条路径与"过期/失效"那条互为补充）。
+     * <h2>★ 幂等保护（"多活 2 tick"带来的重复触发坑）</h2>
+     * 箭命中后要再存活 2 tick，这期间它仍在世界里，可能再次收到
+     * {@code ProjectileHitEvent}（方块表面的二次碰撞 / 擦到第二个实体 / 反弹），
+     * 那样粒子与范围伤害就会被放两遍。这里用<b>两道</b>保护：
+     * <ol>
+     *   <li><b>立刻从 {@link #TRACKED_ARROWS} 摘除</b> —— 监听器的判据
+     *       {@link #isTrackedTracker} 靠的就是这张表，摘掉之后本方法不会再被叫到；</li>
+     *   <li><b>再加一个专门的"已结算"标记集合</b> {@link #TRACKER_HIT_DONE}
+     *       —— 因为"表里没有"与"没登记过"在别的路径上可能重合，
+     *       用一个独立标记保证"这一发只结算一次"这件事有单一出处。</li>
+     * </ol>
+     * 延迟移除用 {@code runTaskLater(2L)}（不吞异常），且到点先确认那支箭<b>还是</b>
+     * 本方派出的那一支（UUID 相同）才移除，避免误删。
      *
      * @param arrow    命中的那支追踪箭
      * @param hitPoint 命中点（null 时退化为箭自己的位置）
-     * @return 实际喷出的粒子数
+     * @return 现场读数（粒子数 / 范围伤害数值与半径 / 实际扣血数），供命令打印
      */
-    int onTrackerHit(Arrow arrow, Location hitPoint) {
+    TrackerHit onTrackerHit(Arrow arrow, Location hitPoint) {
         if (arrow == null) {
-            return 0;
+            return new TrackerHit(0, 0.0D, 0, 0, false);
         }
-        TRACKED_ARROWS.remove(arrow.getUniqueId());
+        UUID id = arrow.getUniqueId();
+        // ★ 幂等保护第 1 道：这一发已经结算过就直接退出（多活 2 tick 期间的重复事件）
+        if (!TRACKER_HIT_DONE.add(id)) {
+            return new TrackerHit(0, 0.0D, 0, 0, true);
+        }
+        // ★ 幂等保护第 2 道：从追踪表摘除，之后 isTrackedTracker 不再认它
+        TRACKED_ARROWS.remove(id);
+
         Location at = hitPoint == null ? arrow.getLocation() : hitPoint.clone();
         World world = at.getWorld();
         if (world == null) {
-            return 0;
+            return new TrackerHit(0, 0.0D, 0, 0, false);
         }
+
+        // ① 小喷泉（上一轮的要求，保留）
         int count = TRACKER_HIT_FOUNTAIN;
         // 一次发包、球形散开：这就是"喷泉状"的最小实现（与命中点那口大喷泉同一套写法）
         world.spawnParticle(Particle.FLAME, at, count, 0.8D, 0.8D, 0.8D, 0.12D, null, true);
-        return count;
+
+        // ② 命中点这一圈范围伤害（新增）：复用 damageSphere，用 tracker-impact-* 那一组参数
+        //    ★ ctx 是专门为这支衍生箭造的：causing = 发射者（从箭上反查）、direct = 这支箭本身
+        //      —— 于是保护插件看到的是"一支箭打过来"，与落点那次同构。
+        Shot ctx = new Shot(shooterIdOf(arrow), shooterOf(arrow), at, new Vector(0, 1, 0),
+                System.currentTimeMillis(), 0L, null, 0.0F, arrow);
+        double radius = configuredTrackerImpactRadius();
+        double damage = configuredTrackerImpactDamage();
+        int damaged = damageSphere(ctx, at, radius, damage, arrow);
+
+        // ③ 2 tick 后消失（用户口径）——留出原版结算直接命中伤害的窗口
+        Bukkit.getScheduler().runTaskLater(Touhou.getInstance(), () -> {
+            try {
+                if (arrow.isValid()) {
+                    arrow.remove();
+                }
+            } finally {
+                TRACKER_HIT_DONE.remove(id);
+            }
+        }, TRACKER_DESPAWN_DELAY_TICKS);
+
+        return new TrackerHit(count, radius, configuredTrackerImpactDamage(), damaged, false);
+    }
+
+    /**
+     * 一次"追踪箭命中"的现场读数（诊断用）。
+     *
+     * @param particles 喷出的火焰粒子数
+     * @param radius    范围伤害的球半径（格）
+     * @param damage    范围伤害的数值（弹射物伤害）
+     * @param damaged   被这一圈范围伤害实际扣血的实体数
+     * @param duplicate {@code true} = 这次调用命中了幂等保护（重复事件，什么都没做）
+     */
+    public record TrackerHit(int particles, double radius, int damage, int damaged,
+                             boolean duplicate) {
+    }
+
+    /** 从一支本道具的追踪箭反查它的发射者（没有就 null）。 */
+    private LivingEntity shooterOf(Arrow arrow) {
+        org.bukkit.projectiles.ProjectileSource src = arrow.getShooter();
+        return src instanceof LivingEntity le ? le : null;
+    }
+
+    /** 从一支本道具的追踪箭反查发射者 UUID（没有就 null）。 */
+    private UUID shooterIdOf(Arrow arrow) {
+        LivingEntity le = shooterOf(arrow);
+        return le == null ? null : le.getUniqueId();
     }
 
     /**
@@ -1349,7 +1509,7 @@ public class MurderousLily extends PartyItem {
             Bukkit.getScheduler().runTask(Touhou.getInstance(), () -> notifySim(
                     AddSlimefunItems.MURDEROUS_LILY, arrowId, done,
                     new BurstReport(FinishReason.REMOVED, "-", done.origin,
-                            new Vector(0, 1, 0), 0.0D, -1, 0.0D, 0, 0, 0)));
+                            new Vector(0, 1, 0), 0.0D, -1, 0.0D, 0.0D, 0, 0, 0)));
         }
     }
 
@@ -1387,11 +1547,23 @@ public class MurderousLily extends PartyItem {
 
     private double configuredImpactRadius() {
         Double v = impactRadius == null ? null : impactRadius.getValue();
-        return v == null ? 3.0D : Math.max(0.1D, v);
+        return v == null ? 6.0D : Math.max(0.1D, v);
     }
 
     private int configuredImpactDamage() {
         Integer v = impactDamage == null ? null : impactDamage.getValue();
+        return v == null ? 40 : Math.max(0, v);
+    }
+
+    /** 衍生箭命中那一圈范围伤害的半径（默认 3 格）。★ 与落点那一组完全独立。 */
+    private double configuredTrackerImpactRadius() {
+        Double v = trackerImpactRadius == null ? null : trackerImpactRadius.getValue();
+        return v == null ? 3.0D : Math.max(0.1D, v);
+    }
+
+    /** 衍生箭命中那一圈范围伤害的数值（默认 24 点）。★ 与落点那一组完全独立。 */
+    private int configuredTrackerImpactDamage() {
+        Integer v = trackerImpactDamage == null ? null : trackerImpactDamage.getValue();
         return v == null ? 24 : Math.max(0, v);
     }
 
@@ -1482,17 +1654,21 @@ public class MurderousLily extends PartyItem {
         out.add("  trailParticles  = " + configuredTrailParticles() + " FLAME / tick（伴随阶段一箭矢）");
         out.add("  laser           = 长 " + configuredLaserLength() + " 格，直径 "
                 + configuredLaserDiameter() + " 格（可被实体方块截断；只管几何与粒子，不结算伤害）");
-        out.add("  范围伤害        = 以命中点为球心 " + configuredImpactRadius() + " 格内每个目标 "
-                + configuredImpactDamage() + " 点【弹射物伤害】（护甲/无敌帧/保护插件全部生效）");
+        out.add("  落点范围伤害    = 球心 " + configuredImpactRadius() + " 格内每个目标 "
+                + configuredImpactDamage() + " 点【弹射物伤害】（键 impact-radius / impact-damage）");
+        out.add("  衍生箭命中伤害  = 球心 " + configuredTrackerImpactRadius() + " 格内每个目标 "
+                + configuredTrackerImpactDamage() + " 点【弹射物伤害】"
+                + "（键 tracker-impact-radius / tracker-impact-damage，与落点那组独立）");
         out.add("  fountain        = " + configuredFountainParticles() + " FLAME（命中点一次撒完）");
-        out.add("  trackers        = " + configuredTrackerCount() + " 支，伤害 "
-                + configuredTrackerDamage() + "（普通箭矢伤害），初速 "
+        out.add("  trackers        = " + configuredTrackerCount() + " 支，直接命中伤害 "
+                + configuredTrackerDamage() + "（原版箭矢伤害，★ 保留），初速 "
                 + String.format("%.2f", configuredTrackerSpeed()) + " 格/tick（提高 40%），"
                 + configuredTrackerGuideTicks() + " tick（" + trackerGuideDelaySeconds.getValue()
                 + " 秒）后开始追踪，半径 " + configuredTrackerRange() + " 格，存活 "
                 + configuredTrackerSeconds() + " 秒，粒子 " + configuredTrackerParticles()
                 + " FLAME / tick / 支");
-        out.add("  追踪箭命中      = 以命中点为中心喷 " + TRACKER_HIT_FOUNTAIN + " FLAME");
+        out.add("  追踪箭命中      = 以命中点为中心喷 " + TRACKER_HIT_FOUNTAIN + " FLAME，"
+                + "并且命中后 " + TRACKER_DESPAWN_DELAY_TICKS + " tick 消失（原版直接命中伤害照常结算）");
         out.add("  粒子估算        = 阶段一 " + configuredTrailParticles() + "/tick；阶段二瞬时 "
                 + (configuredFountainParticles() + laserParticleEstimate())
                 + " 个（一次性），之后 " + configuredTrackerCount() + " 支 × "
@@ -1860,6 +2036,7 @@ public class MurderousLily extends PartyItem {
         TRACKER_TASKS.clear();
         SIM_CALLBACKS.clear();
         SIM_STATE.clear();
+        TRACKER_HIT_DONE.clear();   // 幂等标记也一并收回，避免长期驻留
         return n;
     }
 }

@@ -422,11 +422,13 @@ seal:
 #             （不做区块加载检测 —— 早期那条 isChunkLoaded 判据已按要求删除）
 #     阶段二（命中点爆发，四件事同时发生）：
 #             ① 激光：长 20 格、直径 3 格、可被实体方块截断（只管几何与粒子）；
-#             ② 命中点范围伤害：以落点为球心、半径 3 格内每个目标 24 点【弹射物伤害】；
+#             ② 落点范围伤害：以命中点为球心、半径 6 格内每个目标 40 点【弹射物伤害】；
 #             ③ 喷泉：命中点周围 400 个火焰粒子（纯视觉）；
 #             ④ 12 支追踪箭：初速 1.4 格/tick（提高 40%），射出 0.5 秒后才开始追踪，
 #                追踪半径 20 格、存活 5 秒、每 tick 2 个粒子、伤害 12（普通箭矢伤害）；
-#                每支命中时还会以命中点为中心再喷 50 个火焰粒子。
+#                每支命中时：喷 50 个火焰粒子 + 以命中点为球心半径 3 格内每个目标
+#                24 点【弹射物伤害】，并且【命中后 2 tick 消失】
+#                （留出原版结算直接命中伤害的窗口，所以那 12 点照旧走原版路径）。
 #
 #   ★★ 方向规则（用户原文有歧义，按"外法线向外"实现）：
 #     击中方块 ⇒ 取该面的【外法线向外】（击中北面 ⇒ 激光/喷泉朝北，
@@ -440,14 +442,15 @@ seal:
 #       与梦想封印 集完全同一条路径（arrow.setDamage + setShooter），
 #       护甲/无敌帧/保护插件的 EntityDamageByEntityEvent 全部照常生效，
 #       排除发射者由原版箭矢自己完成；
-#     · 命中点范围伤害（24）走【弹射物伤害】通道 ——
-#       Damageable#damage(24, DamageSource.ARROW)，同样全部照常生效。
+#     · 落点范围伤害（40 / 半径 6）与衍生箭命中的范围伤害（24 / 半径 3）
+#       走【弹射物伤害】通道 —— Damageable#damage(amount, DamageSource.ARROW)，
+#       同样全部照常生效。
 #     ★ 2026-09-21 用户把激光伤害改成"落点球心的弹射物伤害"之后，
 #       原先那套 setHealth 真伤 + TrueDamageProbeEvent 探测事件已【整体移除】，
 #       也就不再有"保护插件收不到通知"的代价。
 #
 #   ★★ 不伤害发射者：exclude-shooter 默认 true，
-#     命中点范围伤害与追踪箭的索敌【两处】都排除发射者本人。
+#     落点范围伤害、衍生箭命中范围伤害、以及追踪箭的索敌【三处】都排除发射者本人。
 #     队伍/队友概念 spec 没提，不做推测性实现。
 #
 #   ★★ 这套 POWER 数据与梦想封印 集【共用一份声明】（PartyItem 基类）：
@@ -461,7 +464,8 @@ seal:
 #        max-distance 120       max-seconds 8            trail-particles 5
 #        arrow-speed-multiplier 2.5                      （阶段一实速 3.125 格/tick）
 #        laser-length 20        laser-diameter 3.0      （只管几何与粒子，不结算伤害）
-#        impact-radius 3.0      impact-damage 24        （弹射物伤害，以命中点为球心）
+#        impact-radius 6.0      impact-damage 40        （落点，弹射物伤害）
+#        tracker-impact-radius 3.0  tracker-impact-damage 24   （衍生箭命中，独立一组）
 #        fountain-particles 400 tracker-count 12         tracker-damage 12
 #        tracker-speed-multiplier 1.4                    （衍生箭实速 1.4 格/tick）
 #        tracker-guide-delay-seconds 0.5                 （射出 0.5 秒后才开始追踪）

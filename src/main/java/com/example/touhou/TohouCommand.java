@@ -168,7 +168,8 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         s.sendMessage("\u00a77/touhou lily beam <x> <y> <z> <面>   按某个面探激光长度（是否被物块截断）");
         s.sendMessage("\u00a77/touhou lily fire <x> <y> <z> <dx> <dy> <dz> [玩家] [--force]   完整发射仿真");
         s.sendMessage("\u00a77/touhou lily laser <x> <y> <z> <面> [玩家]   实弹激光：弹射物范围伤害 + 排除发射者");
-        s.sendMessage("\u00a77/touhou lily impact <x> <y> <z> [玩家]        只做命中点爆发（激光+喷泉+追踪箭）");
+        s.sendMessage("\u00a77/touhou lily impact <x> <y> <z> [玩家]        只做命中点爆发（激光+喷泉+落点范围伤害+追踪箭）");
+        s.sendMessage("\u00a77/touhou lily tracers <x> <y> <z> [玩家]       衍生箭实弹测试（命中范围伤害 + 2 tick 消失）");
         s.sendMessage("\u00a77/touhou lily cleanup               把两张追踪表收干净并打印条目数");
         s.sendMessage("\u00a77/touhou guide [reactor|saizen]   粘液书自定义配方页的内容自检（展示列表 + 可合成性核查）");
         s.sendMessage("\u00a77/touhou place <x> <y> <z> <sfId> [world] [--force]");
@@ -2096,8 +2097,8 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage("\u00a77  激光（几何）= " + String.format("%.2f", report.beamLength())
                     + " 格长" + (report.beamBlockedAt() < 0 ? "，未被截断"
                             : "，截断于第 " + report.beamBlockedAt() + " 格"));
-            sender.sendMessage("\u00a77  命中点范围伤害 = " + report.impactDamage()
-                    + " 点弹射物伤害，球半径 " + lily.probeBeam(loc, null).impactRadius()
+            sender.sendMessage("\u00a77  落点范围伤害 = " + report.impactDamage()
+                    + " 点弹射物伤害，球半径 " + report.impactRadius()
                     + " 格，实际扣血 " + report.damaged() + " 个实体");
             sender.sendMessage("\u00a77  喷泉 = " + report.fountain() + " 粒子，追踪箭 = "
                     + report.trackers() + " 支");
@@ -2106,13 +2107,84 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
             }
             log("[TOUHOU] lily impact @ " + xyz(loc)
                     + " len=" + String.format("%.2f", report.beamLength())
+                    + " impact=" + report.impactDamage() + "@" + report.impactRadius()
                     + " trackers=" + report.trackers() + " fountain=" + report.fountain());
+            return;
+        }
+
+        if (action.equals("tracers")) {
+            // ★ 衍生箭命中路径的实弹验证：放一头活靶，朝它射 12 支衍生箭，
+            //    然后打印"最近一次追踪箭命中"的读数 + 追踪箭表条目数。
+            String[] rest = Arrays.copyOfRange(args, 1, args.length);
+            Location loc = resolveAny(sender, rest);
+            if (loc == null) {
+                return;
+            }
+            String nameHint = rest.length >= 4 ? rest[3] : null;
+            Object[] pick = ensureShooter(nameHint, loc.clone().add(0.0D, 2.0D, 0.0D));
+            org.bukkit.entity.LivingEntity who = (org.bukkit.entity.LivingEntity) pick[0];
+            boolean fakeMade = Boolean.TRUE.equals(pick[1]);
+            if (who == null) {
+                sender.sendMessage(PREFIX + "\u00a7c需要一个发射者（不指定玩家名时本命令会临时造一个）");
+                return;
+            }
+            // 活靶：放在发射者正下方偏一点，让"喷泉样式"的箭有机会扫到它
+            org.bukkit.entity.Cow target = loc.getWorld().spawn(
+                    loc.clone().add(0.0D, 0.5D, 2.0D), org.bukkit.entity.Cow.class, c -> {
+                        c.setAI(false);
+                        c.setSilent(true);
+                        c.setPersistent(false);
+                        c.setCollidable(true);   // 要能被箭打中
+                    });
+            java.util.List<org.bukkit.entity.Entity> spawned = new ArrayList<>();
+            spawned.add(target);
+
+            int n = lily.fireTrackersForTest(who, loc);
+            sender.sendMessage(PREFIX + "\u00a7e衍生箭实弹测试 @ " + xyz(loc)
+                    + "  发射者=" + who.getType() + "  活靶=COW @ " + xyz(target.getLocation()));
+            sender.sendMessage("\u00a77  已放出追踪箭 = " + n + " 支；追踪表条目 = "
+                    + com.example.touhou.core.MurderousLily.trackedTrackerCount());
+            sender.sendMessage("\u00a78  等 3 秒让它们飞到活靶（0.5 秒后才开始追踪）…");
+            for (org.bukkit.entity.Entity e : spawned) {
+                new org.bukkit.scheduler.BukkitRunnable() {
+                    @Override
+                    public void run() {
+                        removeFakeShooter(e);
+                    }
+                }.runTaskLater(Touhou.getInstance(), 100L);
+            }
+            if (fakeMade) {
+                new org.bukkit.scheduler.BukkitRunnable() {
+                    @Override
+                    public void run() {
+                        removeFakeShooter(who);
+                    }
+                }.runTaskLater(Touhou.getInstance(), 140L);
+            }
+            for (int i = 1; i <= 3; i++) {
+                new org.bukkit.scheduler.BukkitRunnable() {
+                    @Override
+                    public void run() {
+                        sender.sendMessage("\u00a78  [" + (System.currentTimeMillis() % 100000)
+                                + "] 追踪箭表剩余 = "
+                                + com.example.touhou.core.MurderousLily.trackedTrackerCount()
+                                + "   最近命中读数 = "
+                                + com.example.touhou.core.MurderousLilyListener
+                                        .lastTrackerHitSummary());
+                        log("[TOUHOU] lily tracers 追踪箭表剩余="
+                                + com.example.touhou.core.MurderousLily.trackedTrackerCount()
+                                + " 最近命中=" + com.example.touhou.core.MurderousLilyListener
+                                        .lastTrackerHitSummary());
+                    }
+                }.runTaskLater(Touhou.getInstance(), 40L * i);
+            }
             return;
         }
 
         sender.sendMessage(PREFIX + "\u00a77用法: /touhou lily <selfcheck|dir <面>|beam <x> <y> <z> <面>|"
                 + "fire <x> <y> <z> <dx> <dy> <dz> [玩家] [--force]|"
-                + "laser <x> <y> <z> <面> [玩家]|impact <x> <y> <z> [玩家]|cleanup>");
+                + "laser <x> <y> <z> <面> [玩家]|impact <x> <y> <z> [玩家]|"
+                + "tracers <x> <y> <z> [玩家]|cleanup>");
     }
 
     /**
@@ -2557,7 +2629,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         }
         if (args[0].equalsIgnoreCase("lily") && args.length == 2) {
             return filter(List.of("selfcheck", "dir", "beam", "fire", "laser", "impact",
-                    "cleanup"), args[1]);
+                    "tracers", "cleanup"), args[1]);
         }
         if (args[0].equalsIgnoreCase("lily") && args.length == 3
                 && args[1].equalsIgnoreCase("dir")) {
