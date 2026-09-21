@@ -389,10 +389,13 @@ public class EchoOfAnotherWorld extends SlimefunItem implements RecipeDisplayIte
      * —— 于是"读回来的数量"为 0，循环里那个"双保险"判定直接把每一格都 {@code continue} 掉：
      * <b>水晶被删了，回响一个都没发</b>（实测：3 个能量水晶凭空消失）。
      *
-     * <p>修法是让"数量"不依赖二次读取：扫描时就把当时那一格的 {@link ItemStack}
-     * 原样存下来（{@code getItem} 返回的是副本，之后再改背包也不会污染这份快照）。
-     * 顺带把"删水晶 + 发回响"合并成<b>一次</b> {@code setItem}，中途不再有
-     * "这一格是空的"的中间态。
+     * <p>所以修法是：扫描阶段<b>只看不删</b>，数量一律在"还没动过任何格子"的时候读；
+     * 然后对每个命中槽位做<b>一次</b> {@code setItem}，把"删水晶 + 发回响"合并成同一个动作
+     * —— 中途不再有"这一格是空的"的中间态，也就不存在丢东西的窗口。
+     *
+     * <p>★ 顺带一个安全性推论：只要扫到就说明那一格的 {@code getAmount() >= 1}，
+     * 而 {@code perCrystal} / {@code perEcho} 都被钳到 {@code >= 1}，
+     * 所以 {@code produced >= 1} 恒成立 —— 这条路径永远不会把物品删掉却不发货。
      *
      * @param storageSlots 命中槽位（Bukkit 官方编号）
      * @param offHand      副手是否命中；命中时槽号是 {@link #OFF_HAND_SLOT}
