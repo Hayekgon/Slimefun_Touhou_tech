@@ -54,6 +54,9 @@ public final class AddItems {
      */
     public static SlimefunItemStack INFO_MODESHIFT;
 
+    /** 春泥（妖精之力素材）。 */
+    public static SlimefunItemStack SPRING_MUD;
+
     // ------------------------------------------------------------------ INFO 组：信息类纸张
     // 全部使用 PAPER 材质，纯信息展示，无配方、无功能。
     // id 规范：TOUHOU_INFO_"物品名英文"，全大写。
@@ -241,7 +244,14 @@ public final class AddItems {
                 "",
                 "&7通过传送门时无疑窥见了幻想世界的一角。手中的电子被解构为不存在之物。");
 
-        INFO_MODESHIFT = new SlimefunItemStack(
+                SPRING_MUD = new SlimefunItemStack(
+                "TOUHOU_MATERIAL_SPRING_MUD",
+                Material.MOSS_BLOCK,
+                "&a春泥",
+                "",
+                "&a化作春泥更护花......",
+                "&a散发出微弱的妖精之力");
+INFO_MODESHIFT = new SlimefunItemStack(
                 "TOUHOU_INFO_MODESHIFT",
                 Material.PURPLE_STAINED_GLASS_PANE,
                 "&d模式切换",

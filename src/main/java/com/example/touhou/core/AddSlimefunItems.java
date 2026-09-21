@@ -9,6 +9,7 @@ import com.example.touhou.power.PowerSupplyUnit;
 import io.github.thebusybiscuit.slimefun4.api.items.SlimefunItem;
 import io.github.thebusybiscuit.slimefun4.api.recipes.RecipeType;
 import io.github.thebusybiscuit.slimefun4.implementation.SlimefunItems;
+import org.bukkit.Material;
 import org.bukkit.inventory.ItemStack;
 
 /**
@@ -26,6 +27,8 @@ public final class AddSlimefunItems {
     public static UtsuhoReactorCore UTSUHO_REACTOR_CORE;
     /** 炙热的灰烬（材料）。 */
     public static SlimefunItem BLAZING_ASH;
+    /** 春泥（妖精之力素材）。 */
+    public static SlimefunItem SPRING_MUD;
     /**
      * 另一个世界的回响（材料；玩家穿过维度之门时由能量水晶转化而来）。
      *
@@ -119,6 +122,14 @@ public final class AddSlimefunItems {
                 AddItems.ECHO_OF_ANOTHER_WORLD,
                 TouhouRecipeTypes.DIMENSION_SHUTTLE,
                 noRecipe()), plugin);
+
+        // 春泥：普通材料，用【增强工作台】合成 —— 本项目第一个走原版合成表路径的
+        // 非机器物品（两个核心分别是机器与事件获取）。八格泥土围边，中间夹蒲公英与玫瑰。
+        SPRING_MUD = register(new SlimefunItem(
+                AddGroups.MATERIAL,
+                AddItems.SPRING_MUD,
+                RecipeType.ENHANCED_CRAFTING_TABLE,
+                springMudRecipe()), plugin);
 
         // GUI 模式玻璃板：必须真实注册，否则它的粘液 id 不存在。
         // 归属 INFO（1 级）—— 它是 GUI 内部功能件，不是可制造的材料。
@@ -271,6 +282,26 @@ public final class AddSlimefunItems {
     }
 
     /** 梦想封印 集的配方：竖着一条，模仿钓鱼竿的形状（与改名前一致，没有动）。 */
+    /**
+     * 春泥的合成配方（增强工作台）：八格泥土围边，中间一排是 蒲公英 / 泥土 / 玫瑰。
+     *
+     * <pre>
+     *   泥土    泥土    泥土
+     *   蒲公英  泥土    玫瑰
+     *   泥土    泥土    泥土
+     * </pre>
+     *
+     * <p>★ 这里的「玫瑰」用 {@code Material.POPPY}：它在 1.14 之前的中文名就叫「玫瑰」，
+     * 中文社区至今仍多这么称呼（1.14 之后官方中文改叫「虞美人」）。
+     * 若将来想换成玫瑰丛（{@code ROSE_BUSH}）或凋灵玫瑰（{@code WITHER_ROSE}），改这一处即可。
+     */
+    private static ItemStack[] springMudRecipe() {
+        return new ItemStack[] {
+                new ItemStack(Material.DIRT), new ItemStack(Material.DIRT), new ItemStack(Material.DIRT),
+                new ItemStack(Material.DANDELION), new ItemStack(Material.DIRT), new ItemStack(Material.POPPY),
+                new ItemStack(Material.DIRT), new ItemStack(Material.DIRT), new ItemStack(Material.DIRT)
+        };
+    }
     private static ItemStack[] goheiRecipe() {
         return new ItemStack[] {
                 null, AddItems.BLAZING_ASH, null,
