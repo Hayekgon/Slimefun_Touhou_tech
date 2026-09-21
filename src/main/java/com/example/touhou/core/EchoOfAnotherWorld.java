@@ -271,7 +271,7 @@ public class EchoOfAnotherWorld extends SlimefunItem implements RecipeDisplayIte
             if (last != null && now - last < cfg.echoConvertCooldownMillis) {
                 return remember(new ShuttleReport(ShuttleReport.Kind.COOLDOWN, playerName,
                         fromName, toName, fromEnv, toEnv,
-                        countPowerCrystals(player.getInventory()), 0, 0, -1, now));
+                        countCrystalItems(player.getInventory()), 0, 0, -1, now));
             }
         }
         // ④ 转化
@@ -379,71 +379,141 @@ public class EchoOfAnotherWorld extends SlimefunItem implements RecipeDisplayIte
     }
 
     /**
-     * 转化内核：把"扫到的槽位 + 当时那一格的物品"一次性确定下来，再改写。
+     * 转化内核：先扫（只看不删），再逐格改写。
      *
-     * <h2>★★ 为什么必须"先快照、后改写"（真实踩到的大坑）</h2>
-     * 最初的写法是两步：先 {@code scanSlots(..., true)}（顺手把水晶槽清空），
-     * 再对每个槽位 {@code inv.getItem(slot)} 读回数量来算产出。
-     * 在<b>箱子</b>上这没问题，但在 {@code CraftInventoryPlayer}（玩家背包）上
-     * {@code setItem()} 之后<b>同一 tick 内</b> {@code getItem()} 会返回 {@code null}
-     * —— 于是"读回来的数量"为 0，循环里那个"双保险"判定直接把每一格都 {@code continue} 掉：
-     * <b>水晶被删了，回响一个都没发</b>（实测：3 个能量水晶凭空消失）。
+     * <h2>★★ 为什么必须"先扫完、再改写"（真实踩到的大坑）</h2>
+     * 最初的写法是：先 {@code scanSlots(..., true)} —— 那个重载<b>顺手把命中的槽位清空</b>了 ——
+     * 再对每个命中槽位 {@code inv.getItem(slot)} 读回数量来算产出。
+     * 于是读回来的必然是 {@code null}（那一格刚被自己清掉），循环里那个"双保险"判定
+     * 把每一格都 {@code continue} 掉：<b>水晶被删了，回响一个都没发</b>
+     * （实测：3 个能量水晶凭空消失，箱子与玩家背包<b>都一样</b>）。
+     *
+     * <p>★ 这是一处<b>自己造成的</b>顺序错误，<b>不是</b> {@code CraftInventoryPlayer}
+     * 的什么怪癖 —— 当时的箱子内核测试也是 {@code converted=0}，两边表现完全一致就是证据。
+     * （本类早期版本的注释曾把它归咎于"玩家背包 {@code setItem} 后同 tick {@code getItem}
+     * 返回 null"，那是误判，已改正。）
      *
      * <p>所以修法是：扫描阶段<b>只看不删</b>，数量一律在"还没动过任何格子"的时候读；
      * 然后对每个命中槽位做<b>一次</b> {@code setItem}，把"删水晶 + 发回响"合并成同一个动作
-     * —— 中途不再有"这一格是空的"的中间态，也就不存在丢东西的窗口。
+     * —— 中途不再有"这一格是空的"的中间态。
      *
-     * <p>★ 顺带一个安全性推论：只要扫到就说明那一格的 {@code getAmount() >= 1}，
-     * 而 {@code perCrystal} / {@code perEcho} 都被钳到 {@code >= 1}，
-     * 所以 {@code produced >= 1} 恒成立 —— 这条路径永远不会把物品删掉却不发货。
+     * <p>★ 这条路径的<b>唯一硬保证是"绝不删了不发货"</b>，实现方式是三条判据一起成立才动那一格：
+     * <ol>
+     *   <li>先算出"这一格里有多少个水晶<b>真正参与换算</b>"：
+     *       {@code used = n / perCrystal * perCrystal}（只有凑得成整单位的那些）；
+     *       <b>不足一个单位的部分原样留在那一格</b>；</li>
+     *   <li>{@code used == 0} 或算出来产出 {@code <= 0} ⇒ <b>这一格完全不动</b>
+     *       （配置成 2:1 时"只有 1 个水晶"就属于这种，原样留着 ——
+     *       这里曾经写成"产出 0 就把槽位设成 null"，那是<b>真的会把水晶删掉</b>的 bug）；</li>
+     *   <li>产出先尽量写回原槽；写不回原槽的部分按"背包空槽 → 掉在脚下"的顺序发出去，
+     *       一个都不会蒸发（容器内核那条没有"脚下"，塞不下就记进
+     *       {@link Conversion#notGiven()}，由命令判 FAIL）。</li>
+     * </ol>
      *
      * @param storageSlots 命中槽位（Bukkit 官方编号）
      * @param offHand      副手是否命中；命中时槽号是 {@link #OFF_HAND_SLOT}
+     * @param owner        玩家（用它的背包当"溢出接收方"、用它的位置掉东西）；
+     *                     {@code null} = 容器内核那条（溢出只记账、不落世界）
      */
     private static Conversion convertSlots(Inventory inv, List<Integer> storageSlots,
-                                           boolean offHand, AddonConfig cfg) {
+                                           boolean offHand, AddonConfig cfg, Player owner) {
         int perCrystal = Math.max(1, cfg == null ? 1 : cfg.echoCrystalPerEcho);
         int perEcho = Math.max(1, cfg == null ? 1 : cfg.echoEchoPerCrystal);
 
-        int crystals = 0;
-        int echoes = 0;
-        int firstSlot = -1;
+        // 命中槽位（副手那一格拼在最后）
+        List<Integer> all = new ArrayList<>(storageSlots);
+        if (offHand) {
+            all.add(OFF_HAND_SLOT);
+        }
 
-        for (int slot : storageSlots) {
+        int crystals = 0;       // 真正被消耗掉的水晶数
+        int delivered = 0;      // 真正进了背包/容器的回响数
+        int dropped = 0;        // 背包放不下、掉在脚下的回响数
+        int notGiven = 0;       // 容器内核那条：塞不下又没处可掉的回响数（必须为 0）
+        int firstSlot = -1;
+        List<ItemStack> spill = new ArrayList<>();
+
+        for (int slot : all) {
             ItemStack current = inv.getItem(slot);
             // 双保险：真读不到（或已经不是水晶）就跳过，绝不写回一个空
             if (!isPowerCrystal(current)) {
                 continue;
             }
+            int n = current.getAmount();
+            int used = n / perCrystal * perCrystal;             // 只有整单位参与换算
+            int produced = (int) Math.min(Integer.MAX_VALUE,
+                    (long) used / perCrystal * perEcho);
+            if (used <= 0 || produced <= 0) {
+                // 凑不出一个单位 ⇒ 这一格【原样不动】（曾经的 bug 就在这里删东西）
+                continue;
+            }
             if (firstSlot < 0) {
                 firstSlot = slot;
             }
-            // 一个槽位里可能有 64 个水晶：那就算 64 个，按比例折算
-            int n = current.getAmount();
-            int produced = n / perCrystal * perEcho;
-            crystals += n;
-            echoes += produced;
-            inv.setItem(slot, produced > 0 ? echoStack(produced) : null);
-        }
+            crystals += used;
+            int remain = n - used;                              // 不足一单位的部分
 
-        if (offHand) {
-            ItemStack off = inv instanceof PlayerInventory pi ? pi.getItemInOffHand() : null;
-            if (isPowerCrystal(off)) {
-                if (firstSlot < 0) {
-                    firstSlot = OFF_HAND_SLOT;
-                }
-                int n = off.getAmount();
-                int produced = n / perCrystal * perEcho;
-                crystals += n;
-                echoes += produced;
-                inv.setItem(OFF_HAND_SLOT, produced > 0 ? echoStack(produced) : null);
+            // ① 原位处理：留下 remainder；没有 remainder 时这一格让给回响
+            int inPlace = 0;
+            if (remain > 0) {
+                ItemStack keep = current.clone();
+                keep.setAmount(remain);
+                inv.setItem(slot, keep);
+            } else {
+                inPlace = Math.min(produced, maxStackOf(AddItems.ECHO_OF_ANOTHER_WORLD));
+                inv.setItem(slot, inPlace > 0 ? echoStack(inPlace) : null);
+            }
+            delivered += inPlace;
+
+            // ② 写不回原槽的产出：攒起来，出了循环统一按"背包 → 脚下"发
+            int rest = produced - inPlace;
+            while (rest > 0) {
+                int chunk = Math.min(rest, maxStackOf(AddItems.ECHO_OF_ANOTHER_WORLD));
+                spill.add(echoStack(chunk));
+                rest -= chunk;
             }
         }
 
-        if (crystals == 0) {
-            return new Conversion(0, 0, 0, -1);
+        // ③ 溢出分配：优先塞背包空槽；塞不下才掉在脚下（容器内核那条没有"脚下"）
+        //
+        // ★ 这里必须【按实际入库量】记账，不能把 spill 整个算作 delivered ——
+        //   {@code addItem} 返回的是"没塞进去的那部分"，所以真正入库的是
+        //   {@code stack.getAmount() - 退回量}。踩过：只把"进原槽的"计入 delivered，
+        //   于是溢出那部分明明进了箱子、报告却说少发了（箱子实数 66、报告写 64）。
+        for (ItemStack stack : spill) {
+            int offered = stack == null ? 0 : stack.getAmount();
+            if (offered <= 0) {
+                continue;
+            }
+            int rejected = 0;
+            Map<Integer, ItemStack> left = inv.addItem(stack);
+            for (ItemStack l : left.values()) {
+                rejected += l == null ? 0 : l.getAmount();
+            }
+            delivered += Math.max(0, offered - rejected);
+            if (rejected <= 0) {
+                continue;
+            }
+            // 退回的那部分：玩家那条掉在脚下；容器内核那条只记账（命令据此判 FAIL）
+            ItemStack back = echoStack(rejected);
+            if (owner != null) {
+                dropped += rejected;
+                owner.getWorld().dropItemNaturally(owner.getLocation(), back);
+            } else {
+                notGiven += rejected;
+            }
         }
-        return new Conversion(crystals, echoes, 0, firstSlot);
+
+        int echoes = delivered + dropped;
+        if (crystals == 0) {
+            return new Conversion(0, 0, 0, -1, notGiven);
+        }
+        return new Conversion(crystals, echoes, dropped, firstSlot, notGiven);
+    }
+
+    /** 一个物品模板的单堆上限（回响是 64，但别写死）。 */
+    private static int maxStackOf(ItemStack template) {
+        return template == null ? 64 : Math.max(1, template.getMaxStackSize());
     }
 
     /**
@@ -458,11 +528,11 @@ public class EchoOfAnotherWorld extends SlimefunItem implements RecipeDisplayIte
      * 回响比"原位替换掉的那些槽位"多出来的部分（只有配置成 1:N 才会 > 0）
      * 优先塞进背包空槽，实在塞不下才掉在玩家脚下 —— 绝不静默蒸发。
      *
-     * @return 现场读数（转了几个水晶 / 得到几个回响 / 掉了几个 / 第一个转化的槽位）
+     * @return 现场读数（消耗了几个水晶 / 得到几个回响 / 掉在地上几个 / 第一个转化的槽位）
      */
     public static Conversion convertInventory(Player player, AddonConfig cfg) {
         if (player == null) {
-            return new Conversion(0, 0, 0, -1);
+            return new Conversion(0, 0, 0, -1, 0);
         }
         PlayerInventory inv = player.getInventory();
         List<Integer> slots = scanSlots(inv);
@@ -474,7 +544,7 @@ public class EchoOfAnotherWorld extends SlimefunItem implements RecipeDisplayIte
                 offHand = true;
             }
         }
-        return convertSlots(inv, slots, offHand, cfg);
+        return convertSlots(inv, slots, offHand, cfg, player);
     }
 
     /**
@@ -483,21 +553,30 @@ public class EchoOfAnotherWorld extends SlimefunItem implements RecipeDisplayIte
      * <p>比玩家那条少两件事，都是为了"只动该动的格子"：
      * <ul>
      *   <li>不扫副手（那是 {@link PlayerInventory} 才有的概念）；</li>
-     *   <li>多出来的回响<b>不</b>掉在世界里 —— 只记进
-     *       {@link Conversion#dropped()}，否则一个箱子就能往地上吐东西。</li>
+     *   <li>多出来的回响<b>不</b>掉在世界里 —— 塞不进容器就记进
+     *       {@link Conversion#notGiven()}，否则一个箱子就能往地上吐东西。</li>
      * </ul>
      * 所以命令 {@code /touhou echo container} 能用它证明"判据 + 换算 + 幂等"
      * 三件事，而不会给世界留垃圾。
      */
     public static Conversion convertInventory(Inventory inv, AddonConfig cfg) {
         if (inv == null) {
-            return new Conversion(0, 0, 0, -1);
+            return new Conversion(0, 0, 0, -1, 0);
         }
-        return convertSlots(inv, scanSlots(inv), false, cfg);
+        return convertSlots(inv, scanSlots(inv), false, cfg, null);
     }
 
-    /** 一次转换的读数。 */
-    public record Conversion(int converted, int echoes, int dropped, int firstSlot) {
+    /**
+     * 一次转换的读数。
+     *
+     * @param converted 被消耗掉的水晶数（只有凑成整单位的那些）
+     * @param echoes    实际发出去的回响数（= 进背包/容器的 + 掉在脚下的）
+     * @param dropped   背包放不下、掉在脚下的回响数
+     * @param firstSlot 第一个转化的槽位（{@code -1} = 什么都没转）
+     * @param notGiven  <b>发了但没落地</b>的回响数（容器内核塞不进容器时才有值；
+     *                  正常必须为 0 —— 这是"绝不蒸发"那条保证的机器可核对出口）
+     */
+    public record Conversion(int converted, int echoes, int dropped, int firstSlot, int notGiven) {
     }
 
     // ---------------------------------------------------------------- 内部
@@ -590,6 +669,58 @@ public class EchoOfAnotherWorld extends SlimefunItem implements RecipeDisplayIte
         ItemStack out = AddItems.ECHO_OF_ANOTHER_WORLD.clone();
         out.setAmount(Math.max(1, Math.min(amount, out.getMaxStackSize())));
         return out;
+    }
+
+    /**
+     * 数容器里<b>有几个</b>「另一个世界的回响」（按物品<b>总数</b>算）。
+     *
+     * <p>★ 这是"产出到底有没有真的落地"的<b>独立读数</b>：它不看任何报告对象，
+     * 直接数容器内容。命令 {@code /touhou echo container} 用它来判 PASS/FAIL ——
+     * 只比对报告里的数字是证明不了东西的（报告自说自话也能"通过"）。
+     */
+    public static int countEchoItems(Inventory inv) {
+        if (inv == null) {
+            return 0;
+        }
+        int n = 0;
+        int size = inv.getSize();
+        for (int slot = 0; slot < size; slot++) {
+            ItemStack it = inv.getItem(slot);
+            if (isEcho(it) && it.getAmount() > 0) {
+                n += it.getAmount();
+            }
+        }
+        return n;
+    }
+
+    /** 数容器里回响占了<b>几堆</b>（用来证明"超过一堆时会分堆"，而不是被截断）。 */
+    public static int countEchoStacks(Inventory inv) {
+        if (inv == null) {
+            return 0;
+        }
+        int n = 0;
+        int size = inv.getSize();
+        for (int slot = 0; slot < size; slot++) {
+            if (isEcho(inv.getItem(slot))) {
+                n++;
+            }
+        }
+        return n;
+    }
+
+    /** 是不是「另一个世界的回响」（按粘液 id 判，与水晶那条同一套口径）。 */
+    public static boolean isEcho(ItemStack item) {
+        if (item == null || item.getType().isAir() || item.getAmount() <= 0) {
+            return false;
+        }
+        SlimefunItem sf = SlimefunItem.getByItem(item);
+        return sf != null && getIdSafe().equals(sf.getId());
+    }
+
+    /** 回响的物品 id（拿不到模板时返回空串，避免 NPE）。 */
+    private static String getIdSafe() {
+        return AddItems.ECHO_OF_ANOTHER_WORLD == null
+                ? "" : AddItems.ECHO_OF_ANOTHER_WORLD.getItemId();
     }
 
     private static ShuttleReport remember(ShuttleReport report) {

@@ -2404,12 +2404,18 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
      * 「维度穿梭」的无头验证入口 —— 另一个世界的回响的获取机制。
      *
      * <pre>
-     *   /touhou echo selfcheck                              物品 / 机制参数自检
-     *   /touhou echo rule                                   判定矩阵自测（纯逻辑，不碰世界）
-     *   /touhou echo probe &lt;玩家名&gt; [世界名]                干跑：他会转几个（不改背包）
-     *   /touhou echo shuttle &lt;玩家名&gt; &lt;from&gt; &lt;to&gt; [--force]  真的走一次转化
-     *   /touhou echo cooldown [clear]                       读 / 清玩家级冷却
+     *   /touhou echo selfcheck                          物品 / 机制参数自检（不需要玩家）
+     *   /touhou echo rule                               判定矩阵自测（纯逻辑，不碰世界）
+     *   /touhou echo container &lt;x&gt; &lt;y&gt; &lt;z&gt;            在临时箱子上跑转化内核（不需要玩家）
+     *   /touhou echo convert [玩家名]                    直接转化在线玩家背包（不判维度、不走传送）
+     *   /touhou echo probe &lt;玩家名&gt; [世界名]            干跑：他会转几个（不改背包）
+     *   /touhou echo shuttle &lt;玩家名&gt; &lt;from&gt; &lt;to&gt; [--force]  模拟一次维度穿梭（真的转化）
+     *   /touhou echo cooldown [clear]                   读 / 清玩家级冷却
      * </pre>
+     *
+     * <p>★ <b>不需要玩家</b>的那三条（{@code selfcheck} / {@code rule} / {@code container}）
+     * 是无头测试服上唯一能跑的部分；{@code probe} / {@code shuttle} / {@code convert}
+     * 都需要真实在线玩家（{@code shuttle} 作用的正是事件监听器调用的那个入口）。
      *
      * <p>★ 为什么要 {@code shuttle} 这条"指定 from/to 世界"的形态：
      * 真实触发点是 {@code PlayerChangedWorldEvent}，而<b>无头测试服没有玩家</b>
@@ -2469,18 +2475,28 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
                     log("[TOUHOU] echo cooldown clear -> " + n);
                 } else {
                     int cooling = com.example.touhou.core.EchoOfAnotherWorld.coolingDownCount();
-                    sender.sendMessage(PREFIX + "\u00a7e维度穿梭 · 玩家级冷却");
+                    long[] totals = com.example.touhou.core.EchoOfAnotherWorld.totals();
+                    com.example.touhou.core.EchoOfAnotherWorld.ShuttleReport last =
+                            com.example.touhou.core.EchoOfAnotherWorld.lastReport();
+                    sender.sendMessage(PREFIX + "\u00a7e维度穿梭 · 玩家级冷却与累计");
                     sender.sendMessage("\u00a78  配置冷却 = "
                             + AddonConfig.get().echoConvertCooldownMillis + " ms"
                             + (AddonConfig.get().echoConvertCooldownMillis <= 0 ? "（已关闭）" : ""));
                     sender.sendMessage("\u00a78  此刻处于冷却中的玩家 = " + cooling);
-                    sender.sendMessage("\u00a77  用 /touhou echo cooldown clear 清空");
-                    log("[TOUHOU] echo cooldown cooling=" + cooling);
+                    sender.sendMessage("\u00a78  本次启动累计 = " + totals[0] + " 次穿梭 / "
+                            + totals[1] + " 个回响");
+                    sender.sendMessage("\u00a78  上一次穿梭 = "
+                            + (last == null ? "(本次启动还没有)" : last.summary()));
+                    sender.sendMessage("\u00a77  用 /touhou echo cooldown clear 清空冷却");
+                    log("[TOUHOU] echo cooldown cooling=" + cooling
+                            + " shuttles=" + totals[0] + " echoes=" + totals[1]
+                            + " last=" + (last == null ? "none" : last.summary()));
                 }
             }
             default -> sender.sendMessage(PREFIX
-                    + "\u00a7c用法: /touhou echo [selfcheck|rule|probe <玩家> [世界]|"
-                    + "shuttle <玩家> <from> <to> [--force]|cooldown [clear]]");
+                    + "\u00a7c用法: /touhou echo [selfcheck | rule | container <x> <y> <z> |"
+                    + " convert [玩家] | probe <玩家> [世界] |"
+                    + " shuttle <玩家> <from> <to> [--force] | cooldown [clear]]");
         }
     }
 
@@ -2594,25 +2610,33 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         AddonConfig cfg = AddonConfig.get();
         org.bukkit.World from = resolveWorldByName(worldName, org.bukkit.World.Environment.NETHER);
         org.bukkit.World to = target.getWorld();
-        int crystals = com.example.touhou.core.EchoOfAnotherWorld
-                .countPowerCrystals(target.getInventory());
+        // ★ 口径是【物品总数】（一格 64 个就计 64），不是槽位数 —— 预测值必须与
+        //   实际转化用同一套算法，否则"干跑说会产 3 个、真跑出来 192 个"。
+        int items = com.example.touhou.core.EchoOfAnotherWorld
+                .countCrystalItems(target.getInventory());
+        int perCrystal = Math.max(1, cfg.echoCrystalPerEcho);
+        int perEcho = Math.max(1, cfg.echoEchoPerCrystal);
+        int predict = items / perCrystal * perCrystal / perCrystal * perEcho;
 
         sender.sendMessage(PREFIX + "\u00a7e维度穿梭 · 干跑（不改背包）");
-        sender.sendMessage("\u00a77  玩家： &f" + target.getName()
-                + " &7（此刻在 &f" + to.getName() + "&7）");
-        sender.sendMessage("\u00a77  假设穿梭： &f" + (from == null ? "(找不到世界)" : from.getName())
-                + " &8[" + envOf(from) + "] &7→ &f" + to.getName() + " &8[" + envOf(to) + "]");
-        sender.sendMessage("\u00a77  会成立吗： &f"
+        sender.sendMessage("\u00a77  玩家： \u00a7f" + target.getName()
+                + " \u00a77（此刻在 \u00a7f" + to.getName() + "\u00a77）");
+        sender.sendMessage("\u00a77  假设穿梭： \u00a7f"
+                + (from == null ? "(找不到世界)" : from.getName())
+                + " \u00a78[" + envOf(from) + "] \u00a77→ \u00a7f" + to.getName()
+                + " \u00a78[" + envOf(to) + "]");
+        sender.sendMessage("\u00a77  会成立吗： \u00a7f"
                 + (com.example.touhou.core.EchoOfAnotherWorld.isShuttle(from, to) ? "是" : "否"));
-        sender.sendMessage("\u00a77  背包里的能量水晶： &f" + crystals + " &7个（"
+        sender.sendMessage("\u00a77  背包里的能量水晶： \u00a7f" + items + " \u00a77个（"
                 + com.example.touhou.core.EchoOfAnotherWorld.describeSlots(target) + "）");
-        sender.sendMessage("\u00a77  预计产出： &f"
-                + (crystals / Math.max(1, cfg.echoCrystalPerEcho) * Math.max(1, cfg.echoEchoPerCrystal))
-                + " &7个另一个世界的回响"
-                + " &8（" + cfg.echoCrystalPerEcho + " 水晶 → " + cfg.echoEchoPerCrystal + " 回响）");
+        sender.sendMessage("\u00a77  预计消耗 \u00a7f" + (items / perCrystal * perCrystal)
+                + " \u00a77个 ⇒ 产出 \u00a7f" + predict + " \u00a77个另一个世界的回响"
+                + " \u00a78（" + perCrystal + " 水晶 → " + perEcho + " 回响；"
+                + "不足一个单位的原样留着）");
         sender.sendMessage("\u00a78  真跑请用：/touhou echo shuttle " + target.getName()
                 + " " + (from == null ? "<fromWorld>" : from.getName()) + " " + to.getName());
-        log("[TOUHOU] echo probe player=" + target.getName() + " crystals=" + crystals
+        log("[TOUHOU] echo probe player=" + target.getName() + " items=" + items
+                + " predict=" + predict
                 + " from=" + (from == null ? "null" : from.getName())
                 + " to=" + to.getName());
     }
@@ -2650,10 +2674,10 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         }
 
         sender.sendMessage(PREFIX + "\u00a7e维度穿梭 · 实跑");
-        sender.sendMessage("\u00a77  " + target.getName() + "： &f" + from.getName()
-                + " &8[" + envOf(from) + "] &7→ &f" + to.getName() + " &8[" + envOf(to) + "]"
-                + (force ? " &8（--force：忽略玩家冷却）" : ""));
-        sender.sendMessage("\u00a77  转化前背包里的能量水晶： &f"
+        sender.sendMessage("\u00a77  " + target.getName() + "： \u00a7f" + from.getName()
+                + " \u00a78[" + envOf(from) + "] \u00a77→ \u00a7f" + to.getName() + " \u00a78[" + envOf(to) + "]"
+                + (force ? " \u00a78（--force：忽略玩家冷却）" : ""));
+        sender.sendMessage("\u00a77  转化前背包里的能量水晶： \u00a7f"
                 + com.example.touhou.core.EchoOfAnotherWorld.describeSlots(target));
         com.example.touhou.core.EchoOfAnotherWorld.ShuttleReport rep =
                 com.example.touhou.core.EchoOfAnotherWorld.shuttle(target, from, to, force);
@@ -2661,7 +2685,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         for (String line : rep.lines()) {
             sender.sendMessage("\u00a78  " + color(line));
         }
-        sender.sendMessage("\u00a77  转化后背包里的能量水晶： &f"
+        sender.sendMessage("\u00a77  转化后背包里的能量水晶： \u00a7f"
                 + com.example.touhou.core.EchoOfAnotherWorld.describeSlots(target));
         sender.sendMessage("\u00a78  提示：紧接着再敲一次同样的命令（带 --force）应当报"
                 + " crystals=0 echoes=0 —— 那就是幂等");
@@ -2702,20 +2726,23 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         org.bukkit.inventory.PlayerInventory inv = target.getInventory();
 
         sender.sendMessage(PREFIX + "\u00a7e维度穿梭 · 直接转化（不判维度、不走传送）");
-        sender.sendMessage("\u00a77  玩家： &f" + target.getName()
-                + " &7（" + target.getWorld().getName() + "）");
-        sender.sendMessage("\u00a77  命中槽位（0..35 与副手 " + com.example.touhou.core.EchoOfAnotherWorld.OFF_HAND_SLOT
-                + "）： &f" + com.example.touhou.core.EchoOfAnotherWorld.describeSlots(target));
-        sender.sendMessage("\u00a77  物品总数： &f"
+        sender.sendMessage("\u00a77  玩家： \u00a7f" + target.getName()
+                + " \u00a77（" + target.getWorld().getName() + "）");
+        sender.sendMessage("\u00a77  命中槽位（0..35 与副手 "
+                + com.example.touhou.core.EchoOfAnotherWorld.OFF_HAND_SLOT
+                + "）： \u00a7f" + com.example.touhou.core.EchoOfAnotherWorld.describeSlots(target));
+        sender.sendMessage("\u00a77  物品总数： \u00a7f"
                 + com.example.touhou.core.EchoOfAnotherWorld.countCrystalItems(inv));
 
         com.example.touhou.core.EchoOfAnotherWorld.Conversion c1 =
                 com.example.touhou.core.EchoOfAnotherWorld.convertInventory(target, cfg);
-        sender.sendMessage("\u00a77  第一遍： &fconverted=" + c1.converted()
+        sender.sendMessage("\u00a77  第一遍： \u00a7fconverted=" + c1.converted()
                 + " echoes=" + c1.echoes() + " dropped=" + c1.dropped()
-                + " firstSlot=" + c1.firstSlot());
-        sender.sendMessage("\u00a77  转化后命中槽位： &f"
+                + " notGiven=" + c1.notGiven() + " firstSlot=" + c1.firstSlot());
+        sender.sendMessage("\u00a77  转化后命中槽位： \u00a7f"
                 + com.example.touhou.core.EchoOfAnotherWorld.describeSlots(target));
+        sender.sendMessage("\u00a78  副手那格（Bukkit 槽 " + com.example.touhou.core.EchoOfAnotherWorld.OFF_HAND_SLOT
+                + "）现在是 = " + describeOne(inv.getItemInOffHand()));
 
         com.example.touhou.core.EchoOfAnotherWorld.Conversion c2 =
                 com.example.touhou.core.EchoOfAnotherWorld.convertInventory(target, cfg);
@@ -2787,22 +2814,11 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
             return;
         }
 
+        // ★ findFlatSpot 已经保证 spot 与 spot+1 都是空气，所以 chest 那一格必然是空气
+        //   （这里不再写"那一格本来有方块"的分支 —— 那是永远走不到的死代码，
+        //    而且它只会恢复 Material、会抹掉 BlockData）。
         org.bukkit.block.Block chest = spot.getRelative(0, 1, 0);
-        boolean placed = chest.getType().isAir();
-        String beforeType = chest.getType().name();
-        if (placed) {
-            chest.setType(Material.CHEST, false);
-        } else {
-            try {
-                org.bukkit.block.data.type.Chest data = (org.bukkit.block.data.type.Chest)
-                        chest.getBlockData();
-                data.setType(org.bukkit.block.data.type.Chest.Type.SINGLE);
-                chest.setBlockData(data, false);
-            } catch (RuntimeException e) {
-                sender.sendMessage(PREFIX + "\u00a7c那一格放不下箱子（" + beforeType + "）");
-                return;
-            }
-        }
+        chest.setType(Material.CHEST, false);
 
         boolean cleared = false;
         try {
@@ -2828,55 +2844,86 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
                     + "槽 8 = 同材质但没有粘液 id 的干扰物、槽 11 = 5 个钻石");
             log("[TOUHOU] echo container @ " + world.getName() + " "
                     + chest.getX() + " " + chest.getY() + " " + chest.getZ()
-                    + " crystalsBefore=" + com.example.touhou.core.EchoOfAnotherWorld
+                    + " crystalSlotsBefore=" + com.example.touhou.core.EchoOfAnotherWorld
                             .countPowerCrystals(inv));
 
-            // ② 跑第一遍（应当 3 + 64 = 67 个水晶 → 67 个回响；默认 1:1）
+            // ② 跑第一遍：默认 1:1 时应当 3 + 64 = 67 个水晶 → 67 个回响
             int itemsBefore = inv.getItem(2).getAmount() + inv.getItem(5).getAmount();
+            int perCrystal = Math.max(1, cfg.echoCrystalPerEcho);
+            int perEcho = Math.max(1, cfg.echoEchoPerCrystal);
+            int usedExpect = itemsBefore / perCrystal * perCrystal;
+            int echoExpect = usedExpect / perCrystal * perEcho;
+
             com.example.touhou.core.EchoOfAnotherWorld.Conversion one =
                     com.example.touhou.core.EchoOfAnotherWorld.convertInventory(inv, cfg);
-            int crystalsAfter1 = com.example.touhou.core.EchoOfAnotherWorld
+            int crystalSlotsAfter1 = com.example.touhou.core.EchoOfAnotherWorld
                     .countPowerCrystals(inv);
+            // ★ 不看报告、直接数【箱子里真的有几个回响】：报告自说自话也能过，
+            //   只有真数物品才能证明"产出确实落地了"。
+            int echoStacksAfter1 = com.example.touhou.core.EchoOfAnotherWorld
+                    .countEchoStacks(inv);
+            int echoItemsAfter1 = com.example.touhou.core.EchoOfAnotherWorld
+                    .countEchoItems(inv);
 
-            sender.sendMessage("\u00a77  第一遍： &fconverted=" + one.converted()
-                    + " echoes=" + one.echoes() + " firstSlot=" + one.firstSlot());
+            sender.sendMessage("\u00a77  第一遍： \u00a7fconverted=" + one.converted()
+                    + " echoes=" + one.echoes() + " dropped=" + one.dropped()
+                    + " notGiven=" + one.notGiven() + " firstSlot=" + one.firstSlot());
             sender.sendMessage("\u00a78    槽 2 = " + describeOne(inv.getItem(2))
                     + "  |  槽 5 = " + describeOne(inv.getItem(5))
                     + "  |  槽 8 = " + describeOne(inv.getItem(8))
                     + "  |  槽 11 = " + describeOne(inv.getItem(11)));
-            sender.sendMessage("\u00a77  转化后剩余水晶槽位 = &f" + crystalsAfter1);
+            sender.sendMessage("\u00a77  转化后：剩余水晶槽位 = \u00a7f" + crystalSlotsAfter1
+                    + " \u00a77，箱子里真的有 \u00a7f" + echoStacksAfter1 + " \u00a77堆 / \u00a7f"
+                    + echoItemsAfter1 + " \u00a77个回响");
 
             // ③ 再跑一遍：幂等 —— 必须是 0 / 0
             com.example.touhou.core.EchoOfAnotherWorld.Conversion two =
                     com.example.touhou.core.EchoOfAnotherWorld.convertInventory(inv, cfg);
-            sender.sendMessage("\u00a77  第二遍（幂等）： &fconverted=" + two.converted()
+            sender.sendMessage("\u00a77  第二遍（幂等）： \u00a7fconverted=" + two.converted()
                     + " echoes=" + two.echoes());
 
             // ④ 判定
-            boolean okConvert = one.converted() == itemsBefore
-                    && one.echoes() == itemsBefore / Math.max(1, cfg.echoCrystalPerEcho)
-                            * Math.max(1, cfg.echoEchoPerCrystal)
-                    && crystalsAfter1 == 0;
+            // ★ 剩余水晶数【按判据现数】，不是恒为 0：默认 1:1 时余 0；
+            //   配成 2:1 时"3 个水晶"里有 1 个凑不成一单位，它必须【原样留在箱子里】
+            //   —— 这正是"绝不删了不发货"要保证的行为。
+            //   ⚠ 不能用"槽 2 数量 + 槽 5 数量"：转化后那两格里装的是回响。
+            int crystalItemsLeft = countCrystalItemsIn(inv);
+            boolean okConvert = one.converted() == usedExpect
+                    && one.echoes() == echoExpect
+                    && one.notGiven() == 0
+                    // 没参与换算的水晶必须一个不少地留在原处
+                    && crystalItemsLeft == itemsBefore - usedExpect
+                    // ★ 真数物品：报告说发了 N 个，箱子里就必须真的有 N 个
+                    && echoItemsAfter1 == echoExpect;
             boolean okIdempotent = two.converted() == 0 && two.echoes() == 0;
-            boolean okPreserve = !com.example.touhou.core.EchoOfAnotherWorld
-                    .isPowerCrystal(inv.getItem(8))
+            // ★ 干扰物必须【还在】且材质没变 —— 不能用 !isPowerCrystal(...) 判，
+            //   因为被删掉的 null 也满足"不是水晶"。
+            ItemStack distractor = inv.getItem(8);
+            boolean okPreserve = distractor != null
+                    && !distractor.getType().isAir()
+                    && distractor.getType() == SlimefunItems.POWER_CRYSTAL.getType()
+                    && !com.example.touhou.core.EchoOfAnotherWorld.isPowerCrystal(distractor)
                     && inv.getItem(11) != null
                     && inv.getItem(11).getType() == Material.DIAMOND
                     && inv.getItem(11).getAmount() == 5;
             sender.sendMessage((okConvert ? "\u00a7a  [PASS] " : "\u00a7c  [FAIL] ")
-                    + "换算正确（" + itemsBefore + " 个水晶 → 期望 "
-                    + (itemsBefore / Math.max(1, cfg.echoCrystalPerEcho)
-                            * Math.max(1, cfg.echoEchoPerCrystal))
-                    + " 个回响，实得 " + one.echoes() + "；转化后剩余水晶槽位 "
-                    + crystalsAfter1 + "）");
+                    + "换算正确且【产出真的落地】（样本 " + itemsBefore + " 个水晶 → 消耗 "
+                    + one.converted() + " / 期望 " + usedExpect
+                    + "，产出 " + echoExpect + " 个回响，箱子里实数 " + echoItemsAfter1
+                    + " 个；剩下 " + crystalItemsLeft + " 个水晶原样留着"
+                    + "；notGiven=" + one.notGiven() + "）");
             sender.sendMessage((okIdempotent ? "\u00a7a  [PASS] " : "\u00a7c  [FAIL] ")
                     + "幂等（第二遍 converted=" + two.converted()
                     + " echoes=" + two.echoes() + "，必须都是 0）");
             sender.sendMessage((okPreserve ? "\u00a7a  [PASS] " : "\u00a7c  [FAIL] ")
-                    + "只动该动的格子（同材质干扰物与钻石原样未动）");
+                    + "只动该动的格子（槽 8 的同材质干扰物仍在、槽 11 的钻石原样未动）");
             log("[TOUHOU] echo container itemsBefore=" + itemsBefore
                     + " converted=" + one.converted() + " echoes=" + one.echoes()
-                    + " after1=" + crystalsAfter1
+                    + " notGiven=" + one.notGiven()
+                    + " crystalSlotsAfter1=" + crystalSlotsAfter1
+                    + " crystalItemsLeft=" + crystalItemsLeft
+                    + " echoStacksAfter1=" + echoStacksAfter1
+                    + " echoItemsAfter1=" + echoItemsAfter1
                     + " secondConverted=" + two.converted() + " secondEchoes=" + two.echoes()
                     + " passConvert=" + okConvert + " passIdempotent=" + okIdempotent
                     + " passPreserve=" + okPreserve);
@@ -2890,14 +2937,9 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
                     s2.getBlockInventory().clear();
                 }
             }
-            if (placed) {
-                chest.setType(Material.AIR, false);
-            } else {
-                chest.setType(beforeType.isEmpty()
-                        ? Material.AIR
-                        : Material.valueOf(beforeType), false);
-            }
-            sender.sendMessage("\u00a78  已清理：箱子内容清空、方块已恢复");
+            // ★ 只拆我们自己放的那个方块（findFlatSpot 保证它原来是空气）
+            chest.setType(Material.AIR, false);
+            sender.sendMessage("\u00a78  已清理：箱子内容清空、方块已恢复成空气");
         }
     }
 
@@ -2909,6 +2951,27 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         String sfId = io.github.thebusybiscuit.slimefun4.api.items.SlimefunItem.getByItem(it) == null
                 ? "-" : io.github.thebusybiscuit.slimefun4.api.items.SlimefunItem.getByItem(it).getId();
         return it.getType() + "×" + it.getAmount() + "[sf=" + sfId + "]";
+    }
+
+    /**
+     * 现数容器里还有几个<b>能量水晶</b>（物品总数，一格 64 个就计 64）。
+     *
+     * <p>用来核对"没参与换算的水晶是不是原样留着"。刻意不复用
+     * {@code countPowerCrystals}（那是槽位口径），也不看 {@code Conversion} 的读数
+     * —— 判定要独立于被检查的那个对象。
+     */
+    private static int countCrystalItemsIn(Inventory inv) {
+        if (inv == null) {
+            return 0;
+        }
+        int n = 0;
+        for (int slot = 0; slot < inv.getSize(); slot++) {
+            ItemStack it = inv.getItem(slot);
+            if (com.example.touhou.core.EchoOfAnotherWorld.isPowerCrystal(it)) {
+                n += it.getAmount();
+            }
+        }
+        return n;
     }
 
     /**
@@ -3240,7 +3303,23 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         if (args.length == 1) {
             return filter(List.of("reactor", "autobuild", "clickinfo", "structure", "saizen", "place",
                     "remove", "edit", "gui", "layout", "groups", "tags", "messages", "reload",
-                    "power", "dreamcatcher", "seal", "lily", "proj", "guide"), args[0]);
+                    "power", "dreamcatcher", "seal", "lily", "echo", "proj", "guide"), args[0]);
+        }
+        if (args[0].equalsIgnoreCase("echo") && args.length == 2) {
+            return filter(List.of("selfcheck", "rule", "container", "convert", "probe",
+                    "shuttle", "cooldown"), args[1]);
+        }
+        if (args[0].equalsIgnoreCase("echo") && args.length == 3
+                && args[1].equalsIgnoreCase("cooldown")) {
+            return filter(List.of("clear"), args[2]);
+        }
+        if (args[0].equalsIgnoreCase("echo") && args.length == 4
+                && args[1].equalsIgnoreCase("shuttle")) {
+            return filter(List.of("overworld", "nether", "end"), args[3]);
+        }
+        if (args[0].equalsIgnoreCase("echo") && args.length == 5
+                && args[1].equalsIgnoreCase("shuttle")) {
+            return filter(List.of("--force"), args[4]);
         }
         if (args[0].equalsIgnoreCase("seal") && args.length == 2) {
             return filter(List.of("selfcheck", "probe"), args[1]);
@@ -3260,7 +3339,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
                     .map(Enum::name).collect(Collectors.toList()), args[4]);
         }
         if (args[0].equalsIgnoreCase("guide") && args.length == 2) {
-            return filter(List.of("reactor", "saizen"), args[1]);
+            return filter(List.of("reactor", "saizen", "echo"), args[1]);
         }
         if ((args[0].equalsIgnoreCase("proj") || args[0].equalsIgnoreCase("projection"))
                 && args.length == 2) {

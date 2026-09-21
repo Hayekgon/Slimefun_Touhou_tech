@@ -312,6 +312,16 @@ public final class AddonConfig {
     public int echoEchoPerCrystal = 1;
 
     /**
+     * 两个换算数的<b>上限</b>（{@link #validate} 用）。
+     *
+     * <p>★ 为什么必须有上限：换算用 {@code int} 算，而一格最多 64 个水晶 ——
+     * {@code echo-per-crystal} 大到 3 千万量级时 {@code 64 * perEcho} 会溢出成负数，
+     * 那会让"产出 &lt;= 0"这条守卫成立，表现为<b>水晶被消耗、回响一个都不发</b>。
+     * 64 已经足以表达任何正常倍率（64 水晶 → 4096 回响封顶）。
+     */
+    public static final int MAX_ECHO_RATIO = 64;
+
+    /**
      * 玩家级转化冷却（毫秒，{@code echo.convert-cooldown-millis}）。
      *
      * <h2>★ 为什么需要它（以及它<b>不</b>解决什么）</h2>
@@ -517,6 +527,10 @@ public final class AddonConfig {
         ConfigurationSection s = cfg.getConfigurationSection("reactor");
         if (s == null) {
             Touhou.getInstance().getLogger().warning("config.yml 缺少 reactor: 段，使用内置默认值");
+            // ★ validate() 必须在这里也调一次：下面读到的 echo / 投影 / 赛钱箱
+            //   这些段的数值钳制全在 validate() 里，而它是本方法唯一一次被调用的地方。
+            //   原先直接 return，等于"config.yml 少了 reactor: 段 ⇒ 别的段的越界值全部不钳"。
+            validate(c);
             return c;
         }
 
@@ -791,6 +805,19 @@ public final class AddonConfig {
             Touhou.getInstance().getLogger().warning(
                     "echo.echo-per-crystal < 1，回退为 1");
             c.echoEchoPerCrystal = 1;
+        }
+        // ★ 上限也必须钳：换算用 int 算，perEcho 大到某个量级会溢出成负数
+        //   （那会让"产出 <= 0"判定成立，表现为"水晶被吃掉、回响不发"）。
+        //   一格最多 64 个水晶，所以 64 已经足够表达任何正常倍率（64:4096 封顶）。
+        if (c.echoCrystalPerEcho > MAX_ECHO_RATIO) {
+            Touhou.getInstance().getLogger().warning(
+                    "echo.crystal-per-echo > " + MAX_ECHO_RATIO + "，钳制为 " + MAX_ECHO_RATIO);
+            c.echoCrystalPerEcho = MAX_ECHO_RATIO;
+        }
+        if (c.echoEchoPerCrystal > MAX_ECHO_RATIO) {
+            Touhou.getInstance().getLogger().warning(
+                    "echo.echo-per-crystal > " + MAX_ECHO_RATIO + "，钳制为 " + MAX_ECHO_RATIO);
+            c.echoEchoPerCrystal = MAX_ECHO_RATIO;
         }
         // 冷却允许 0（=关闭冷却，只留幂等），但负数没有意义
         if (c.echoConvertCooldownMillis < 0) {
