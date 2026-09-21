@@ -182,7 +182,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         s.sendMessage("\u00a77/touhou lily cleanup               把两张追踪表收干净并打印条目数");
         s.sendMessage("\u00a77/touhou echo selfcheck | rule | container <x> <y> <z> | convert [玩家] | probe <玩家> [世界] | shuttle <玩家> <from> <to> [--force] | cooldown [clear]   「维度穿梭」无头验证");
         s.sendMessage("\u00a77/touhou lilywhite [selfcheck|name|recipe]   莉莉白：头贴图 / 粉白渐变（JSON 证据）/ 配方产出 2 个");
-        s.sendMessage("\u00a77/touhou harvest [selfcheck | test <x> <y> <z> | probe <x> <y> <z> | clear <x> <y> <z> | cell <x> <y> <z> [面] | cooldown [clear]]   丰收之时：范围催熟验证（含西瓜南瓜结果）");
+        s.sendMessage("\u00a77/touhou harvest [selfcheck | test <x> <y> <z> | probe <x> <y> <z> | clear <x> <y> <z> | cell <x> <y> <z> [面] | rng <x> <y> <z> | wake <x> <y> <z> [crops|empty] | cooldown [clear]]   丰收之时：范围催熟 / 骨粉行为 / 提示语验证");
         s.sendMessage("\u00a77/touhou guide [reactor|saizen|echo]   粘液书自定义配方页的内容自检（展示列表 + 可合成性核查）");
         s.sendMessage("\u00a77/touhou place <x> <y> <z> <sfId> [world] [--force]");
         s.sendMessage("\u00a77/touhou remove <x> <y> <z>            删除方块 + Slimefun 方块数据（setblock 清不掉）");
@@ -974,6 +974,10 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
             harvestRng(sender, args);
             return;
         }
+        if (sub.equals("wake") || sub.equals("message") || sub.equals("wakemsg")) {
+            harvestWake(sender, args);
+            return;
+        }
         if (sub.equals("clear") || sub.equals("clean")) {
             Location loc = resolveAny(sender, Arrays.copyOfRange(args, 1, args.length));
             if (loc == null) {
@@ -1166,6 +1170,9 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         guideLine(sender, "\u00a78  西瓜/南瓜果实：催熟前 " + beforeFruits + " 个 → 催熟后 "
                 + afterFruits + " 个（新增 " + (afterFruits - beforeFruits) + "）");
         guideLine(sender, "\u00a78  内核自报结出的果实 = " + report.fruitCount() + " 个");
+        guideLine(sender, "\u00a78  详细读数 = " + report.detail()
+                + "；按这次结果该播的提示 = \u00a7f"
+                + com.example.touhou.core.Notify.plain(report.summary()));
         for (String f : report.fruitDetails()) {
             guideLine(sender, "\u00a7a    ★ 结果位置 " + f);
         }
@@ -1360,6 +1367,75 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         log("[TOUHOU] harvest rng @ " + xyz(loc) + " -> " + report.size() + " 种方块已测");
     }
 
+    /**
+     * <b>提示语实测台</b>（{@code /touhou harvest wake <x> <y> <z> [crops|empty]}）。
+     *
+     * <h2>它验证的是"玩家会看到哪一句话"</h2>
+     * 玩家可见文案的唯一出处是 {@link com.example.touhou.core.HarvestTime#announce}
+     * （内部调 {@code HarvestReport#summary()}），而它只在有真实玩家右键时才被调用过。
+     * 无头测试服没有玩家 ⇒ 在加这条命令之前，<b>"提示说没找到、实际却催熟了"这类
+     * 文案 bug 是验不到的</b>（{@code harvest test} 走的是催熟内核，碰不到这句话）。
+     *
+     * <p>这条命令把 {@code publicRun}（冷却 → 催熟 → <b>拼提示</b>）跑一遍并打印：
+     * 走到哪一步（stage）、内核读数、<b>那句话本身</b>，最后按模式断言该走哪一支：
+     * <ul>
+     *   <li>{@code crops}（默认）铺有作物的田 ⇒ 期望「秋姐妹已给予丰收的庇佑」；</li>
+     *   <li>{@code empty} 只铺耕地、什么都不种 ⇒ 期望「没有可以催熟的东西」。</li>
+     * </ul>
+     * 两种模式复用 {@code test} 的同一套造田/清田代码，只差"种不种"这一个变量。
+     */
+    private void harvestWake(CommandSender sender, String[] args) {
+        Location loc = resolveAny(sender, Arrays.copyOfRange(args, 1, args.length));
+        if (loc == null) {
+            return;
+        }
+        String mode = args.length >= 5 ? args[4].toLowerCase(Locale.ROOT) : "crops";
+        if (!mode.equals("crops") && !mode.equals("empty")) {
+            sender.sendMessage(PREFIX + "\u00a7c用法: /touhou harvest wake <x> <y> <z> [crops|empty]");
+            return;
+        }
+        boolean withCrops = mode.equals("crops");
+        Block machine = loc.getBlock();
+
+        guideLine(sender, PREFIX + "\u00a7e丰收之时 · 提示语实测台 @ " + xyz(loc)
+                + "  模式=" + mode + "（" + (withCrops ? "有作物" : "只有耕地、无任何可催熟目标") + "）");
+
+        // 造田：复用 test 的同一套代码，只差"种不种"
+        clearTestFarm(machine, false);
+        for (String line : buildTestFarm(machine, withCrops)) {
+            guideLine(sender, "\u00a78    " + line);
+        }
+
+        // 先清冷却与上一轮播报，保证这一轮读到的就是本轮结果
+        com.example.touhou.core.HarvestTime.clearCooldowns();
+        com.example.touhou.core.HarvestTime.resetLastSummary();
+
+        // 走公共路径（冷却 → 催熟 → 拼提示）
+        com.example.touhou.core.HarvestTime.PublicRun run =
+                com.example.touhou.core.HarvestTime.publicRun(machine, "console-wake");
+        String summary = run.summary;
+        String plain = summary == null ? null : com.example.touhou.core.Notify.plain(summary);
+
+        guideLine(sender, "\u00a7e  -- 公共路径读数 --");
+        guideLine(sender, "\u00a78  " + run.describeRun());
+        guideLine(sender, "\u00a78  详细读数（只进日志）= " + (run.report == null ? "-" : run.report.detail()));
+        guideLine(sender, "\u00a78  玩家会看到的那句话 = \u00a7f"
+                + (plain == null ? "(null —— 没走到拼提示那一步)" : plain));
+
+        // 断言：该走哪一支
+        String expect = withCrops ? "BLESSING" : "NOTHING";
+        String branch = plain == null ? "NONE"
+                : (plain.contains("庇佑") ? "BLESSING"
+                        : (plain.contains("没有可以催熟") ? "NOTHING" : "OTHER"));
+        guideLine(sender, "\u00a78  期望分支 = " + expect + "   实际分支 = " + branch + " ⇒ "
+                + (branch.equals(expect) ? "\u00a7a符合" : "\u00a7c不符合"));
+        log("[TOUHOU] harvest wake @ " + xyz(loc) + " mode=" + mode
+                + " " + run.describeRun() + " expect=" + expect + " actual=" + branch);
+
+        int cleaned = clearTestFarm(machine, true);
+        guideLine(sender, "\u00a78  已清掉测试田 " + cleaned + " 格（世界复原）");
+    }
+
     /** 只对某一格试骨粉（用于手工/无头核对单个方块的响应）。 */
     private void harvestCell(CommandSender sender, String[] args) {
         Location loc = resolveAny(sender, Arrays.copyOfRange(args, 1, args.length));
@@ -1408,6 +1484,18 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
      * 所以命令验证的确实是一台"真正的粘液方块"。
      */
     private List<String> buildTestFarm(Block machine) {
+        return buildTestFarm(machine, true);
+    }
+
+    /**
+     * 同 {@link #buildTestFarm(Block)}，但可以造一块<b>没有可催熟目标</b>的田。
+     *
+     * <p>★ {@code withCrops = false} 是专门为"验证「没有找到可催熟」那句话"准备的：
+     * 只铺耕地、不种任何作物 ⇒ 扫描应当一个目标都找不到，
+     * 提示必须走到"这片地里没有可以催熟的东西"那一支。
+     * 没有这个开关，"无目标"这一支在无头环境里根本造不出来。
+     */
+    private List<String> buildTestFarm(Block machine, boolean withCrops) {
         List<String> planted = new ArrayList<>();
         World world = machine.getWorld();
         int mx = machine.getX();
@@ -1432,7 +1520,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
 
         // 目标层 = 机器那一层（y），保证正下方是 y-1 的耕地
         int ty = my;
-        Object[][] plan = {
+        Object[][] plan = withCrops ? new Object[][]{
                 // {dx, dz, 材质, age（-1 = 用该方块数据的默认值）}
                 {0, -3, Material.WHEAT, 0},
                 {1, -3, Material.CARROTS, 0},
@@ -1445,7 +1533,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
                 {2, 3, Material.PUMPKIN_STEM, 0},
                 // 已成熟的小麦：needsBoneMeal 必须是 false ⇒ 不计入"被催熟"的格数
                 {-2, 3, Material.WHEAT, 7},
-        };
+        } : new Object[0][];
         for (Object[] row : plan) {
             int dx = (Integer) row[0];
             int dz = (Integer) row[1];
@@ -1476,17 +1564,20 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         //     就被自己的清场逻辑铲掉了 —— 实测症状是"范围外对照"被当成目标、
         //     打印成 AIR，看着像是扫描越界。y+2 同样在扫描范围外（更强），
         //     且不在被铲的那一层，能活到比对时刻。
-        world.getBlockAt(mx, my + 1, mz + 3).setType(Material.FARMLAND, false);
-        Block outside = world.getBlockAt(mx, my + 2, mz + 3);
-        outside.setType(Material.WHEAT, true);
-        if (outside.getBlockData() instanceof org.bukkit.block.data.Ageable a) {
-            a.setAge(0);
-            outside.setBlockData(a, true);
+        //   ★ withCrops=false 时不种它：那一模式要的是"一个可催熟目标都没有"。
+        if (withCrops) {
+            world.getBlockAt(mx, my + 1, mz + 3).setType(Material.FARMLAND, false);
+            Block outside = world.getBlockAt(mx, my + 2, mz + 3);
+            outside.setType(Material.WHEAT, true);
+            if (outside.getBlockData() instanceof org.bukkit.block.data.Ageable a) {
+                a.setAge(0);
+                outside.setBlockData(a, true);
+            }
+            planted.add("【范围外对照】" + Material.WHEAT + " @ " + mx + "," + (my + 2) + "," + (mz + 3)
+                    + "  初始 age=" + (outside.getBlockData() instanceof org.bukkit.block.data.Ageable a
+                            ? a.getAge() + "/" + a.getMaximumAge() : "-")
+                    + "  ← 在 y+2，高于扫描上界 y+" + (1) + "，不该被碰");
         }
-        planted.add("【范围外对照】" + Material.WHEAT + " @ " + mx + "," + (my + 2) + "," + (mz + 3)
-                + "  初始 age=" + (outside.getBlockData() instanceof org.bukkit.block.data.Ageable a
-                        ? a.getAge() + "/" + a.getMaximumAge() : "-")
-                + "  ← 在 y+2，高于扫描上界 y+" + (1) + "，不该被碰");
         return planted;
     }
 
@@ -4374,7 +4465,12 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
             return filter(List.of("selfcheck", "name", "recipe"), args[1]);
         }
         if (args[0].equalsIgnoreCase("harvest") && args.length == 2) {
-            return filter(List.of("selfcheck", "test", "probe", "clear", "cell", "rng", "cooldown"), args[1]);
+            return filter(List.of("selfcheck", "test", "probe", "clear", "cell", "rng", "wake",
+                    "cooldown"), args[1]);
+        }
+        if (args[0].equalsIgnoreCase("harvest") && args.length == 6
+                && args[1].equalsIgnoreCase("wake")) {
+            return filter(List.of("crops", "empty"), args[5]);
         }
         if (args[0].equalsIgnoreCase("harvest") && args.length == 3
                 && args[1].equalsIgnoreCase("cooldown")) {

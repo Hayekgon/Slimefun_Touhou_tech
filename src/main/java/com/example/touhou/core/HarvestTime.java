@@ -172,9 +172,99 @@ public class HarvestTime extends SimpleSlimefunItem<BlockUseHandler> {
             block.getWorld().playSound(block.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1.0F, 1.0F);
             spawnParticles(block);
             if (player != null) {
-                Notify.warn(Notify.harvest(), player, report.summary());
+                // ★ 玩家可见的那一句话只由 announce() 生成一次，
+                //   无头验证读的是同一个方法的返回值 ⇒ "命令验的"就是"玩家看到的"
+                Notify.warn(Notify.harvest(), player, announce(report));
             }
         };
+    }
+
+    /**
+     * <b>玩家可见文案的唯一出处</b>：把一次催熟的结果变成那句话。
+     *
+     * <p>★ 抽成独立方法是为了让它<b>可被无头验证直接调用</b>。
+     * 在此之前，这句话是在右键 lambda 里内联拼的，只有真实玩家能触发 ——
+     * 于是"提示说没找到、实际却催熟了"这类 bug <b>在无头环境里根本验不到</b>
+     * （{@code /touhou harvest test} 走的是 {@link #harvest} 内核，碰不到这句话）。
+     * 现在处理器与命令共用这一个方法，命令验的就是玩家看到的。
+     *
+     * <p>同一个理由也适用于 {@code LAST_SUMMARY} 的留存：它是"最近一次真实播报过什么"的证据。
+     */
+    public static String announce(HarvestReport report) {
+        String text = report == null ? null : report.summary();
+        LAST_SUMMARY = text;
+        return text;
+    }
+
+    /**
+     * 上一次"玩家会看到的那句话"（逐字副本，配色码尚未翻译）。
+     *
+     * <p>给无头验证读：它能证明<b>真实右键路径</b>到底播报了哪一支。
+     */
+    private static volatile String LAST_SUMMARY = null;
+
+    /** 上一次播报过的文案（{@code null} = 还没有人右键过）。 */
+    public static String lastSummary() {
+        return LAST_SUMMARY;
+    }
+
+    /** 清掉"上一次播报"的记录（无头验证每轮开始前调，免得读到上一轮的）。 */
+    public static void resetLastSummary() {
+        LAST_SUMMARY = null;
+    }
+
+    /**
+     * 走一遍<b>不依赖玩家</b>的公共路径：冷却 → 催熟 → 拼提示。
+     *
+     * <p>★ 与右键的唯一差别只有"谁触发"：
+     * 权限那一步需要真实 {@code Player}（无头测试服没有），所以这里不跑它 ——
+     * 它由 {@code /touhou harvest test} 里单独验（{@code canHarvest(null, block) == false}）。
+     * 除此之外，冷却判据、催熟内核、<b>以及拼提示</b>都和右键走同一份代码。
+     *
+     * <p>★ 这就是"提示语"能被无头验证的原因：{@link #announce} 是唯一出处。
+     *
+     * @return 那句话；被冷却拦住时返回 {@code null}（并把 stage 标成 COOLDOWN）
+     */
+    public static PublicRun publicRun(Block block, String actor) {
+        PublicRun out = new PublicRun();
+        out.block = block;
+        if (block == null) {
+            out.stage = "NO_BLOCK";
+            return out;
+        }
+        long left = cooldownLeft(block);
+        if (left > 0) {
+            out.stage = "COOLDOWN";
+            out.cooldownLeft = left;
+            return out;
+        }
+        markUsed(block);
+        out.report = harvest(block, actor == null ? "(控制台)" : actor);
+        out.summary = announce(out.report);
+        out.stage = "RAN";
+        return out;
+    }
+
+    /** {@link #publicRun} 的中间读数。 */
+    public static final class PublicRun {
+        public String stage = "(未执行)";
+        public long cooldownLeft;
+        public Block block;
+        public HarvestReport report;
+        public String summary;
+
+        /** 一句话摘要（命令用）。 */
+        public String describeRun() {
+            StringBuilder sb = new StringBuilder("stage=").append(stage);
+            if (report != null) {
+                sb.append(" boneMealed=").append(report.boneMealedCount())
+                        .append(" fruits=").append(report.fruitCount());
+            }
+            if (cooldownLeft > 0) {
+                sb.append(" cooldownLeft=").append(cooldownLeft);
+            }
+            return sb.toString();
+        }
     }
 
     /**
@@ -773,15 +863,39 @@ public class HarvestTime extends SimpleSlimefunItem<BlockUseHandler> {
             return new ArrayList<>(moved);
         }
 
-        /** 玩家可见的一句话。 */
+        /** 这次催熟"有没有发生"的判据 —— 催熟的格数 + 结出的果数。 */
+        public int effectiveCount() {
+            return boneMealedCount() + fruitCount();
+        }
+
+        /**
+         * 玩家可见的一句话 —— <b>整个插件里这句话只有这一个出处</b>
+         * （右键路径与无头验证都走 {@link HarvestTime#announce}，而它调的就是本方法）。
+         *
+         * <p>★ 只有两支：{@link #effectiveCount()} 为 0 走"没有可以催熟"，
+         * 否则走"秋姐妹已给予丰收的庇佑"。
+         * 两支共用<b>同一个</b> {@link #effectiveCount()} 判据 ——
+         * 早先这里分别调用 {@code boneMealedCount() == 0 && fruitCount() == 0} 判分支、
+         * 又分别调用两个计数去拼串，一旦将来只改其中一处口径，
+         * 就会出现"分支按 A 判、文案按 B 拼"的错位。现在只有一个判据、一个出口。
+         */
         public String summary() {
-            if (boneMealedCount() == 0 && fruitCount() == 0) {
-                return "&e丰收之时环顾四周 —— 这片地里没有可以催熟的东西";
+            return effectiveCount() == 0 ? MSG_NOTHING : MSG_BLESSING;
+        }
+
+        /**
+         * 详细读数（"催熟 N 格 / 结果 M 个"）——<b>不进玩家提示</b>，只进日志。
+         *
+         * <p>★ 为什么把它从提示里拆出来：用户要的提示是固定文案（{@link #MSG_BLESSING}），
+         * 把计数塞进去就不再是那句原话了。计数并没丢，改由 {@link #logLine()} 与控制台承担。
+         */
+        public String detail() {
+            if (effectiveCount() == 0) {
+                return "无可催熟目标";
             }
-            StringBuilder sb = new StringBuilder("&6丰收之时：&f催熟 &e")
-                    .append(boneMealedCount()).append(" &f格");
+            StringBuilder sb = new StringBuilder("催熟 ").append(boneMealedCount()).append(" 格");
             if (fruitCount() > 0) {
-                sb.append("，&f另外结出 &e").append(fruitCount()).append(" &f个瓜果");
+                sb.append("，结果 ").append(fruitCount()).append(" 个");
             }
             return sb.toString();
         }
@@ -789,7 +903,14 @@ public class HarvestTime extends SimpleSlimefunItem<BlockUseHandler> {
         /** 一行纯 ASCII 数值日志（便于 grep）。 */
         public String logLine() {
             return "[HARVEST] actor=" + actor + " center=" + centerX + "," + centerY + "," + centerZ
-                    + " boneMealed=" + boneMealedCount() + " fruits=" + fruitCount();
+                    + " boneMealed=" + boneMealedCount() + " fruits=" + fruitCount()
+                    + " effective=" + effectiveCount();
         }
     }
+
+    /** 什么都不用催时的那句话（无头验证按这句做断言）。 */
+    public static final String MSG_NOTHING = "&e丰收之时环顾四周 —— 这片地里没有可以催熟的东西";
+
+    /** 催熟成功时的那句话（用户口径的原文，逐字不改）。 */
+    public static final String MSG_BLESSING = "&6秋姐妹已给予丰收的庇佑";
 }
