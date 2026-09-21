@@ -30,6 +30,19 @@ public final class AddItems {
     public static SlimefunItemStack BLAZING_ASH;
 
     /**
+     * 另一个世界的回响 —— <b>玩家穿过维度之门</b>时由身上的能量水晶转化而来。
+     *
+     * <p>id 按本项目铁律 {@code TOUHOU_"物品组"_"英文名"}：它归属 1 级组
+     * {@link AddGroups#MATERIAL}，英文名取 <b>Echo of Another World</b>
+     * ⇒ {@code TOUHOU_MATERIAL_ECHO_OF_ANOTHER_WORLD}。
+     *
+     * <p>★ 为什么物品组选 {@code MATERIAL}：它没有任何功能（不能右键、不耗电、
+     * 不参与结构、不接 POWER），只是转化机制产出的一种材料，与同样"只能靠事件获得"
+     * 的 {@link #BLAZING_ASH} 并列。用户没有指定物品组，这是本实现的判断。
+     */
+    public static SlimefunItemStack ECHO_OF_ANOTHER_WORLD;
+
+    /**
      * 模式切换玻璃板（GUI 的 K 槽位内部件）。
      *
      * <p>它必须是一个真实的 {@link SlimefunItemStack}（而不是随便一个 ItemStack），
@@ -212,6 +225,21 @@ public final class AddItems {
                 "&7来自旧地狱的碎片，沾有些许灰烬。已经发光发热了许久，",
                 "&7但过去了那么久，握在手中仍然炽热无比，",
                 "&7或许是灵魂永不消逝的残念构成的奇妙物质");
+
+        // 另一个世界的回响：与炙热的灰烬同为"只能靠机器/事件获得"的材料，归属 MATERIAL。
+        // 材质：ECHO_SHARD（原版「回响碎片」）—— 与"回响"这个名字天然对应。
+        // 描述：★ 用户给定的原文，【逐字】照抄、不拆行、不改写。
+        //   （原文里"手中的电子被解构为不存在之物"的"电子"疑似笔误 ——
+        //     但用户明确要求按原文照抄，所以这里一个字都没动，只在报告里提了一句。）
+        // 光效：靠 setup() 末尾那段 addUnsafeEnchantment + HIDE_ENCHANTS 做出来
+        //   （与梦想封印 集 / 杀意的百合同一套做法：挂一个无用的假附魔，再把附魔行藏掉，
+        //    于是只剩图标外圈那层光晕。本物品没有"要看附魔行"的要求，所以照惯例隐藏）。
+        ECHO_OF_ANOTHER_WORLD = new SlimefunItemStack(
+                "TOUHOU_MATERIAL_ECHO_OF_ANOTHER_WORLD",
+                Material.ECHO_SHARD,
+                "&f另一个世界的回响",
+                "",
+                "&7通过传送门时无疑窥见了幻想世界的一角。手中的电子被解构为不存在之物。");
 
         INFO_MODESHIFT = new SlimefunItemStack(
                 "TOUHOU_INFO_MODESHIFT",
@@ -502,6 +530,16 @@ public final class AddItems {
         if (lilyMeta != null) {
             lilyMeta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
             MURDEROUS_LILY.setItemMeta(lilyMeta);
+        }
+
+        // 另一个世界的回响：附魔光效（同 FANTASY_SEAL 那种"挂无用附魔 + HIDE_ENCHANTS"）。
+        //   ★ 与炙热的灰烬【不同】：那边故意不隐藏，因为用户要看"火焰附加15级"这条；
+        //     本物品没有这个要求，所以按光效惯例把附魔行藏掉，只留光晕。
+        ECHO_OF_ANOTHER_WORLD.addUnsafeEnchantment(Enchantment.ARROW_INFINITE, 1);
+        ItemMeta echoMeta = ECHO_OF_ANOTHER_WORLD.getItemMeta();
+        if (echoMeta != null) {
+            echoMeta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
+            ECHO_OF_ANOTHER_WORLD.setItemMeta(echoMeta);
         }
 
         // ------------------------------------------------------------------ POWER（1 级组）

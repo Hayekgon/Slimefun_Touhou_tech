@@ -5,6 +5,7 @@ import com.example.touhou.core.Log;
 import com.example.touhou.core.StructureBuildListener;
 import com.example.touhou.core.AddItems;
 import com.example.touhou.core.AddSlimefunItems;
+import com.example.touhou.core.EchoOfAnotherWorldListener;
 import com.example.touhou.core.FantasySealArrowListener;
 import com.example.touhou.core.MurderousLilyListener;
 import com.example.touhou.core.PortGuiListener;
@@ -62,6 +63,11 @@ public class Touhou extends JavaPlugin implements SlimefunAddon {
         getServer().getPluginManager().registerEvents(new PortGuiListener(), this);
         //    结构变动（放置/破坏/爆炸）→ 触发一次检测（见 StructureBuildListener 注释）
         getServer().getPluginManager().registerEvents(new StructureBuildListener(), this);
+        //    维度穿梭：玩家换世界（PlayerChangedWorldEvent）→
+        //    「另一个世界的回响」的获取机制。★ 用这个事件而不是传送门事件：
+        //    它事件驱动（零轮询），且"事件成立"本身就等于"玩家真的被传送过去了"
+        //    （站在传送门方块里不会触发）—— 详细对比见 EchoOfAnotherWorldListener 的类注释。
+        getServer().getPluginManager().registerEvents(new EchoOfAnotherWorldListener(), this);
 
         // 无头自检 + 充能循环：关键参数打到控制台，方便不进游戏就能核对
         if (AddSlimefunItems.FANTASY_SEAL != null) {
@@ -80,6 +86,14 @@ public class Touhou extends JavaPlugin implements SlimefunAddon {
                 Log.info("[LILY] " + line);
             }
             AddSlimefunItems.MURDEROUS_LILY.startCharging();
+        }
+        // 无头自检：另一个世界的回响（材质 / 附魔光效 / 配方类型 / 配方数组 / 换算参数）。
+        // ★ 它没有 ticker、也没有充能循环 —— 机制是"事件驱动的转化"，
+        //   所以这里只打参数自检，运行期验证靠 /touhou echo。
+        if (AddSlimefunItems.ECHO_OF_ANOTHER_WORLD != null) {
+            for (String line : AddSlimefunItems.ECHO_OF_ANOTHER_WORLD.selfCheck()) {
+                Log.info("[ECHO] " + line);
+            }
         }
 
         // 结构预热：层图写错会在启动时就被发现，而不是等玩家放下机器才炸

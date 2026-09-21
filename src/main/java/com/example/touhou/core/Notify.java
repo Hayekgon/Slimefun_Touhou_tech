@@ -195,6 +195,22 @@ public final class Notify {
     }
 
     /**
+     * 「另一个世界的回响 / 维度穿梭」作用域 —— 前缀独立（{@code config.yml} 的 {@code echo:} 段）。
+     *
+     * <p>★ 与 {@link #seal()} / {@link #lily()} 同理：一条"你的水晶被解构成了回响"的提示
+     * 不该顶着反应堆或某件符卡的前缀出现。
+     *
+     * <p>档位那一格<b>刻意留空</b>（{@code null} = 回落到反应堆的 {@code messages.level}）：
+     * 本机制目前只发 {@link #warn}，而 warn 不受档位影响、永远输出，
+     * 所以配一个没有任何调用点的档位只会让人以为"调了没用"。
+     * 将来真要推常规反馈时，再照 seal / lily 的写法补上即可。
+     */
+    public static Scope echo() {
+        AddonConfig cfg = AddonConfig.get();
+        return new Scope(cfg.echoPrefix, null);
+    }
+
+    /**
      * 指定作用域的 warning / error —— <b>永远输出</b>。
      *
      * <p>判据：玩家主动做了一件事但没成功。这类必须说，否则玩家只看到"点了没反应"。

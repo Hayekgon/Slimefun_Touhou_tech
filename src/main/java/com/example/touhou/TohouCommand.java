@@ -26,6 +26,7 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
+import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 
@@ -86,6 +87,8 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
             case "dreamcatcher", "dc" -> dreamcatcher(sender, Arrays.copyOfRange(args, 1, args.length));
             case "seal", "gohei", "fantasyseal" -> seal(sender, Arrays.copyOfRange(args, 1, args.length));
             case "lily", "murderouslily" -> lily(sender, Arrays.copyOfRange(args, 1, args.length));
+            case "echo", "shuttle", "dimensionshuttle" ->
+                    echo(sender, Arrays.copyOfRange(args, 1, args.length));
             case "autobuild" -> autobuild(sender, Arrays.copyOfRange(args, 1, args.length));
             case "reactor" -> reactor(sender, Arrays.copyOfRange(args, 1, args.length));
             case "clickinfo" -> clickInfo(sender, Arrays.copyOfRange(args, 1, args.length));
@@ -171,7 +174,8 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         s.sendMessage("\u00a77/touhou lily impact <x> <y> <z> [玩家]        只做命中点爆发（激光+喷泉+落点范围伤害+追踪箭）");
         s.sendMessage("\u00a77/touhou lily tracers <x> <y> <z> [玩家]       衍生箭实弹测试（命中范围伤害 + 2 tick 消失）");
         s.sendMessage("\u00a77/touhou lily cleanup               把两张追踪表收干净并打印条目数");
-        s.sendMessage("\u00a77/touhou guide [reactor|saizen]   粘液书自定义配方页的内容自检（展示列表 + 可合成性核查）");
+        s.sendMessage("\u00a77/touhou echo selfcheck | rule | container <x> <y> <z> | convert [玩家] | probe <玩家> [世界] | shuttle <玩家> <from> <to> [--force] | cooldown [clear]   「维度穿梭」无头验证");
+        s.sendMessage("\u00a77/touhou guide [reactor|saizen|echo]   粘液书自定义配方页的内容自检（展示列表 + 可合成性核查）");
         s.sendMessage("\u00a77/touhou place <x> <y> <z> <sfId> [world] [--force]");
         s.sendMessage("\u00a77/touhou remove <x> <y> <z>            删除方块 + Slimefun 方块数据（setblock 清不掉）");
         s.sendMessage("\u00a77/touhou edit <x> <y> <z> [placed|broken]  模拟结构变动（现在唯一的常规检测触发途径）");
@@ -212,8 +216,10 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         String which = args.length >= 1 ? args[0].toLowerCase() : "all";
         boolean reactor = which.equals("all") || which.equals("reactor");
         boolean saizen = which.equals("all") || which.equals("saizen") || which.equals("saizenbako");
-        if (!reactor && !saizen) {
-            sender.sendMessage(PREFIX + "\u00a7c用法: /touhou guide [reactor|saizen]");
+        boolean echo = which.equals("all") || which.equals("echo")
+                || which.equals("shuttle") || which.equals("dimensionshuttle");
+        if (!reactor && !saizen && !echo) {
+            sender.sendMessage(PREFIX + "\u00a7c用法: /touhou guide [reactor|saizen|echo]");
             return;
         }
 
@@ -229,6 +235,15 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         if (saizen) {
             dumpCorePage(sender, "赛钱箱（祭坛）核心", AddSlimefunItems.SAIZENBAKO,
                     AddonConfig.get().saizenLayers, AddonConfig.get().saizenLegend);
+        }
+        if (echo) {
+            // ★ 另一个世界的回响没有"层图材料清单"（它不是多方块），
+            //   所以传空层图 —— dumpCorePage 里那段"从层图现算"会打印"共 0 项"。
+            //   这一页真正要证明的是：① 指南页画出了 水晶→回响 这条获取方式；
+            //   ② 它有 9 格全空的配方数组 + 门面配方类型 ⇒ 不可合成。
+            dumpCorePage(sender, "另一个世界的回响（维度穿梭）",
+                    AddSlimefunItems.ECHO_OF_ANOTHER_WORLD,
+                    java.util.List.of(), java.util.Map.of());
         }
     }
 
@@ -2381,6 +2396,609 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
                 }.runTaskLater(Touhou.getInstance(), i);
             }
         }
+    }
+
+    // ------------------------------------------------------------------ echo（维度穿梭）
+
+    /**
+     * 「维度穿梭」的无头验证入口 —— 另一个世界的回响的获取机制。
+     *
+     * <pre>
+     *   /touhou echo selfcheck                              物品 / 机制参数自检
+     *   /touhou echo rule                                   判定矩阵自测（纯逻辑，不碰世界）
+     *   /touhou echo probe &lt;玩家名&gt; [世界名]                干跑：他会转几个（不改背包）
+     *   /touhou echo shuttle &lt;玩家名&gt; &lt;from&gt; &lt;to&gt; [--force]  真的走一次转化
+     *   /touhou echo cooldown [clear]                       读 / 清玩家级冷却
+     * </pre>
+     *
+     * <p>★ 为什么要 {@code shuttle} 这条"指定 from/to 世界"的形态：
+     * 真实触发点是 {@code PlayerChangedWorldEvent}，而<b>无头测试服没有玩家</b>
+     * —— 事件本身在这个环境里跑不出来（详见 {@code EchoOfAnotherWorldListener}
+     * 的类注释与最终报告）。所以命令把<b>同一段裁决与转化逻辑</b>
+     * （{@link com.example.touhou.core.EchoOfAnotherWorld#shuttle}）
+     * 拿出来直接调，参数是"玩家 + 离开的世界 + 到达的世界"。
+     * 于是下面这些断言都能在控制台里被证明：
+     * <ol>
+     *   <li>末地 / 同维度 / 自定义世界<b>不</b>转化（换一组 from/to 再跑一次即可）；</li>
+     *   <li>主世界↔地狱<b>会</b>转化，且换算精确（水晶数 → 回响数）；</li>
+     *   <li>原水晶<b>确实被删除</b>（跑完再 probe 一次就是 0）；</li>
+     *   <li><b>幂等</b>：紧接着再跑一次（{@code --force} 绕过冷却）⇒ 水晶 0、回响 0、什么都不做。</li>
+     * </ol>
+     *
+     * <p>★ {@code --force} 只做一件事：忽略玩家级冷却。它<b>不能</b>绕过幂等
+     * —— 幂等是"没水晶可转"这个事实带来的，任何开关都绕不过去（这正是要证明的性质）。
+     */
+    private void echo(CommandSender sender, String[] args) {
+        com.example.touhou.core.EchoOfAnotherWorld item = AddSlimefunItems.ECHO_OF_ANOTHER_WORLD;
+        if (item == null) {
+            sender.sendMessage(PREFIX + "\u00a7c另一个世界的回响未注册（物品注册失败？看控制台）");
+            return;
+        }
+        String sub = args.length >= 1 ? args[0].toLowerCase() : "selfcheck";
+
+        switch (sub) {
+            case "selfcheck", "check" -> {                sender.sendMessage(PREFIX + "\u00a7e另一个世界的回响 · 参数自检");
+                for (String line : item.selfCheck()) {
+                    sender.sendMessage("\u00a78  " + line);
+                }
+                sender.sendMessage(PREFIX + "\u00a7e监听器");
+                for (String line : com.example.touhou.core.EchoOfAnotherWorldListener.describe()) {
+                    sender.sendMessage("\u00a78  " + line);
+                }
+                log("[TOUHOU] echo selfcheck id=" + item.getId());
+            }
+            case "rule", "rules", "matrix" -> echoRule(sender);
+            case "container", "chest" -> echoContainer(sender,
+                    args.length >= 2 ? args[1] : null,
+                    args.length >= 3 ? args[2] : null,
+                    args.length >= 4 ? args[3] : null);
+            case "probe", "dry", "dryrun" -> echoProbe(sender,
+                    args.length >= 2 ? args[1] : null,
+                    args.length >= 3 ? args[2] : null);
+            case "shuttle", "go" -> echoShuttle(sender,
+                    args.length >= 2 ? args[1] : null,
+                    args.length >= 3 ? args[2] : null,
+                    args.length >= 4 ? args[3] : null,
+                    Arrays.stream(args).anyMatch(a -> a.equalsIgnoreCase("--force")));
+            case "convert", "convertinv" -> echoConvert(sender,
+                    args.length >= 2 ? args[1] : null);
+            case "cooldown", "cd" -> {
+                if (args.length >= 2 && args[1].equalsIgnoreCase("clear")) {
+                    int n = com.example.touhou.core.EchoOfAnotherWorld.clearCooldowns();
+                    sender.sendMessage(PREFIX + "\u00a7a已清空玩家级冷却（原 " + n + " 条）");
+                    log("[TOUHOU] echo cooldown clear -> " + n);
+                } else {
+                    int cooling = com.example.touhou.core.EchoOfAnotherWorld.coolingDownCount();
+                    sender.sendMessage(PREFIX + "\u00a7e维度穿梭 · 玩家级冷却");
+                    sender.sendMessage("\u00a78  配置冷却 = "
+                            + AddonConfig.get().echoConvertCooldownMillis + " ms"
+                            + (AddonConfig.get().echoConvertCooldownMillis <= 0 ? "（已关闭）" : ""));
+                    sender.sendMessage("\u00a78  此刻处于冷却中的玩家 = " + cooling);
+                    sender.sendMessage("\u00a77  用 /touhou echo cooldown clear 清空");
+                    log("[TOUHOU] echo cooldown cooling=" + cooling);
+                }
+            }
+            default -> sender.sendMessage(PREFIX
+                    + "\u00a7c用法: /touhou echo [selfcheck|rule|probe <玩家> [世界]|"
+                    + "shuttle <玩家> <from> <to> [--force]|cooldown [clear]]");
+        }
+    }
+
+    /**
+     * 判定矩阵自测 —— <b>纯逻辑</b>，一个方块都不碰。
+     *
+     * <p>把"哪些组合算维度穿梭"逐条跑一遍并核对预期值。预期值写死在下面的表里
+     * （{@code expect} 那一列），所以这条命令是"自测"而不是"打印当前实现"：
+     * 只要 {@code EchoOfAnotherWorld#isShuttle} 的语义被改坏，这里立刻报 FAIL。
+     *
+     * <p>世界全部从 {@code Bukkit.getWorlds()} 里<b>现找</b>（按 Environment 挑），
+     * 所以多世界服务器上用的是真实存在的世界，不需要人工造。
+     * 找不到对应 Environment 的世界时那一行报"跳过"而不是 FAIL —— 那是环境限制，
+     * 不是实现错了。
+     */
+    private void echoRule(CommandSender sender) {
+        sender.sendMessage(PREFIX + "\u00a7e维度穿梭 · 判定矩阵自测");
+        sender.sendMessage("\u00a78  规则：" + com.example.touhou.core.EchoOfAnotherWorld.ruleSummary());
+        sender.sendMessage("\u00a78  判定只读 World#getEnvironment，不看世界名");
+
+        org.bukkit.World normal = firstWorld(org.bukkit.World.Environment.NORMAL);
+        org.bukkit.World nether = firstWorld(org.bukkit.World.Environment.NETHER);
+        org.bukkit.World end = firstWorld(org.bukkit.World.Environment.THE_END);
+
+        int pass = 0;
+        int fail = 0;
+        int skip = 0;
+
+        // { 期望, from, to, 说明 }
+        //   说明以 "null" 结尾的那几条是【防御性断言】：不依赖任何世界是否存在，
+        //   永远会跑。其余几条在某台服务器缺少对应维度时会报"跳过"。
+        Object[][] cases = new Object[][]{
+                {Boolean.TRUE, normal, nether, "主世界 → 地狱"},
+                {Boolean.TRUE, nether, normal, "地狱 → 主世界"},
+                {Boolean.FALSE, normal, normal, "同维度（主世界 → 主世界）"},
+                {Boolean.FALSE, nether, nether, "同维度（地狱 → 地狱）"},
+                {Boolean.FALSE, normal, end, "主世界 → 末地（末地传送门，不算）"},
+                {Boolean.FALSE, end, normal, "末地 → 主世界（不算）"},
+                {Boolean.FALSE, end, end, "同维度（末地 → 末地）"},
+                {Boolean.FALSE, nether, end, "地狱 → 末地（不算）"},
+                {Boolean.FALSE, null, nether, "from 为 null（防御）null"},
+                {Boolean.FALSE, normal, null, "to 为 null（防御）null"},
+                {Boolean.FALSE, null, null, "两边都为 null（防御）null"},
+        };
+        for (Object[] c : cases) {
+            boolean expect = (Boolean) c[0];
+            org.bukkit.World from = (org.bukkit.World) c[1];
+            org.bukkit.World to = (org.bukkit.World) c[2];
+            String note = (String) c[3];
+            // 防御性断言（两边都为 null，或只有一个世界参与）永远跑；
+            // 需要两个真实世界的用例在缺维度时跳过。
+            boolean pureLogic = note.endsWith("null");
+            if (!pureLogic && (from == null || to == null)) {
+                sender.sendMessage("\u00a78  [跳过] " + note + "（本机没有该维度）");
+                skip++;
+                continue;
+            }
+            boolean got = com.example.touhou.core.EchoOfAnotherWorld.isShuttle(from, to);
+            boolean ok = got == expect;
+            if (ok) {
+                pass++;
+            } else {
+                fail++;
+            }
+            sender.sendMessage((ok ? "\u00a7a  [PASS] " : "\u00a7c  [FAIL] ") + note
+                    + "  expect=" + expect + " got=" + got
+                    + "  " + envOf(from) + " -> " + envOf(to));
+        }
+        org.bukkit.World custom = firstWorldOtherThan(java.util.EnumSet.of(
+                org.bukkit.World.Environment.NORMAL,
+                org.bukkit.World.Environment.NETHER,
+                org.bukkit.World.Environment.THE_END));
+        if (custom != null) {
+            boolean got = com.example.touhou.core.EchoOfAnotherWorld.isShuttle(normal, custom);
+            boolean ok = !got;
+            if (ok) {
+                pass++;
+            } else {
+                fail++;
+            }
+            sender.sendMessage((ok ? "\u00a7a  [PASS] " : "\u00a7c  [FAIL] ")
+                    + "主世界 → 自定义世界(" + custom.getName() + ")"
+                    + "  expect=false got=" + got);
+        } else {
+            sender.sendMessage("\u00a78  [跳过] 主世界 → 自定义世界（本机没有 CUSTOM 维度）");
+            skip++;
+        }
+
+        sender.sendMessage(PREFIX + "\u00a7e结果： \u00a7a" + pass + " PASS\u00a7e / "
+                + (fail == 0 ? "\u00a7a" : "\u00a7c") + fail + " FAIL\u00a7e / \u00a78" + skip + " 跳过");
+        log("[TOUHOU] echo rule pass=" + pass + " fail=" + fail + " skip=" + skip);
+    }
+
+    /**
+     * 干跑：报"这位玩家的背包里有几个能量水晶、会被转成什么"，<b>不改</b>任何东西。
+     *
+     * <p>与 {@link #echoShuttle} 的区别只有一条：它调用的是
+     * {@code countPowerCrystals} 而不是 {@code shuttle} —— 所以它<b>不</b>会联网、
+     * <b>不</b>会改写背包、<b>不</b>会碰冷却表。用来在"真的动手之前"看一眼后果。
+     */
+    private void echoProbe(CommandSender sender, String playerName, String worldName) {
+        org.bukkit.entity.Player target = pickPlayer(playerName);
+        if (target == null) {
+            sender.sendMessage(PREFIX + "\u00a7c没有在线玩家"
+                    + (playerName == null || playerName.isBlank() ? "" : " 名为 " + playerName)
+                    + "\u00a77（无头测试服平时没有玩家；不需要玩家也能跑的那部分见 "
+                    + "/touhou echo rule 与 /touhou echo container）");
+            log("[TOUHOU] echo probe no-player name=" + playerName);
+            return;
+        }
+        AddonConfig cfg = AddonConfig.get();
+        org.bukkit.World from = resolveWorldByName(worldName, org.bukkit.World.Environment.NETHER);
+        org.bukkit.World to = target.getWorld();
+        int crystals = com.example.touhou.core.EchoOfAnotherWorld
+                .countPowerCrystals(target.getInventory());
+
+        sender.sendMessage(PREFIX + "\u00a7e维度穿梭 · 干跑（不改背包）");
+        sender.sendMessage("\u00a77  玩家： &f" + target.getName()
+                + " &7（此刻在 &f" + to.getName() + "&7）");
+        sender.sendMessage("\u00a77  假设穿梭： &f" + (from == null ? "(找不到世界)" : from.getName())
+                + " &8[" + envOf(from) + "] &7→ &f" + to.getName() + " &8[" + envOf(to) + "]");
+        sender.sendMessage("\u00a77  会成立吗： &f"
+                + (com.example.touhou.core.EchoOfAnotherWorld.isShuttle(from, to) ? "是" : "否"));
+        sender.sendMessage("\u00a77  背包里的能量水晶： &f" + crystals + " &7个（"
+                + com.example.touhou.core.EchoOfAnotherWorld.describeSlots(target) + "）");
+        sender.sendMessage("\u00a77  预计产出： &f"
+                + (crystals / Math.max(1, cfg.echoCrystalPerEcho) * Math.max(1, cfg.echoEchoPerCrystal))
+                + " &7个另一个世界的回响"
+                + " &8（" + cfg.echoCrystalPerEcho + " 水晶 → " + cfg.echoEchoPerCrystal + " 回响）");
+        sender.sendMessage("\u00a78  真跑请用：/touhou echo shuttle " + target.getName()
+                + " " + (from == null ? "<fromWorld>" : from.getName()) + " " + to.getName());
+        log("[TOUHOU] echo probe player=" + target.getName() + " crystals=" + crystals
+                + " from=" + (from == null ? "null" : from.getName())
+                + " to=" + to.getName());
+    }
+
+    /**
+     * 真的走一次"维度穿梭"的裁决与转化（作用在<b>真实在线玩家</b>身上）。
+     *
+     * <p>调用的是与事件路径完全同一个入口
+     * （{@link com.example.touhou.core.EchoOfAnotherWorld#shuttle}），
+     * 只是把 {@code from} / {@code to} 两个世界换成命令参数 —— 因为
+     * {@code PlayerChangedWorldEvent} 在无头环境里跑不出来（详见最终报告）。
+     *
+     * @param playerName 在线玩家名（必填；没有在线玩家时这条命令如实报错）
+     * @param fromName   离开的世界名（可写 overworld / nether / end 简写）
+     * @param toName     到达的世界名（同上）
+     * @param force      给了 {@code --force} 就忽略玩家级冷却
+     */
+    private void echoShuttle(CommandSender sender, String playerName, String fromName,
+                             String toName, boolean force) {
+        org.bukkit.entity.Player target = pickPlayer(playerName);
+        if (target == null) {
+            sender.sendMessage(PREFIX + "\u00a7c没有在线玩家"
+                    + (playerName == null || playerName.isBlank() ? "" : " 名为 " + playerName)
+                    + "\u00a77这条只能作用在真实玩家身上；不需要玩家也能跑的那部分见 "
+                    + "/touhou echo rule 与 /touhou echo container");
+            log("[TOUHOU] echo shuttle no-player name=" + playerName);
+            return;
+        }
+        org.bukkit.World from = resolveWorldByName(fromName, org.bukkit.World.Environment.NETHER);
+        org.bukkit.World to = resolveWorldOr(toName, target.getWorld());
+        if (from == null || to == null) {
+            sender.sendMessage(PREFIX + "\u00a7c世界解析失败：from=" + fromName + " to=" + toName
+                    + "\u00a77（可写世界名，或 overworld / nether / end 简写）");
+            return;
+        }
+
+        sender.sendMessage(PREFIX + "\u00a7e维度穿梭 · 实跑");
+        sender.sendMessage("\u00a77  " + target.getName() + "： &f" + from.getName()
+                + " &8[" + envOf(from) + "] &7→ &f" + to.getName() + " &8[" + envOf(to) + "]"
+                + (force ? " &8（--force：忽略玩家冷却）" : ""));
+        sender.sendMessage("\u00a77  转化前背包里的能量水晶： &f"
+                + com.example.touhou.core.EchoOfAnotherWorld.describeSlots(target));
+        com.example.touhou.core.EchoOfAnotherWorld.ShuttleReport rep =
+                com.example.touhou.core.EchoOfAnotherWorld.shuttle(target, from, to, force);
+
+        for (String line : rep.lines()) {
+            sender.sendMessage("\u00a78  " + color(line));
+        }
+        sender.sendMessage("\u00a77  转化后背包里的能量水晶： &f"
+                + com.example.touhou.core.EchoOfAnotherWorld.describeSlots(target));
+        sender.sendMessage("\u00a78  提示：紧接着再敲一次同样的命令（带 --force）应当报"
+                + " crystals=0 echoes=0 —— 那就是幂等");
+        // ★ 纯 ASCII 数值单独一行，方便从 GBK 日志里 grep 出时间序列
+        log("[TOUHOU] echo shuttle " + rep.summary() + " force=" + force);
+    }
+
+    /**
+     * <b>直接清点并转化在线玩家背包</b>（<b>不</b>判维度、<b>不</b>走传送）——
+     * 用来在真机上精确核对"扫哪些槽、换算对不对"。
+     *
+     * <pre>/touhou echo convert [玩家名]</pre>
+     *
+     * <p>★ 与 {@link #echoShuttle} 的区别：{@code shuttle} 是"模拟一次维度穿梭"，
+     * 会先过维度判定与冷却；{@code convert} 是"把判定那一层掀掉，直接跑转化内核"，
+     * 于是下面这几件事可以在<b>不切换维度</b>的前提下被逐条核对：
+     * <ol>
+     *   <li><b>副手算不算</b>：往副手放一个水晶，跑一次，看它是否变成回响
+     *       （槽位口径里副手记作 Bukkit 槽 {@value com.example.touhou.core.EchoOfAnotherWorld#OFF_HAND_SLOT}）；</li>
+     *   <li><b>盔甲槽不算</b>：水晶穿不上盔甲槽，所以这条只能靠"槽位口径只报 0..35 与 40"来核对
+     *       （见 selfcheck 里那行）；</li>
+     *   <li><b>换算与幂等</b>：连跑两次，第二次必须 0 / 0。</li>
+     * </ol>
+     *
+     * <p>⚠ 它<b>不</b>碰冷却表，也<b>不</b>写 {@code lastReport} ——
+     * 它只是"把转化内核拿出来单独跑一遍"的调试入口，不代表一次穿梭发生过。
+     */
+    private void echoConvert(CommandSender sender, String playerName) {
+        org.bukkit.entity.Player target = pickPlayer(playerName);
+        if (target == null) {
+            sender.sendMessage(PREFIX + "\u00a7c没有在线玩家"
+                    + (playerName == null || playerName.isBlank() ? "" : " 名为 " + playerName)
+                    + "\u00a77（这条需要真实在线玩家）");
+            log("[TOUHOU] echo convert no-player name=" + playerName);
+            return;
+        }
+        AddonConfig cfg = AddonConfig.get();
+        org.bukkit.inventory.PlayerInventory inv = target.getInventory();
+
+        sender.sendMessage(PREFIX + "\u00a7e维度穿梭 · 直接转化（不判维度、不走传送）");
+        sender.sendMessage("\u00a77  玩家： &f" + target.getName()
+                + " &7（" + target.getWorld().getName() + "）");
+        sender.sendMessage("\u00a77  命中槽位（0..35 与副手 " + com.example.touhou.core.EchoOfAnotherWorld.OFF_HAND_SLOT
+                + "）： &f" + com.example.touhou.core.EchoOfAnotherWorld.describeSlots(target));
+        sender.sendMessage("\u00a77  物品总数： &f"
+                + com.example.touhou.core.EchoOfAnotherWorld.countCrystalItems(inv));
+
+        com.example.touhou.core.EchoOfAnotherWorld.Conversion c1 =
+                com.example.touhou.core.EchoOfAnotherWorld.convertInventory(target, cfg);
+        sender.sendMessage("\u00a77  第一遍： &fconverted=" + c1.converted()
+                + " echoes=" + c1.echoes() + " dropped=" + c1.dropped()
+                + " firstSlot=" + c1.firstSlot());
+        sender.sendMessage("\u00a77  转化后命中槽位： &f"
+                + com.example.touhou.core.EchoOfAnotherWorld.describeSlots(target));
+
+        com.example.touhou.core.EchoOfAnotherWorld.Conversion c2 =
+                com.example.touhou.core.EchoOfAnotherWorld.convertInventory(target, cfg);
+        sender.sendMessage((c2.converted() == 0 && c2.echoes() == 0
+                ? "\u00a7a" : "\u00a7c") + "  第二遍（幂等）：converted=" + c2.converted()
+                + " echoes=" + c2.echoes()
+                + (c2.converted() == 0 && c2.echoes() == 0 ? "  ⇒ 幂等成立" : "  ⇒ ★ 竟然又转了"));
+        log("[TOUHOU] echo convert player=" + target.getName()
+                + " slots=" + com.example.touhou.core.EchoOfAnotherWorld.describeSlots(target)
+                + " first=" + c1.converted() + "/" + c1.echoes()
+                + " second=" + c2.converted() + "/" + c2.echoes());
+    }
+
+    /**
+     * <b>在一个真箱子上跑一遍转化内核</b> —— 本机制"不需要玩家也能验"的那一半。
+     *
+     * <p>★ 为什么需要它：本机制的触发点（玩家换世界）必须有玩家，而自动验证里
+     * 造不出可用玩家（CraftPlayer 的构造器要 NMS 的 {@code EntityPlayer}，
+     * Paper 1.20.4 的类名是混淆过的 —— 详见最终报告）。但"判据 + 换算 + 幂等"
+     * 这三件<b>最容易写错</b>的事只需要一个 {@code Inventory}
+     * （见 {@link com.example.touhou.core.EchoOfAnotherWorld#convertInventory(Inventory, AddonConfig)}）。
+     * 所以这条命令：
+     * <ol>
+     *   <li>在命令来源附近临时放一个箱子，塞进
+     *       <b>N 个真能量水晶</b>（{@code /sf give} 生成的那种带 PDC 的物品）
+     *       + 一个"材质相同但没有粘液 id"的干扰物
+     *       + 一个普通物品；</li>
+     *   <li>跑一遍转化，逐槽打印前后内容；</li>
+     *   <li><b>紧接着再跑一遍</b> —— 第二次必须是"水晶 0 / 回响 0"，
+     *       这才叫幂等；</li>
+     *   <li>把箱子拆掉、恢复成空气，不留垃圾。</li>
+     * </ol>
+     *
+     * <p>⚠ 它<b>不</b>验证"玩家背包那条路径"（副手槽、落到脚下）—— 那部分只能
+     * 用真实在线玩家跑 {@link #echoShuttle}。报告里会写明这个边界。
+     */
+    private void echoContainer(CommandSender sender, String xArg, String yArg, String zArg) {
+        AddonConfig cfg = AddonConfig.get();
+        org.bukkit.World world;
+        int x;
+        int y;
+        int z;
+        if (sender instanceof org.bukkit.entity.Player p && xArg == null) {
+            world = p.getWorld();
+            x = p.getLocation().getBlockX();
+            y = p.getLocation().getBlockY();
+            z = p.getLocation().getBlockZ();
+        } else {
+            if (xArg == null || yArg == null || zArg == null) {
+                sender.sendMessage(PREFIX + "\u00a7c用法: /touhou echo container <x> <y> <z>"
+                        + "\u00a77（只有玩家执行时可以省略坐标）");
+                return;
+            }
+            try {
+                x = Integer.parseInt(xArg);
+                y = Integer.parseInt(yArg);
+                z = Integer.parseInt(zArg);
+            } catch (NumberFormatException e) {
+                sender.sendMessage(PREFIX + "\u00a7c坐标必须是整数");
+                return;
+            }
+            world = sender instanceof org.bukkit.entity.Player p2
+                    ? p2.getWorld() : Bukkit.getWorlds().get(0);
+        }
+
+        org.bukkit.block.Block spot = findFlatSpot(world, x, y, z);
+        if (spot == null) {
+            sender.sendMessage(PREFIX + "\u00a7c附近找不到可以放箱子的空位（需要 2 格空气）");
+            return;
+        }
+
+        org.bukkit.block.Block chest = spot.getRelative(0, 1, 0);
+        boolean placed = chest.getType().isAir();
+        String beforeType = chest.getType().name();
+        if (placed) {
+            chest.setType(Material.CHEST, false);
+        } else {
+            try {
+                org.bukkit.block.data.type.Chest data = (org.bukkit.block.data.type.Chest)
+                        chest.getBlockData();
+                data.setType(org.bukkit.block.data.type.Chest.Type.SINGLE);
+                chest.setBlockData(data, false);
+            } catch (RuntimeException e) {
+                sender.sendMessage(PREFIX + "\u00a7c那一格放不下箱子（" + beforeType + "）");
+                return;
+            }
+        }
+
+        boolean cleared = false;
+        try {
+            if (!(chest.getState() instanceof org.bukkit.block.Chest state)) {
+                sender.sendMessage(PREFIX + "\u00a7c放下的方块不是箱子（" + chest.getType() + "）");
+                return;
+            }
+            Inventory inv = state.getBlockInventory();
+            inv.clear();
+            cleared = true;
+
+            // ① 塞测试样本：水晶 ×2 堆（3 + 64）+ 同材质没粘液 id 的干扰物 + 普通物品
+            inv.setItem(2, new ItemStack(SlimefunItems.POWER_CRYSTAL.clone()));
+            inv.setItem(5, new ItemStack(SlimefunItems.POWER_CRYSTAL.clone()));
+            inv.getItem(2).setAmount(3);
+            inv.getItem(5).setAmount(64);
+            inv.setItem(8, new ItemStack(SlimefunItems.POWER_CRYSTAL.getType()));
+            inv.setItem(11, new ItemStack(Material.DIAMOND, 5));
+
+            sender.sendMessage(PREFIX + "\u00a7e维度穿梭 · 容器内核实跑 @ "
+                    + world.getName() + " " + chest.getX() + " " + chest.getY() + " " + chest.getZ());
+            sender.sendMessage("\u00a78  样本：槽 2 = 3 个能量水晶、槽 5 = 64 个能量水晶、"
+                    + "槽 8 = 同材质但没有粘液 id 的干扰物、槽 11 = 5 个钻石");
+            log("[TOUHOU] echo container @ " + world.getName() + " "
+                    + chest.getX() + " " + chest.getY() + " " + chest.getZ()
+                    + " crystalsBefore=" + com.example.touhou.core.EchoOfAnotherWorld
+                            .countPowerCrystals(inv));
+
+            // ② 跑第一遍（应当 3 + 64 = 67 个水晶 → 67 个回响；默认 1:1）
+            int itemsBefore = inv.getItem(2).getAmount() + inv.getItem(5).getAmount();
+            com.example.touhou.core.EchoOfAnotherWorld.Conversion one =
+                    com.example.touhou.core.EchoOfAnotherWorld.convertInventory(inv, cfg);
+            int crystalsAfter1 = com.example.touhou.core.EchoOfAnotherWorld
+                    .countPowerCrystals(inv);
+
+            sender.sendMessage("\u00a77  第一遍： &fconverted=" + one.converted()
+                    + " echoes=" + one.echoes() + " firstSlot=" + one.firstSlot());
+            sender.sendMessage("\u00a78    槽 2 = " + describeOne(inv.getItem(2))
+                    + "  |  槽 5 = " + describeOne(inv.getItem(5))
+                    + "  |  槽 8 = " + describeOne(inv.getItem(8))
+                    + "  |  槽 11 = " + describeOne(inv.getItem(11)));
+            sender.sendMessage("\u00a77  转化后剩余水晶槽位 = &f" + crystalsAfter1);
+
+            // ③ 再跑一遍：幂等 —— 必须是 0 / 0
+            com.example.touhou.core.EchoOfAnotherWorld.Conversion two =
+                    com.example.touhou.core.EchoOfAnotherWorld.convertInventory(inv, cfg);
+            sender.sendMessage("\u00a77  第二遍（幂等）： &fconverted=" + two.converted()
+                    + " echoes=" + two.echoes());
+
+            // ④ 判定
+            boolean okConvert = one.converted() == itemsBefore
+                    && one.echoes() == itemsBefore / Math.max(1, cfg.echoCrystalPerEcho)
+                            * Math.max(1, cfg.echoEchoPerCrystal)
+                    && crystalsAfter1 == 0;
+            boolean okIdempotent = two.converted() == 0 && two.echoes() == 0;
+            boolean okPreserve = !com.example.touhou.core.EchoOfAnotherWorld
+                    .isPowerCrystal(inv.getItem(8))
+                    && inv.getItem(11) != null
+                    && inv.getItem(11).getType() == Material.DIAMOND
+                    && inv.getItem(11).getAmount() == 5;
+            sender.sendMessage((okConvert ? "\u00a7a  [PASS] " : "\u00a7c  [FAIL] ")
+                    + "换算正确（" + itemsBefore + " 个水晶 → 期望 "
+                    + (itemsBefore / Math.max(1, cfg.echoCrystalPerEcho)
+                            * Math.max(1, cfg.echoEchoPerCrystal))
+                    + " 个回响，实得 " + one.echoes() + "；转化后剩余水晶槽位 "
+                    + crystalsAfter1 + "）");
+            sender.sendMessage((okIdempotent ? "\u00a7a  [PASS] " : "\u00a7c  [FAIL] ")
+                    + "幂等（第二遍 converted=" + two.converted()
+                    + " echoes=" + two.echoes() + "，必须都是 0）");
+            sender.sendMessage((okPreserve ? "\u00a7a  [PASS] " : "\u00a7c  [FAIL] ")
+                    + "只动该动的格子（同材质干扰物与钻石原样未动）");
+            log("[TOUHOU] echo container itemsBefore=" + itemsBefore
+                    + " converted=" + one.converted() + " echoes=" + one.echoes()
+                    + " after1=" + crystalsAfter1
+                    + " secondConverted=" + two.converted() + " secondEchoes=" + two.echoes()
+                    + " passConvert=" + okConvert + " passIdempotent=" + okIdempotent
+                    + " passPreserve=" + okPreserve);
+        } catch (RuntimeException e) {
+            sender.sendMessage(PREFIX + "\u00a7c容器内核实跑异常: " + e);
+            Log.severe("[TOUHOU] echo container 异常", e);
+        } finally {
+            // ★ 清理：清箱子、拆方块、恢复原状（绝不给世界留垃圾）
+            if (cleared) {
+                if (chest.getState() instanceof org.bukkit.block.Chest s2) {
+                    s2.getBlockInventory().clear();
+                }
+            }
+            if (placed) {
+                chest.setType(Material.AIR, false);
+            } else {
+                chest.setType(beforeType.isEmpty()
+                        ? Material.AIR
+                        : Material.valueOf(beforeType), false);
+            }
+            sender.sendMessage("\u00a78  已清理：箱子内容清空、方块已恢复");
+        }
+    }
+
+    /** 一行描述一个槽位内容（诊断用）。 */
+    private static String describeOne(ItemStack it) {
+        if (it == null || it.getType().isAir()) {
+            return "(空)";
+        }
+        String sfId = io.github.thebusybiscuit.slimefun4.api.items.SlimefunItem.getByItem(it) == null
+                ? "-" : io.github.thebusybiscuit.slimefun4.api.items.SlimefunItem.getByItem(it).getId();
+        return it.getType() + "×" + it.getAmount() + "[sf=" + sfId + "]";
+    }
+
+    /**
+     * 在 {@code (x,y,z)} 附近找一个"可以放箱子"的空位（该格与上一格都必须是空气）。
+     *
+     * <p>顺序是"先自己、再向上、再四个水平方向" —— 尽量贴着命令给的坐标，
+     * 且<b>只挑空气</b>（绝不覆盖玩家已有的方块）。
+     */
+    private static org.bukkit.block.Block findFlatSpot(org.bukkit.World w, int x, int y, int z) {
+        if (w == null) {
+            return null;
+        }
+        int[][] offsets = {
+                {0, 0, 0}, {0, 1, 0}, {1, 0, 0}, {-1, 0, 0}, {0, 0, 1}, {0, 0, -1},
+                {0, 2, 0}, {2, 0, 0}, {-2, 0, 0}, {0, 0, 2}, {0, 0, -2}};
+        for (int[] o : offsets) {
+            org.bukkit.block.Block b = w.getBlockAt(x + o[0], y + o[1], z + o[2]);
+            if (b.getType().isAir() && b.getRelative(0, 1, 0).getType().isAir()) {
+                return b;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 按世界名 / 简写 / 默认 Environment 找一个世界。
+     *
+     * <p>三种写法都认：
+     * <ol>
+     *   <li>真实世界名（{@code world_nether}）—— 直接 {@code Bukkit.getWorld}；</li>
+     *   <li>简写（{@code overworld} / {@code nether} / {@code end}，以及中文的
+     *       主世界/地狱/末地）—— 按 {@link org.bukkit.World.Environment} 现找第一个；</li>
+     *   <li>空 —— 用调用方给的默认 Environment。</li>
+     * </ol>
+     * 都找不到就返回 {@code null}，由调用方报错（绝不悄悄退回"随便一个世界"，
+     * 否则"末地传送门不该转化"这类断言会被一个错误的世界名悄悄测成 PASS）。
+     */
+    private static org.bukkit.World resolveWorldByName(String name, org.bukkit.World.Environment fallback) {
+        if (name == null || name.isBlank()) {
+            return firstWorld(fallback);
+        }
+        org.bukkit.World exact = Bukkit.getWorld(name);
+        if (exact != null) {
+            return exact;
+        }
+        String key = name.trim().toLowerCase();
+        return switch (key) {
+            case "overworld", "normal", "主世界" -> firstWorld(org.bukkit.World.Environment.NORMAL);
+            case "nether", "hell", "地狱", "下界" -> firstWorld(org.bukkit.World.Environment.NETHER);
+            case "end", "the_end", "末地" -> firstWorld(org.bukkit.World.Environment.THE_END);
+            default -> null;
+        };
+    }
+
+    /** 按世界名 / 简写找；空则原样返回 {@code def}（默认值是个世界对象）。 */
+    private static org.bukkit.World resolveWorldOr(String name, org.bukkit.World def) {
+        if (name == null || name.isBlank()) {
+            return def;
+        }
+        org.bukkit.World exact = Bukkit.getWorld(name);
+        if (exact != null) {
+            return exact;
+        }
+        return resolveWorldByName(name, def == null
+                ? org.bukkit.World.Environment.NORMAL : def.getEnvironment());
+    }
+
+    private static org.bukkit.World firstWorld(org.bukkit.World.Environment env) {
+        if (env == null) {
+            return null;
+        }
+        for (org.bukkit.World w : Bukkit.getWorlds()) {
+            if (w.getEnvironment() == env) {
+                return w;
+            }
+        }
+        return null;
+    }
+
+    private static org.bukkit.World firstWorldOtherThan(java.util.Set<org.bukkit.World.Environment> known) {
+        for (org.bukkit.World w : Bukkit.getWorlds()) {
+            if (!known.contains(w.getEnvironment())) {
+                return w;
+            }
+        }
+        return null;
+    }
+
+    private static String envOf(org.bukkit.World w) {
+        return w == null ? "(null)" : String.valueOf(w.getEnvironment());
     }
 
     // ------------------------------------------------------------------ 工具

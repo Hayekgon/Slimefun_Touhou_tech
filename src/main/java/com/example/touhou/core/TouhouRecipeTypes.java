@@ -61,7 +61,29 @@ public final class TouhouRecipeTypes {
     public static RecipeType SAIZENBAKO;
 
     /**
-     * 建好两个配方类型 —— 必须在 {@link AddItems#setup()} 之后、
+     * 「维度穿梭」的配方类型 —— 本项目的第三个门面类型。
+     *
+     * <p>它承载的是 {@link EchoOfAnotherWorld#getDisplayRecipes()} 那一页
+     * （能量水晶 → 另一个世界的回响，1:1）。
+     *
+     * <p>★ 为什么这一件也走"门面类型"而不是 {@link RecipeType#NULL}：
+     * 与两个核心同理 —— 槽 10 用 {@code NULL} 时显示的是空气，玩家看不出
+     * "这件东西到底是怎么来的"。换成它之后槽 10 会显示
+     * <b>「维度穿梭」的图标与名字</b>，正好把获取方式写在物品页上。
+     *
+     * <p>★ 它同样<b>不会</b>让回响变成可合成物品：本类型由 {@link #core} 造出
+     * （{@code registerConsumer == null}），而 {@code machine} 指向的那个
+     * {@code SlimefunItem} 是 {@link EchoOfAnotherWorld}（普通 {@code SlimefunItem}，
+     * 不是 {@code MultiBlockMachine}），两条注册路径都不通；再加上物品传入的配方数组是
+     * {@code AddSlimefunItems#noRecipe()} 的 9 格全空 —— 工作台/增强工作台/任何机器里
+     * 都摆不出它。运行期由 {@code /touhou guide echo} 的"可合成性核查"证明。
+     *
+     * <p>key 取 {@code touhou:dimension_shuttle}（「维度穿梭」的直译）。
+     */
+    public static RecipeType DIMENSION_SHUTTLE;
+
+    /**
+     * 建好三个配方类型 —— 必须在 {@link AddItems#setup()} 之后、
      * {@link AddSlimefunItems#setup} 之前调用。
      */
     public static void setup() {
@@ -73,6 +95,12 @@ public final class TouhouRecipeTypes {
                 "",
                 "&a&o搭建完整的多方块结构后放入核心",
                 "&8材料清单见物品描述");
+        // 维度穿梭：图标就用产出物「另一个世界的回响」本身，
+        // 于是指南槽 10 一眼就是"这件东西 + 它的获取方式名"。
+        DIMENSION_SHUTTLE = core("dimension_shuttle", AddItems.ECHO_OF_ANOTHER_WORLD,
+                "",
+                "&a&o穿过维度之门（主世界 ↔ 地狱）",
+                "&8身上的能量水晶会化作 1 个另一个世界的回响");
     }
 
     /**
@@ -88,7 +116,9 @@ public final class TouhouRecipeTypes {
 
     /** 诊断：本模块的状态（{@code /touhou guide} 用）。 */
     public static String describe() {
-        return "自定义配方类型：反应堆核心=" + keyOf(REACTOR_CORE) + " / 赛钱箱=" + keyOf(SAIZENBAKO);
+        return "自定义配方类型：反应堆核心=" + keyOf(REACTOR_CORE)
+                + " / 赛钱箱=" + keyOf(SAIZENBAKO)
+                + " / 维度穿梭=" + keyOf(DIMENSION_SHUTTLE);
     }
 
     private static String keyOf(RecipeType type) {

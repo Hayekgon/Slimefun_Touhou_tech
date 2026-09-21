@@ -270,6 +270,68 @@ public final class AddonConfig {
     public String lilyMessageLevel = "off";
 
     /**
+     * 另一个世界的回响 —— 自己的消息前缀（{@code config.yml} 的 {@code echo.message-prefix}）。
+     *
+     * <p>★ 与梦想封印 集 / 杀意的百合同理：一件道具/机制的提示不该顶着另一台机器的前缀
+     * （赛钱箱踩过的老路，见 {@link Notify#saizen()}）。
+     *
+     * <p>★ 本机制的玩家可见反馈<b>只有 warning</b>（"转化成功"那一条，走
+     * {@link Notify#warn} —— 它不受档位影响、永远输出），所以这里没有配套的
+     * {@code messages.level}：加一个没有任何调用点的档位只会让人以为"调了没用"。
+     */
+    public String echoPrefix = "&8[&f另一个世界的回响&8] &r";
+
+    // ---- 维度穿梭（「另一个世界的回响」的获取机制）----
+
+    /**
+     * 维度穿梭总开关（{@code config.yml} 的 {@code echo.enabled}）。
+     *
+     * <p>关掉之后：玩家传送<b>不会</b>再转化任何水晶；物品本身照旧存在
+     * （已经拿到的回响不受影响，指南页也照常显示获取方式）。
+     */
+    public boolean echoEnabled = true;
+
+    /**
+     * 换算：<b>几个</b>能量水晶算一个"转化单位"（{@code echo.crystal-per-echo}）。
+     *
+     * <p>默认 1 —— 用户口径是 <b>1:1</b>（1 个能量水晶 → 1 个回响）。
+     * 做成两个数是为了"10 个水晶换 1 个回响"这类调整不必改代码，
+     * <b>不是</b>概率、也不是每次传送的上限。
+     */
+    public int echoCrystalPerEcho = 1;
+
+    /**
+     * 每个"转化单位"产出<b>几个</b>回响（{@code echo.echo-per-crystal}）。
+     *
+     * <p>默认 1。与上面的数一起决定换算：
+     * {@code 回响数 = 水晶数 / crystal-per-echo * echo-per-crystal}。
+     * ⚠ 当前实现是"逐槽按比例折算、向下取整"（见
+     * {@code EchoOfAnotherWorld#convertInventory}），所以配成 2:1 时
+     * "只有 1 个水晶"不会产出半个回响，而是原样留在背包里。
+     */
+    public int echoEchoPerCrystal = 1;
+
+    /**
+     * 玩家级转化冷却（毫秒，{@code echo.convert-cooldown-millis}）。
+     *
+     * <h2>★ 为什么需要它（以及它<b>不</b>解决什么）</h2>
+     * 幂等本身是<b>免费</b>的：转化是就地改写背包内容，判据又只看"能量水晶"这个粘液 id
+     * —— 同一个玩家在同一秒里被触发一百次，第二次起一定数出 0 个水晶、什么都不做。
+     * 所以这道冷却防的<b>不是</b>无限刷，而是：
+     * <ol>
+     *   <li><b>两次事件落在同一次穿梭上</b>：某些传送路径（跨世界传送门插件、
+     *       {@code /execute in} 链式传送）可能连发两次换世界事件；</li>
+     *   <li><b>刚转化完又被弹回门里</b>：玩家站在目的地传送门方块中时可能很快被再传一次。
+     *       那一瞬他手上已经是"回响"而不是水晶（所以不会凭空增殖），但如果他背包里
+     *       <b>还有第二批</b>水晶，这道冷却至少让"来回穿梭"变成有节奏的行为而不是每 tick 一次。</li>
+     * </ol>
+     *
+     * <p>默认 <b>3000 ms（3 秒）</b>：比一次传送动画/落地长、比一次有意的往返穿梭短。
+     * 设 {@code 0} = 关闭冷却（只留幂等那道保证）。
+     */
+    public int echoConvertCooldownMillis = 3000;
+
+    /**
      * 控制台 info 输出总开关（{@code config.yml} 的 {@code logging.console-info}）。
      *
      * <ul>
@@ -428,6 +490,9 @@ public final class AddonConfig {
 
         // 杀意的百合那一段（同样只有消息前缀/档位；道具自己的数值也在 Items.yml 里）。
         loadLily(c, cfg);
+
+        // 另一个世界的回响 / 维度穿梭那一段（物品数值在代码里，机制参数在 config.yml）。
+        loadEcho(c, cfg);
 
         c.consoleInfo = cfg.getBoolean("logging.console-info", c.consoleInfo);
         c.supplyEnabled = cfg.getBoolean("supply.enabled", c.supplyEnabled);
@@ -603,6 +668,30 @@ public final class AddonConfig {
     }
 
     /**
+     * 读 {@code echo:} 段（另一个世界的回响 + 维度穿梭）。
+     *
+     * <p>与 {@link #loadSeal} / {@link #loadLily} 同构：缺段/缺项一律保留内置默认值，
+     * 所以老 {@code config.yml}（没有这一段）直接用也不会出问题。
+     *
+     * <p>★ 为什么这一段不像两件符卡那样"数值全在 Items.yml"：本机制<b>不是物品属性</b>
+     * —— 它是"玩家传送时发生什么"，没有对应的 {@code SlimefunItem} 实例去承载
+     * {@code ItemSetting}（触发点是事件，不是右键某件物品）。所以它的参数就落在
+     * 本文件（{@code config.yml}），与 {@code saizenbako.power-cost}、
+     * {@code reactor.process-ticks} 同一类。
+     */
+    private static void loadEcho(AddonConfig c, FileConfiguration cfg) {
+        ConfigurationSection s = cfg.getConfigurationSection("echo");
+        if (s == null) {
+            return;
+        }
+        c.echoPrefix = s.getString("message-prefix", c.echoPrefix);
+        c.echoEnabled = s.getBoolean("enabled", c.echoEnabled);
+        c.echoCrystalPerEcho = s.getInt("crystal-per-echo", c.echoCrystalPerEcho);
+        c.echoEchoPerCrystal = s.getInt("echo-per-crystal", c.echoEchoPerCrystal);
+        c.echoConvertCooldownMillis = s.getInt("convert-cooldown-millis", c.echoConvertCooldownMillis);
+    }
+
+    /**
      * 把明显不合法的配置挡下来并改成安全值。
      *
      * <p>真实踩点：`MachineFuel` 的进程 tick 必须 > 0（`FuelOperation` 构造器里有
@@ -692,6 +781,23 @@ public final class AddonConfig {
                     "projection.clean-radius < 1，回退为 32");
             c.projectionCleanRadius = 32;
         }
+        // 维度穿梭的两个换算数：必须 >= 1（0 会让"几个换几个"变成除零/永不产出）
+        if (c.echoCrystalPerEcho < 1) {
+            Touhou.getInstance().getLogger().warning(
+                    "echo.crystal-per-echo < 1，回退为 1");
+            c.echoCrystalPerEcho = 1;
+        }
+        if (c.echoEchoPerCrystal < 1) {
+            Touhou.getInstance().getLogger().warning(
+                    "echo.echo-per-crystal < 1，回退为 1");
+            c.echoEchoPerCrystal = 1;
+        }
+        // 冷却允许 0（=关闭冷却，只留幂等），但负数没有意义
+        if (c.echoConvertCooldownMillis < 0) {
+            Touhou.getInstance().getLogger().warning(
+                    "echo.convert-cooldown-millis < 0，回退为 0（关闭冷却）");
+            c.echoConvertCooldownMillis = 0;
+        }
     }
 
     /** 赛钱箱那一段的摘要（{@code /touhou saizen ... info} 用）。 */
@@ -748,6 +854,10 @@ public final class AddonConfig {
                         + "（POWER 刻度在 Items.yml，不在本文件）",
                 "lily              = 杀意的百合 前缀「" + lilyPrefix + "」档位 "
                         + Notify.Level.parse(lilyMessageLevel).display()
-                        + "（与 seal 共用 PartyItem 的 POWER 刻度，同样不在本文件）");
+                        + "（与 seal 共用 PartyItem 的 POWER 刻度，同样不在本文件）",
+                "echo              = 维度穿梭 " + (echoEnabled ? "开" : "关")
+                        + "  换算 " + echoCrystalPerEcho + " 水晶 → " + echoEchoPerCrystal + " 回响"
+                        + "  玩家冷却 " + echoConvertCooldownMillis + " ms"
+                        + "  前缀「" + echoPrefix + "」");
     }
 }

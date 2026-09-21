@@ -26,6 +26,14 @@ public final class AddSlimefunItems {
     public static UtsuhoReactorCore UTSUHO_REACTOR_CORE;
     /** 炙热的灰烬（材料）。 */
     public static SlimefunItem BLAZING_ASH;
+    /**
+     * 另一个世界的回响（材料；玩家穿过维度之门时由能量水晶转化而来）。
+     *
+     * <p>它<b>不是</b>合成品：配方数组是 {@link #noRecipe()}，配方类型是
+     * {@link TouhouRecipeTypes#DIMENSION_SHUTTLE}（"只当门面、不落合成表"的类型，
+     * 判据见那个类的类注释）。获取机制见 {@link EchoOfAnotherWorld#shuttle}。
+     */
+    public static EchoOfAnotherWorld ECHO_OF_ANOTHER_WORLD;
     /** 模式切换玻璃板（GUI 功能件，归属 1 级组 INFO，无配方）。 */
     public static SlimefunItem INFO_MODESHIFT;
 
@@ -98,6 +106,18 @@ public final class AddSlimefunItems {
                 AddGroups.MATERIAL,
                 AddItems.BLAZING_ASH,
                 RecipeType.NULL,
+                noRecipe()), plugin);
+
+        // 另一个世界的回响：同样"不是合成出来的"，但配方类型不用 NULL 而用
+        // TouhouRecipeTypes.DIMENSION_SHUTTLE —— 这样指南页槽 10 会显示
+        // 「维度穿梭」而不是空气，玩家一眼能看出获取方式（判据见那个类的类注释）。
+        // 配方数组仍是 9 格全空（noRecipe），所以它不会出现在任何合成表 / 机器里。
+        // 真正的获取机制在 EchoOfAnotherWorld#shuttle，事件入口见
+        // EchoOfAnotherWorldListener（Touhou#onEnable 里注册）。
+        ECHO_OF_ANOTHER_WORLD = register(new EchoOfAnotherWorld(
+                AddGroups.MATERIAL,
+                AddItems.ECHO_OF_ANOTHER_WORLD,
+                TouhouRecipeTypes.DIMENSION_SHUTTLE,
                 noRecipe()), plugin);
 
         // GUI 模式玻璃板：必须真实注册，否则它的粘液 id 不存在。
@@ -326,6 +346,8 @@ public final class AddSlimefunItems {
         return "TOUHOU 注册："
                 + (UTSUHO_REACTOR_CORE == null ? "反应堆核心=未注册" : "反应堆核心=OK")
                 + " / " + (BLAZING_ASH == null ? "炙热的灰烬=未注册" : "炙热的灰烬=OK")
+                + " / " + (ECHO_OF_ANOTHER_WORLD == null ? "另一个世界的回响=未注册"
+                        : "另一个世界的回响=OK(" + ECHO_OF_ANOTHER_WORLD.getId() + ")")
                 + " / " + (INFO_MODESHIFT == null ? "模式玻璃板=未注册" : "模式玻璃板=OK")
                 + " / INFO=" + (INFO_PLUGIN_MESSAGE == null ? "未注册"
                         : (INFO_PLUGIN_MESSAGE.getId() + "," + INFO_DECLARATION_1.getId()
