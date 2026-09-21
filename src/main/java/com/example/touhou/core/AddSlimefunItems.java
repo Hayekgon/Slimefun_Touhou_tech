@@ -60,6 +60,24 @@ public final class AddSlimefunItems {
      */
     public static SlimefunItem LILY_WHITE;
     /**
+     * 丰收之时 —— 范围强制催熟的<b>单方块机器</b>（右键生效，不需要 GUI）。
+     *
+     * <p>★ 归属 2 级组 {@link AddGroups#SIMPLE_MACHINE}（单方块机器，挂在容器组 MACHINE 下）：
+     * 它是可放置、有实际功能的机器，与"纯素材"的春泥 / 莉莉白不同类；
+     * 又因为它<b>不是</b>多方块，所以不进 {@code COMPLEX_MACHINE}。
+     * （<b>不能</b>直接挂 {@code MACHINE} —— 那是 FlexItemGroup，装物品会抛异常，
+     * 判据见 {@link AddGroups#SIMPLE_MACHINE}。）
+     *
+     * <p>★ 配方类型 {@code RecipeType.MAGIC_WORKBENCH}：<b>用户没有指定</b>，
+     * 这里按上一件物品（莉莉白）的惯例取魔法工作台 —— 理由是配方里有
+     * 「另一个世界的回响」（靠维度穿梭才能拿到），定位偏后期，配魔法工作台合理。
+     * <b>这是我的判断，不是用户口径。</b>
+     *
+     * <p>★ <b>单次产出 1 个</b> ⇒ 用 4 参构造器，<b>不传</b>第 5 参数 {@code recipeOutput}
+     * （与莉莉白刻意相反，别顺手抄成 2）。
+     */
+    public static HarvestTime HARVEST_TIME;
+    /**
      * 另一个世界的回响（材料；玩家穿过维度之门时由能量水晶转化而来）。
      *
      * <p>它<b>不是</b>合成品：配方数组是 {@link #noRecipe()}，配方类型是
@@ -176,6 +194,17 @@ public final class AddSlimefunItems {
                 RecipeType.MAGIC_WORKBENCH,
                 lilyWhiteRecipe(),
                 new SlimefunItemStack(AddItems.LILY_WHITE, LILY_WHITE_OUTPUT_AMOUNT)), plugin);
+
+        // 丰收之时：范围强制催熟的单方块机器。
+        // ★ 4 参构造器（单次产出 1 个）—— 刻意【不】传第 5 参数 recipeOutput，
+        //   与莉莉白相反（那件是 2 个）。模板数量保持 1。
+        // ★ 它的右键行为全在 HarvestTime#getItemHandler（SimpleSlimefunItem 的钩子），
+        //   这里只负责注册与配方。
+        HARVEST_TIME = register(new HarvestTime(
+                AddGroups.SIMPLE_MACHINE,
+                AddItems.HARVEST_TIME,
+                RecipeType.MAGIC_WORKBENCH,
+                harvestTimeRecipe()), plugin);
 
         // GUI 模式玻璃板：必须真实注册，否则它的粘液 id 不存在。
         // 归属 INFO（1 级）—— 它是 GUI 内部功能件，不是可制造的材料。
@@ -378,6 +407,31 @@ public final class AddSlimefunItems {
         };
     }
 
+    /**
+     * 丰收之时的合成配方（<b>魔法工作台</b>）。
+     *
+     * <pre>
+     *   骨块     小麦            骨块
+     *   小麦种子  另一个世界的回响  小麦种子
+     *   骨块     小麦            骨块
+     * </pre>
+     *
+     * <p>★ 正中间是<b>本项目自己的物品</b>「另一个世界的回响」
+     * （{@link AddItems#ECHO_OF_ANOTHER_WORLD}，id {@code TOUHOU_MATERIAL_ECHO_OF_ANOTHER_WORLD}）——
+     * 配方匹配拿粘液 id 比，所以必须给模板本身。
+     * 其余八格是原版材料：骨块 / 小麦 / 小麦种子。
+     *
+     * <p>★ 单次产出 <b>1</b> 个：本方法只给 9 格图案，注册处用的是 4 参构造器
+     * （没有 {@code recipeOutput}），所以产出就是模板自己的数量 1。
+     */
+    private static ItemStack[] harvestTimeRecipe() {
+        return new ItemStack[] {
+                new ItemStack(Material.BONE_BLOCK), new ItemStack(Material.WHEAT), new ItemStack(Material.BONE_BLOCK),
+                new ItemStack(Material.WHEAT_SEEDS), AddItems.ECHO_OF_ANOTHER_WORLD, new ItemStack(Material.WHEAT_SEEDS),
+                new ItemStack(Material.BONE_BLOCK), new ItemStack(Material.WHEAT), new ItemStack(Material.BONE_BLOCK)
+        };
+    }
+
     private static ItemStack[] goheiRecipe() {
         return new ItemStack[] {
                 null, AddItems.BLAZING_ASH, null,
@@ -456,6 +510,8 @@ public final class AddSlimefunItems {
                 + " / " + (LILY_WHITE == null ? "莉莉白=未注册"
                         : "莉莉白=OK(" + LILY_WHITE.getId()
                                 + ",产出" + LILY_WHITE_OUTPUT_AMOUNT + ")")
+                + " / " + (HARVEST_TIME == null ? "丰收之时=未注册"
+                        : "丰收之时=OK(" + HARVEST_TIME.getId() + ",产出1)")
                 + " / " + (ECHO_OF_ANOTHER_WORLD == null ? "另一个世界的回响=未注册"
                         : "另一个世界的回响=OK(" + ECHO_OF_ANOTHER_WORLD.getId() + ")")
                 + " / " + (INFO_MODESHIFT == null ? "模式玻璃板=未注册" : "模式玻璃板=OK")

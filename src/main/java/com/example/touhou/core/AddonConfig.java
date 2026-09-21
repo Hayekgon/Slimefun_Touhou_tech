@@ -281,6 +281,31 @@ public final class AddonConfig {
      */
     public String echoPrefix = "&8[&f另一个世界的回响&8] &r";
 
+    /**
+     * 「丰收之时」—— 自己的消息前缀（{@code config.yml} 的 {@code harvest.message-prefix}）。
+     *
+     * <p>★ 与 {@code echoPrefix} 同理：一台机器的提示不该蹭别的机器或反应堆的前缀
+     * （赛钱箱踩过的老路，见 {@link Notify#saizen()}）。
+     *
+     * <p>★ 本机器只发 warning（催熟结果 / 冷却中 / 没权限），而 warning 不受档位影响、
+     * 永远输出 ⇒ 这里同样<b>没有</b>配套的 {@code messages.level}。
+     */
+    public String harvestPrefix = "&8[&6丰收之时&8] &r";
+
+    /**
+     * 每方块冷却（毫秒，{@code harvest.cooldown-millis}）。
+     *
+     * <p>一次右键要扫 9×9×3 = 243 格、撒 50 个粒子、播一个音效。
+     * 玩家按住右键的连点频率远高于"一次真能催熟出东西"的频率，
+     * 所以必须有一道节流把它们挡在门外。默认 <b>800 ms</b>：
+     * 比一次手快点两下的间隔长，又短到不影响正常连续劳作。
+     *
+     * <p>★ 键是<b>方块坐标</b>（不是玩家）：同一台机器被谁点都一样要等，
+     * 而不同田里的两台机器互不影响 —— 那正是"防连点"想要的形状。
+     * 配 0 = 关闭冷却。
+     */
+    public int harvestCooldownMillis = 800;
+
     // ---- 维度穿梭（「另一个世界的回响」的获取机制）----
 
     /**
@@ -504,6 +529,9 @@ public final class AddonConfig {
         // 另一个世界的回响 / 维度穿梭那一段（物品数值在代码里，机制参数在 config.yml）。
         loadEcho(c, cfg);
 
+        // 丰收之时那一段（机器行为参数：每方块冷却 + 自己的消息前缀）。
+        loadHarvest(c, cfg);
+
         c.consoleInfo = cfg.getBoolean("logging.console-info", c.consoleInfo);
         c.supplyEnabled = cfg.getBoolean("supply.enabled", c.supplyEnabled);
 
@@ -706,6 +734,21 @@ public final class AddonConfig {
     }
 
     /**
+     * 读 {@code harvest:} 段 —— 「丰收之时」的机器参数。
+     *
+     * <p>与 {@code echo:} 段同一类：这些是"机器行为参数"，不是物品属性，
+     * 所以落在 {@code config.yml}（本文件）而不是 {@code Items.yml}。
+     */
+    private static void loadHarvest(AddonConfig c, FileConfiguration cfg) {
+        ConfigurationSection s = cfg.getConfigurationSection("harvest");
+        if (s == null) {
+            return;
+        }
+        c.harvestPrefix = s.getString("message-prefix", c.harvestPrefix);
+        c.harvestCooldownMillis = s.getInt("cooldown-millis", c.harvestCooldownMillis);
+    }
+
+    /**
      * 把明显不合法的配置挡下来并改成安全值。
      *
      * <p>真实踩点：`MachineFuel` 的进程 tick 必须 > 0（`FuelOperation` 构造器里有
@@ -824,6 +867,12 @@ public final class AddonConfig {
             Touhou.getInstance().getLogger().warning(
                     "echo.convert-cooldown-millis < 0，回退为 0（关闭冷却）");
             c.echoConvertCooldownMillis = 0;
+        }
+        // 丰收之时的每方块冷却：同样允许 0（=关闭），负数没意义
+        if (c.harvestCooldownMillis < 0) {
+            Touhou.getInstance().getLogger().warning(
+                    "harvest.cooldown-millis < 0，回退为 0（关闭冷却）");
+            c.harvestCooldownMillis = 0;
         }
     }
 

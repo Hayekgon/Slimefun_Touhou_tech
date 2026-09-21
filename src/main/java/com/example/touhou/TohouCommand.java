@@ -22,6 +22,7 @@ import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
+import org.bukkit.block.Block;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -34,6 +35,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -91,6 +93,8 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
                     echo(sender, Arrays.copyOfRange(args, 1, args.length));
             case "lilywhite", "lw", "lily_white" ->
                     lilyWhite(sender, Arrays.copyOfRange(args, 1, args.length));
+            case "harvest", "harvesttime" ->
+                    harvest(sender, Arrays.copyOfRange(args, 1, args.length));
             case "autobuild" -> autobuild(sender, Arrays.copyOfRange(args, 1, args.length));
             case "reactor" -> reactor(sender, Arrays.copyOfRange(args, 1, args.length));
             case "clickinfo" -> clickInfo(sender, Arrays.copyOfRange(args, 1, args.length));
@@ -178,6 +182,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         s.sendMessage("\u00a77/touhou lily cleanup               把两张追踪表收干净并打印条目数");
         s.sendMessage("\u00a77/touhou echo selfcheck | rule | container <x> <y> <z> | convert [玩家] | probe <玩家> [世界] | shuttle <玩家> <from> <to> [--force] | cooldown [clear]   「维度穿梭」无头验证");
         s.sendMessage("\u00a77/touhou lilywhite [selfcheck|name|recipe]   莉莉白：头贴图 / 粉白渐变（JSON 证据）/ 配方产出 2 个");
+        s.sendMessage("\u00a77/touhou harvest [selfcheck | test <x> <y> <z> | probe <x> <y> <z> | clear <x> <y> <z> | cell <x> <y> <z> [面] | cooldown [clear]]   丰收之时：范围催熟验证（含西瓜南瓜结果）");
         s.sendMessage("\u00a77/touhou guide [reactor|saizen|echo]   粘液书自定义配方页的内容自检（展示列表 + 可合成性核查）");
         s.sendMessage("\u00a77/touhou place <x> <y> <z> <sfId> [world] [--force]");
         s.sendMessage("\u00a77/touhou remove <x> <y> <z>            删除方块 + Slimefun 方块数据（setblock 清不掉）");
@@ -914,6 +919,628 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         }
         ItemStack[] holders = recipes.get(index + 1);
         return holders != null && holders.length > 0 ? holders[0] : null;
+    }
+
+    // ------------------------------------------------------------------ harvest（丰收之时）
+
+    /**
+     * 「丰收之时」的无头验证入口。
+     *
+     * <pre>
+     *   /touhou harvest                        物品自检（id / 材质 / 光效 / 名与描述的渐变 / 配方产出 1 个）
+     *   /touhou harvest test &lt;x&gt; &lt;y&gt; &lt;z&gt;         造一小块测试田 → 跑催熟 → 打印前后对照 → 清掉测试田
+     *   /touhou harvest probe &lt;x&gt; &lt;y&gt; &lt;z&gt;        同上，但<b>保留</b>测试田（人工进游戏看效果用）
+     *   /touhou harvest clear &lt;x&gt; &lt;y&gt; &lt;z&gt;        只清测试田
+     *   /touhou harvest cell &lt;x&gt; &lt;y&gt; &lt;z&gt; [面]    只对<b>某一格</b>试一次骨粉，并打印结果与当前 age
+     *   /touhou harvest cooldown [clear]       读 / 清每方块冷却表
+     * </pre>
+     *
+     * <p>★ 为什么这段值得存在：本机器的行为<b>全在方块世界里</b>（哪些格被催熟了、瓜有没有结出来），
+     * 而这些恰恰是控制台"看不见"的东西。{@code test} 把一块标准测试田摆出来、
+     * 调<b>与右键完全相同</b>的 {@link HarvestTime#harvest} 内核、再逐格打印 age 前后值，
+     * 于是"到底催熟了哪几格、瓜结在哪"就成了可 grep 的文本证据。
+     *
+     * <p>★ 测试田会<b>用完即清</b>（{@code test} 分支），世界不会被改乱；
+     * 想人工进游戏目视检查时用 {@code probe}（保留测试田）。
+     */
+    private void harvest(CommandSender sender, String[] args) {
+        String sub = args.length >= 1 ? args[0].toLowerCase() : "selfcheck";
+
+        if (sub.equals("selfcheck") || sub.equals("all") || sub.equals("check")) {
+            harvestSelfCheck(sender);
+            if (sub.equals("selfcheck") || sub.equals("check")) {
+                return;
+            }
+        }
+        if (sub.equals("cooldown") || sub.equals("cd")) {
+            if (args.length >= 2 && args[1].equalsIgnoreCase("clear")) {
+                int n = com.example.touhou.core.HarvestTime.clearCooldowns();
+                guideLine(sender, PREFIX + "\u00a7a已清空每方块冷却（原 " + n + " 条）");
+                log("[TOUHOU] harvest cooldown clear -> " + n);
+            } else {
+                guideLine(sender, PREFIX + "\u00a7e丰收之时 · 冷却表");
+                guideLine(sender, "\u00a78  配置冷却 = " + AddonConfig.get().harvestCooldownMillis + " ms"
+                        + (AddonConfig.get().harvestCooldownMillis <= 0 ? "（已关闭）" : ""));
+                guideLine(sender, "\u00a78  此刻处于冷却中的方块数 = "
+                        + com.example.touhou.core.HarvestTime.coolingCount());
+            }
+            return;
+        }
+        if (sub.equals("cell") || sub.equals("one")) {
+            harvestCell(sender, args);
+            return;
+        }
+        if (sub.equals("rng") || sub.equals("probe-bone") || sub.equals("bonemeal")) {
+            harvestRng(sender, args);
+            return;
+        }
+        if (sub.equals("clear") || sub.equals("clean")) {
+            Location loc = resolveAny(sender, Arrays.copyOfRange(args, 1, args.length));
+            if (loc == null) {
+                return;
+            }
+            int n = clearTestFarm(loc.getBlock(), true);
+            guideLine(sender, PREFIX + "\u00a7a已清掉测试田 " + n + " 格 @ " + xyz(loc));
+            return;
+        }
+        if (sub.equals("test") || sub.equals("probe") || sub.equals("run")) {
+            boolean keep = sub.equals("probe");
+            Location loc = resolveAny(sender, Arrays.copyOfRange(args, 1, args.length));
+            if (loc == null) {
+                return;
+            }
+            harvestTest(sender, loc, keep);
+            return;
+        }
+        sender.sendMessage(PREFIX + "\u00a7c用法: /touhou harvest [selfcheck |"
+                + " test <x> <y> <z> | probe <x> <y> <z> | clear <x> <y> <z> |"
+                + " cell <x> <y> <z> [面] | cooldown [clear]]");
+    }
+
+    /** 物品自检：id / 材质 / 光效 / 渐变（JSON + 逐字符）/ 配方与产出。 */
+    private void harvestSelfCheck(CommandSender sender) {
+        SlimefunItem item = com.example.touhou.core.HarvestTime.find();
+        guideLine(sender, PREFIX + "\u00a7e丰收之时 · 物品自检");
+        if (item == null) {
+            guideLine(sender, "\u00a7c  未注册（Slimefun 注册表里查不到 "
+                    + com.example.touhou.core.HarvestTime.ID + "）");
+            return;
+        }
+        guideLine(sender, "\u00a78  id = " + item.getId()
+                + "   类 = " + item.getClass().getSimpleName());
+        ItemStack icon = item.getItem();
+        guideLine(sender, "\u00a78  材质 = " + (icon == null ? "(null)" : String.valueOf(icon.getType()))
+                + "（应为 HAY_BLOCK）");
+        guideLine(sender, "\u00a78  物品组 = " + (item.getItemGroup() == null
+                ? "(null)" : item.getItemGroup().getKey().toString()));
+        // 附魔光效：挂了一个 HIDE_ENCHANTS 的假附魔
+        ItemMeta meta = icon == null ? null : icon.getItemMeta();
+        if (meta != null) {
+            guideLine(sender, "\u00a78  附魔光效 = 附魔数 " + meta.getEnchants().size()
+                    + "，HIDE_ENCHANTS=" + meta.hasItemFlag(org.bukkit.inventory.ItemFlag.HIDE_ENCHANTS));
+            printDisplayNameEvidence(sender, "显示名（橙黄渐变）", meta);
+            List<String> lore = meta.getLore();
+            if (lore != null) {
+                for (int i = 0; i < lore.size(); i++) {
+                    String line = lore.get(i);
+                    guideLine(sender, "\u00a77  lore[" + i + "] 原样 = "
+                            + (line == null ? "" : line.replace("\u00a7", "\\u00a7")));
+                    if (i == 1) {
+                        for (String cl : colorPerChar(line)) {
+                            guideLine(sender, "\u00a78    " + cl);
+                        }
+                    }
+                }
+            }
+        }
+        // 配方：类型 / 9 格 / 产出必须恰好 1
+        guideLine(sender, "\u00a7e  -- 配方 --");
+        guideLine(sender, "\u00a78  配方类型 = " + (item.getRecipeType() == null
+                ? "(null)" : item.getRecipeType().getKey().toString())
+                + "   指向的机器 = " + (item.getRecipeType() == null
+                        || item.getRecipeType().getMachine() == null
+                                ? "(无)" : item.getRecipeType().getMachine().getId()));
+        ItemStack declared = item.getRecipeOutput();
+        int amount = declared == null ? -1 : declared.getAmount();
+        guideLine(sender, "\u00a78  getRecipeOutput().getAmount() = " + amount + "  期望 1 ⇒ "
+                + (amount == 1 ? "\u00a7a符合（4 参构造器，没有 recipeOutput）" : "\u00a7c不符")
+                + "\u00a78（指南页产物格 / 自动合成机读这一条）");
+        guideLine(sender, "\u00a78  模板 getAmount() = "
+                + (AddItems.HARVEST_TIME == null ? "(null)" : AddItems.HARVEST_TIME.getAmount())
+                + "（应为 1）");
+        ItemStack[] grid = item.getRecipe();
+        for (int i = 0; i < (grid == null ? 0 : grid.length); i++) {
+            ItemStack cell = grid[i];
+            guideLine(sender, "\u00a78    [" + i + "] = " + (cell == null ? "(空)"
+                    : cell.getType() + " x" + cell.getAmount()
+                            + "  粘液id=" + idOf(cell)
+                            + "  名=" + com.example.touhou.core.RecipePages.labelOf(cell)));
+        }
+        guideLine(sender, "\u00a78  Slimefun 多方块机器配方表里能产出它的 = "
+                + countMachineRecipesFor(item) + " 条（应为 1）");
+        guideLine(sender, "\u00a78  范围 = 水平 ±" + com.example.touhou.core.HarvestTime.HORIZONTAL_RADIUS
+                + "（长 9 / 宽 9） 垂直 ±" + com.example.touhou.core.HarvestTime.VERTICAL_RADIUS
+                + "（高 3，y-1..y+1）");
+        log("[TOUHOU] harvest selfcheck id=" + item.getId()
+                + " material=" + (icon == null ? "null" : icon.getType())
+                + " declaredOutput=" + amount
+                + " templateAmount="
+                + (AddItems.HARVEST_TIME == null ? -1 : AddItems.HARVEST_TIME.getAmount())
+                + " gradientHexCount="
+                + (meta == null ? 0 : hexSequenceCount(meta.getDisplayName())));
+    }
+
+    /**
+     * <b>核心验证</b>：在 {@code center} 造一块标准测试田 → 跑一次催熟 → 逐格打印前后对照。
+     *
+     * <p>测试田布局（全部落在被扫描的 9×9×3 范围内）：
+     * <pre>
+     *   y-1   : 整层耕地（供水由机器那一格的正下方那格耕地承载，够骨粉判定用）
+     *   y     : 机器自己（HAY_BLOCK + 粘液方块数据）
+     *   y+1   : 各类作物 / 树苗 / 竹子 / 西瓜茎 / 南瓜茎（+ 各茎旁边留一格空气给结果）
+     *   y+2   : 只为竹子准备（竹子会被催高，长出来的高度也在范围内的 y+1）
+     * </pre>
+     *
+     * <p>每格都会打印「催熟前 → 催熟后」的方块类型与 age，
+     * 于是"哪些真的跳了 age""瓜结在哪"都能逐格核对，而不是只看一个总数。
+     */
+    private void harvestTest(CommandSender sender, Location center, boolean keep) {
+        SlimefunItem item = com.example.touhou.core.HarvestTime.find();
+        if (item == null) {
+            sender.sendMessage(PREFIX + "\u00a7c丰收之时未注册");
+            return;
+        }
+        Block machine = center.getBlock();
+
+        guideLine(sender, PREFIX + "\u00a7e丰收之时 · 测试田催熟验证 @ " + xyz(center)
+                + (keep ? "\u00a77（probe：测试田保留）" : "\u00a77（test：结束后清除）"));
+
+        // ---- ① 先清场再铺田（幂等：重复跑不会叠出怪东西）
+        clearTestFarm(machine, false);
+        List<String> planted = buildTestFarm(machine);
+        guideLine(sender, "\u00a7e  -- 测试田（" + planted.size() + " 个可催熟目标）--");
+        for (String line : planted) {
+            guideLine(sender, "\u00a78    " + line);
+        }
+
+        // ---- ② 范围自检：边界必须正好是 x±4 / y±1 / z±4
+        int[] b = com.example.touhou.core.HarvestTime.bounds(machine);
+        guideLine(sender, "\u00a7e  -- 范围自检 --");
+        guideLine(sender, "\u00a78  边界 x: " + b[0] + " .. " + b[1]
+                + "   y: " + b[2] + " .. " + b[3]
+                + "   z: " + b[4] + " .. " + b[5]);
+        guideLine(sender, "\u00a78  期待  x: " + (machine.getX() - 4) + " .. " + (machine.getX() + 4)
+                + "   y: " + (machine.getY() - 1) + " .. " + (machine.getY() + 1)
+                + "   z: " + (machine.getZ() - 4) + " .. " + (machine.getZ() + 4));
+        guideLine(sender, "\u00a78  格数 = 9*9*3 = 243；机器自己那格在范围内但会被跳过 —— 现在它是 "
+                + machine.getType() + "（HAY_BLOCK，非 Ageable ⇒ 本来也不会被催）");
+        // 边界内外各取一格，证明 inRange 判得对
+        guideLine(sender, "\u00a78  inRange(北边界 z=" + b[4] + ") = "
+                + com.example.touhou.core.HarvestTime.inRange(machine, machine.getX(), machine.getY(), b[4])
+                + "   inRange(越界 z=" + (b[4] - 1) + ") = "
+                + com.example.touhou.core.HarvestTime.inRange(machine, machine.getX(), machine.getY(), b[4] - 1)
+                + "   inRange(越界 y=" + (b[3] + 1) + ") = "
+                + com.example.touhou.core.HarvestTime.inRange(machine, machine.getX(), b[3] + 1, machine.getZ()));
+
+        // ---- ③ 记录催熟前的状态
+        //   ★ 快照与逐格对照必须是【同一批 Block 对象】：
+        //     早先这里另建了一个 targets 列表，结果打印出来的"目标 N"顺序
+        //     与"测试田（N 个可催熟目标）"完全对不上（一个按 dx/dy/dz、
+        //     一个按 dx/dz/dy 扫描），读起来像是数据错乱。现在只用一份。
+        List<Block> targets = new ArrayList<>();
+        List<String> before = new ArrayList<>();
+        for (int dx = -4; dx <= 4; dx++) {
+            for (int dy = -1; dy <= 1; dy++) {
+                for (int dz = -4; dz <= 4; dz++) {
+                    Block blk = center.getWorld().getBlockAt(
+                            machine.getX() + dx, machine.getY() + dy, machine.getZ() + dz);
+                    if (blk.equals(machine)) {
+                        continue;
+                    }
+                    if (com.example.touhou.core.HarvestTime.needsBoneMeal(blk)) {
+                        targets.add(blk);
+                        before.add(com.example.touhou.core.HarvestTime.describe(blk));
+                    }
+                }
+            }
+        }
+        int beforeFruits = countFruits(machine);
+        // 范围外对照的催熟前读数（放在机器上方三格的田里，见 buildTestFarm）
+        Block outside = center.getWorld().getBlockAt(machine.getX(), machine.getY() + 2, machine.getZ() + 3);
+        String outsideBefore = com.example.touhou.core.HarvestTime.describe(outside);
+
+        // ---- ④ 跑催熟内核（与右键处理器调的<b>同一个</b>方法）
+        guideLine(sender, "\u00a7e  -- 催熟（" + targets.size() + " 个目标都是 Ageable 且未满级）--");
+        com.example.touhou.core.HarvestTime.HarvestReport report =
+                com.example.touhou.core.HarvestTime.harvest(machine, "console-verify");
+
+        // ---- ⑤ 逐格前后对照
+        for (int i = 0; i < targets.size(); i++) {
+            guideLine(sender, "\u00a78    目标 " + (i + 1) + "：" + before.get(i)
+                    + "  \u2192  " + com.example.touhou.core.HarvestTime.describe(targets.get(i)));
+        }
+        int afterFruits = countFruits(machine);
+        guideLine(sender, "\u00a7e  -- 结果 --");
+        guideLine(sender, "\u00a78  实际被催熟的格数 = " + report.boneMealedCount()
+                + "（内核自报；目标 " + targets.size() + " 个）");
+        guideLine(sender, "\u00a78  西瓜/南瓜果实：催熟前 " + beforeFruits + " 个 → 催熟后 "
+                + afterFruits + " 个（新增 " + (afterFruits - beforeFruits) + "）");
+        guideLine(sender, "\u00a78  内核自报结出的果实 = " + report.fruitCount() + " 个");
+        for (String f : report.fruitDetails()) {
+            guideLine(sender, "\u00a7a    ★ 结果位置 " + f);
+        }
+        if (report.fruitCount() == 0) {
+            guideLine(sender, "\u00a7c    （没有结出果实 —— 检查测试田的茎是否成熟、旁边是否留了空气格）");
+        }
+        // 进了扫描却没涨 age 的格：如实打出来（不是所有 Ageable 都吃骨粉）
+        if (!report.movedDetails().isEmpty()) {
+            guideLine(sender, "\u00a7e  -- 作为目标记下、事后换了类型的格（预期变动，不是失败）--");
+            for (String line : report.movedDetails()) {
+                guideLine(sender, "\u00a78    " + line);
+            }
+        }
+        if (!report.unchangedDetails().isEmpty()) {
+            guideLine(sender, "\u00a7e  -- 进了扫描但 age 未变的格（如实报告）--");
+            for (String line : report.unchangedDetails()) {
+                guideLine(sender, "\u00a78    " + line);
+            }
+        }
+
+        // ---- ⑤a "为什么要循环"的实测证据：把每个目标再叫一次【单次】骨粉，
+        //   看有多少次"叫了却没反应" —— 这正是 forceRipen 存在的理由。
+        guideLine(sender, "\u00a7e  -- 单次骨粉的可靠性实测（说明「为什么要循环到满级」）--");
+        int singleCalls = 0;
+        int singleNoEffect = 0;
+        List<String> noEffectSamples = new ArrayList<>();
+        for (Block blk : targets) {
+            org.bukkit.block.data.BlockData d = blk.getBlockData();
+            if (!(d instanceof org.bukkit.block.data.Ageable ageable)) {
+                continue;
+            }
+            if (ageable.getAge() >= ageable.getMaximumAge()) {
+                continue;       // 已经被催满了，没法再测
+            }
+            singleCalls++;
+            if (!com.example.touhou.core.HarvestTime.applyBoneMeal(blk)) {
+                singleNoEffect++;
+                if (noEffectSamples.size() < 3) {
+                    noEffectSamples.add(blk.getType() + " @ "
+                            + blk.getX() + "," + blk.getY() + "," + blk.getZ());
+                }
+            }
+        }
+        guideLine(sender, "\u00a78  单次调用 = " + singleCalls + " 次，其中【叫了 age 却没动】= "
+                + singleNoEffect + " 次"
+                + (singleCalls == 0 ? "（全部已被催满，本次无量）"
+                                : "  比率 " + (singleNoEffect * 100 / Math.max(1, singleCalls)) + "%"));
+        for (String s : noEffectSamples) {
+            guideLine(sender, "\u00a78    " + s + "（单次无反应）");
+        }
+        guideLine(sender, "\u00a78  ⇒ 结论：单次 applyBoneMeal 是【逐次判随机数】的，"
+                + "一次右键必须循环到满级才算「强制催熟」（见 HarvestTime#forceRipen）");
+
+        // ---- ⑤b 范围外对照：y+2 那株小麦必须一个 age 都没涨
+        guideLine(sender, "\u00a7e  -- 范围外对照（证明扫描真的只在 9×9×3 里动手）--");
+        boolean outsideIntact = outside.getBlockData() instanceof org.bukkit.block.data.Ageable a
+                && a.getAge() == 0;
+        guideLine(sender, "\u00a78  " + outsideBefore + "  \u2192  "
+                + com.example.touhou.core.HarvestTime.describe(outside) + "  ⇒ "
+                + (outsideIntact ? "\u00a7aage 仍为 0（没被碰，正确）" : "\u00a7cage 变了（不该发生）"));
+
+        // ---- ⑥ 冷却：连调两次，第二次必须被拦
+        guideLine(sender, "\u00a7e  -- 冷却验证（复刻右键处理器那两行：先问 cooldownLeft、通过才 markUsed）--");
+        long cfgCooldown = AddonConfig.get().harvestCooldownMillis;
+        com.example.touhou.core.HarvestTime.clearCooldowns();
+        long first = com.example.touhou.core.HarvestTime.cooldownLeft(machine);
+        guideLine(sender, "\u00a78  第 1 次 cooldownLeft = " + first + " ms ⇒ "
+                + (first == 0 ? "\u00a7a放行" : "\u00a7c被拦（不该发生：刚清过冷却表）"));
+        com.example.touhou.core.HarvestTime.markUsed(machine);
+        long second = com.example.touhou.core.HarvestTime.cooldownLeft(machine);
+        guideLine(sender, "\u00a78  第 2 次 cooldownLeft = " + second + " ms ⇒ "
+                + (cfgCooldown <= 0 ? "\u00a77放行（冷却被配置为 0 = 关闭）"
+                        : (second > 0 ? "\u00a7a被拦（正确：冷却 " + cfgCooldown + " ms 生效中）"
+                                : "\u00a7c放行（不该发生）")));
+        guideLine(sender, "\u00a78  冷却中方块数 = "
+                + com.example.touhou.core.HarvestTime.coolingCount()
+                + "（配置 " + cfgCooldown + " ms）");
+        com.example.touhou.core.HarvestTime.clearCooldowns();
+
+        // ---- ⑦ 权限路径
+        guideLine(sender, "\u00a7e  -- 权限 --");
+        guideLine(sender, "\u00a78  canHarvest(null, 方块) = "
+                + ((com.example.touhou.core.HarvestTime) item).canHarvest(null, machine)
+                + "（null 玩家必须为 false；真实玩家走 bypass 权限 或 canUse+领地交互权）");
+        guideLine(sender, "\u00a78  判据与木桩/赛钱箱/反应堆核心的 canOpen 同源："
+                + "slimefun.inventory.bypass || (canUse && Interaction.INTERACT_BLOCK)");
+
+        log("[TOUHOU] harvest test @ " + xyz(center)
+                + " targets=" + targets.size()
+                + " boneMealed=" + report.boneMealedCount()
+                + " fruitsBefore=" + beforeFruits + " fruitsAfter=" + afterFruits
+                + " cooldownFirst=" + first + " cooldownSecond=" + second);
+
+        // ---- ⑧ 收尾
+        if (!keep) {
+            int cleaned = clearTestFarm(machine, true);
+            guideLine(sender, "\u00a78  已清掉测试田 " + cleaned + " 格（世界复原）");
+        } else {
+            guideLine(sender, "\u00a78  测试田已保留（probe）。清掉它：/touhou harvest clear "
+                    + xyz(center));
+        }
+    }
+
+    /**
+     * 骨粉行为实验台（{@code /touhou harvest rng <x> <y> <z>}）。
+     *
+     * <p>在指定坐标放一块耕地，对每种测试方块做 N 次「重置 age → 调一次骨粉 → 看 age 有没有动」，
+     * 统计<b>单次响应率</b>。它回答的是两个不能靠读代码猜的问题：
+     * <ol>
+     *   <li>{@code Block#applyBoneMeal} 到底是不是"逐次判随机数"？</li>
+     *   <li>竹子在这台服务端上到底会不会响应？</li>
+     * </ol>
+     * 实验台用完即清（只动它自己那一格 + 上方两格）。
+     */
+    private void harvestRng(CommandSender sender, String[] args) {
+        Location loc = resolveAny(sender, Arrays.copyOfRange(args, 1, args.length));
+        if (loc == null) {
+            return;
+        }
+        Block base = loc.getBlock();
+        World world = base.getWorld();
+        int x = base.getX();
+        int y = base.getY();
+        int z = base.getZ();
+
+        guideLine(sender, PREFIX + "\u00a7e骨粉行为实验台 @ " + xyz(loc)
+                + "（每种方块 8 次「重置 age → 单次骨粉」）");
+        guideLine(sender, "\u00a78  地面：y-1 = 耕地，方块：y = 被测物，y+1/y+2 = 空气（给竹子留高度）");
+
+        Material[] subjects = {
+                Material.WHEAT, Material.CARROTS, Material.BEETROOTS,
+                Material.BAMBOO, Material.OAK_SAPLING, Material.MELON_STEM, Material.PUMPKIN_STEM
+        };
+        List<String> report = new ArrayList<>();
+        for (Material subject : subjects) {
+            // 地面
+            world.getBlockAt(x, y - 1, z).setType(Material.FARMLAND, false);
+            // 清上方，给竹子/树苗留空间
+            world.getBlockAt(x, y + 1, z).setType(Material.AIR, false);
+            world.getBlockAt(x, y + 2, z).setType(Material.AIR, false);
+            Block block = world.getBlockAt(x, y, z);
+            block.setType(subject, false);
+            // 满级口径 + 重置口径：Ageable 看 age，树苗看 stage（树苗【不是】Ageable）
+            org.bukkit.block.data.BlockData d0 = block.getBlockData();
+            String maxText;
+            if (d0 instanceof org.bukkit.block.data.Ageable a0) {
+                maxText = "age 满级 " + a0.getMaximumAge();
+            } else if (d0 instanceof org.bukkit.block.data.type.Sapling s0) {
+                maxText = "stage 满级 " + s0.getMaximumStage();
+            } else {
+                report.add(subject + "：既不是 Ageable 也不是 Sapling，跳过");
+                continue;
+            }
+            int responded = 0;
+            int trials = 8;
+            List<String> trace = new ArrayList<>();
+            for (int i = 0; i < trials; i++) {
+                // 重置（清上方，避免竹子长高后"上方不是空气"干扰）
+                block.setType(subject, false);
+                world.getBlockAt(x, y + 1, z).setType(Material.AIR, false);
+                world.getBlockAt(x, y + 2, z).setType(Material.AIR, false);
+                org.bukkit.block.data.BlockData d = block.getBlockData();
+                if (d instanceof org.bukkit.block.data.Ageable a) {
+                    a.setAge(0);
+                    block.setBlockData(a, false);
+                } else if (d instanceof org.bukkit.block.data.type.Sapling s) {
+                    s.setStage(0);
+                    block.setBlockData(s, false);
+                }
+                boolean changed = com.example.touhou.core.HarvestTime.applyBoneMeal(block);
+                if (changed) {
+                    responded++;
+                }
+                org.bukkit.block.data.BlockData d2 = block.getBlockData();
+                int now = d2 instanceof org.bukkit.block.data.Ageable a2 ? a2.getAge()
+                        : (d2 instanceof org.bukkit.block.data.type.Sapling s2 ? s2.getStage() : -1);
+                trace.add((changed ? "+" : "-") + now);
+            }
+            report.add(subject + "  " + maxText
+                    + "  单次响应 " + responded + "/" + trials
+                    + "  逐次读数=" + String.join(" ", trace));
+        }
+        for (String line : report) {
+            guideLine(sender, "\u00a78  " + line);
+        }
+        // 收尾：清掉实验台
+        world.getBlockAt(x, y - 1, z).setType(Material.AIR, false);
+        world.getBlockAt(x, y, z).setType(Material.AIR, false);
+        world.getBlockAt(x, y + 1, z).setType(Material.AIR, false);
+        world.getBlockAt(x, y + 2, z).setType(Material.AIR, false);
+        guideLine(sender, "\u00a78  实验台已清理");
+        log("[TOUHOU] harvest rng @ " + xyz(loc) + " -> " + report.size() + " 种方块已测");
+    }
+
+    /** 只对某一格试骨粉（用于手工/无头核对单个方块的响应）。 */
+    private void harvestCell(CommandSender sender, String[] args) {
+        Location loc = resolveAny(sender, Arrays.copyOfRange(args, 1, args.length));
+        if (loc == null) {
+            return;
+        }
+        Block block = loc.getBlock();
+        org.bukkit.block.BlockFace face = org.bukkit.block.BlockFace.UP;
+        if (args.length >= 5) {
+            try {
+                face = org.bukkit.block.BlockFace.valueOf(args[4].toUpperCase(Locale.ROOT));
+            } catch (IllegalArgumentException e) {
+                sender.sendMessage(PREFIX + "\u00a7c没有这个面: " + args[4]);
+                return;
+            }
+        }
+        String beforeDesc = com.example.touhou.core.HarvestTime.describe(block);
+        boolean needed = com.example.touhou.core.HarvestTime.needsBoneMeal(block);
+        boolean changed = com.example.touhou.core.HarvestTime.applyBoneMeal(block, face);
+        guideLine(sender, PREFIX + "\u00a7e单格骨粉实测 @ " + xyz(loc) + "  面=" + face);
+        guideLine(sender, "\u00a78  needsBoneMeal = " + needed + "（false = 不是 Ageable 或已满级）");
+        guideLine(sender, "\u00a78  " + beforeDesc + "  \u2192  "
+                + com.example.touhou.core.HarvestTime.describe(block));
+        guideLine(sender, "\u00a78  age 是否真的跳了 = " + changed);
+        log("[TOUHOU] harvest cell @ " + xyz(loc) + " face=" + face
+                + " needed=" + needed + " changed=" + changed);
+    }
+
+    /**
+     * 摆一块标准测试田，返回"种了什么"的可读清单。
+     *
+     * <p>布局（{@code m} = 机器方块）：
+     * <ul>
+     *   <li>{@code y-1}：整层耕地 —— 作物与茎都要有耕地才肯被骨粉推
+     *       （★ 第一次实测踩过：把作物放在 {@code y+1}、下面垫的是空气，
+     *        {@code applyBoneMeal} 会<b>拒绝</b>施加，表现成"目标数 3、催熟 2"这种假失败）；</li>
+     *   <li>{@code y}：机器自己 + 全部作物（与机器<b>同一层</b>，于是每一格的正下方
+     *       都是 {@code y-1} 的耕地，位置合法）；</li>
+     *   <li>{@code y+1}：故意种一株小麦 —— 它在范围<b>外</b>（高只有 {@code y-1..y+1}，
+     *       但水平没超），用来证明扫描确实只碰范围内的格子；</li>
+     *   <li>两根茎的北 / 东 / 南 / 西四向都留空气，给"结果"留位置。</li>
+     * </ul>
+     *
+     * <p>★ 机器那一格是用 {@link Slimefun#getDatabaseManager()} 的
+     * {@code createBlock} 真写进去的 —— 与 {@code /touhou place} 同一条路，
+     * 所以命令验证的确实是一台"真正的粘液方块"。
+     */
+    private List<String> buildTestFarm(Block machine) {
+        List<String> planted = new ArrayList<>();
+        World world = machine.getWorld();
+        int mx = machine.getX();
+        int my = machine.getY();
+        int mz = machine.getZ();
+
+        // 耕地层（y-1）：整层铺耕地 —— 作物 / 茎 / 果实下方都得有它
+        for (int dx = -4; dx <= 4; dx++) {
+            for (int dz = -4; dz <= 4; dz++) {
+                world.getBlockAt(mx + dx, my - 1, mz + dz).setType(Material.FARMLAND, false);
+            }
+        }
+        // 机器自己那一格：真·粘液方块（与 /touhou place 同一条路）
+        machine.setType(Material.HAY_BLOCK, false);
+        try {
+            Slimefun.getDatabaseManager().getBlockDataController()
+                    .createBlock(machine.getLocation(), com.example.touhou.core.HarvestTime.ID);
+        } catch (RuntimeException e) {
+            // 已经存在方块数据时会抛 —— 那不是失败（重复跑测试田的正常情况）
+            log("[TOUHOU] harvest test: 机器方块数据已存在，跳过 createBlock (" + e.getMessage() + ")");
+        }
+
+        // 目标层 = 机器那一层（y），保证正下方是 y-1 的耕地
+        int ty = my;
+        Object[][] plan = {
+                // {dx, dz, 材质, age（-1 = 用该方块数据的默认值）}
+                {0, -3, Material.WHEAT, 0},
+                {1, -3, Material.CARROTS, 0},
+                {2, -3, Material.POTATOES, 0},
+                {3, -3, Material.BEETROOTS, 0},
+                {-1, -3, Material.NETHER_WART, 0},
+                {-2, -3, Material.OAK_SAPLING, 0},
+                {-3, -3, Material.BAMBOO, 0},
+                {0, 3, Material.MELON_STEM, 0},
+                {2, 3, Material.PUMPKIN_STEM, 0},
+                // 已成熟的小麦：needsBoneMeal 必须是 false ⇒ 不计入"被催熟"的格数
+                {-2, 3, Material.WHEAT, 7},
+        };
+        for (Object[] row : plan) {
+            int dx = (Integer) row[0];
+            int dz = (Integer) row[1];
+            Material mat = (Material) row[2];
+            int age = (Integer) row[3];
+            Block block = world.getBlockAt(mx + dx, ty, mz + dz);
+            block.setType(mat, true);
+            if (age >= 0 && block.getBlockData() instanceof org.bukkit.block.data.Ageable ageable) {
+                ageable.setAge(Math.min(age, ageable.getMaximumAge()));
+                block.setBlockData(ageable, true);
+            }
+            // 茎的四向留空气，给"结果"腾位置（果实也长在 y 这一层）
+            if (mat == Material.MELON_STEM || mat == Material.PUMPKIN_STEM) {
+                for (org.bukkit.block.BlockFace f : new org.bukkit.block.BlockFace[]{
+                        org.bukkit.block.BlockFace.NORTH, org.bukkit.block.BlockFace.EAST,
+                        org.bukkit.block.BlockFace.SOUTH, org.bukkit.block.BlockFace.WEST}) {
+                    block.getRelative(f).setType(Material.AIR, false);
+                }
+            }
+            planted.add(mat + " @ " + (mx + dx) + "," + ty + "," + (mz + dz)
+                    + "  初始 age=" + (block.getBlockData() instanceof org.bukkit.block.data.Ageable a
+                            ? a.getAge() + "/" + a.getMaximumAge() : "-"));
+        }
+
+        // 范围【外】的对照株：放在 y+2（垂直越界），必须一个 age 都不涨。
+        //   ★ 为什么放 y+2 而不是 y+1：扫描范围是 y-1..y+1，y+1 也在【清理区】里
+        //     （clearTestFarm 清 y-1..y+2），早先放 y+1 的对照株在重建测试田时
+        //     就被自己的清场逻辑铲掉了 —— 实测症状是"范围外对照"被当成目标、
+        //     打印成 AIR，看着像是扫描越界。y+2 同样在扫描范围外（更强），
+        //     且不在被铲的那一层，能活到比对时刻。
+        world.getBlockAt(mx, my + 1, mz + 3).setType(Material.FARMLAND, false);
+        Block outside = world.getBlockAt(mx, my + 2, mz + 3);
+        outside.setType(Material.WHEAT, true);
+        if (outside.getBlockData() instanceof org.bukkit.block.data.Ageable a) {
+            a.setAge(0);
+            outside.setBlockData(a, true);
+        }
+        planted.add("【范围外对照】" + Material.WHEAT + " @ " + mx + "," + (my + 2) + "," + (mz + 3)
+                + "  初始 age=" + (outside.getBlockData() instanceof org.bukkit.block.data.Ageable a
+                        ? a.getAge() + "/" + a.getMaximumAge() : "-")
+                + "  ← 在 y+2，高于扫描上界 y+" + (1) + "，不该被碰");
+        return planted;
+    }
+
+    /**
+     * 清掉测试田：把 9×9 的 {@code y-1 .. y+2} 清成空气，并清掉机器那格的粘液方块数据。
+     *
+     * @param removeMachineData 是否连方块数据一起清（{@code false} 用于"重建前先清场"）
+     * @return 被清掉的非空气格数
+     */
+    private int clearTestFarm(Block machine, boolean removeMachineData) {
+        World world = machine.getWorld();
+        int mx = machine.getX();
+        int my = machine.getY();
+        int mz = machine.getZ();
+        int cleared = 0;
+        for (int dx = -4; dx <= 4; dx++) {
+            for (int dz = -4; dz <= 4; dz++) {
+                for (int dy = -1; dy <= 2; dy++) {
+                    Block b = world.getBlockAt(mx + dx, my + dy, mz + dz);
+                    if (b.getType() != Material.AIR) {
+                        b.setType(Material.AIR, false);
+                        cleared++;
+                    }
+                }
+            }
+        }
+        if (removeMachineData) {
+            try {
+                Slimefun.getDatabaseManager().getBlockDataController()
+                        .removeBlock(machine.getLocation());
+            } catch (RuntimeException e) {
+                log("[TOUHOU] harvest clear: 清方块数据失败 " + e);
+            }
+            com.example.touhou.core.HarvestTime.clearCooldowns();
+        }
+        return cleared;
+    }
+
+    /** 数范围内已经存在的西瓜/南瓜果实方块（不数茎）。 */
+    private static int countFruits(Block machine) {
+        World world = machine.getWorld();
+        int n = 0;
+        for (int dx = -4; dx <= 4; dx++) {
+            for (int dz = -4; dz <= 4; dz++) {
+                for (int dy = -1; dy <= 1; dy++) {
+                    Material t = world.getBlockAt(machine.getX() + dx,
+                            machine.getY() + dy, machine.getZ() + dz).getType();
+                    if (t == Material.MELON || t == Material.PUMPKIN) {
+                        n++;
+                    }
+                }
+            }
+        }
+        return n;
     }
 
     // ------------------------------------------------------------------ seal
@@ -3741,10 +4368,23 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         if (args.length == 1) {
             return filter(List.of("reactor", "autobuild", "clickinfo", "structure", "saizen", "place",
                     "remove", "edit", "gui", "layout", "groups", "tags", "messages", "reload",
-                    "power", "dreamcatcher", "seal", "lily", "lilywhite", "echo", "proj", "guide"), args[0]);
+                    "power", "dreamcatcher", "seal", "lily", "lilywhite", "harvest", "echo", "proj", "guide"), args[0]);
         }
         if (args[0].equalsIgnoreCase("lilywhite") && args.length == 2) {
             return filter(List.of("selfcheck", "name", "recipe"), args[1]);
+        }
+        if (args[0].equalsIgnoreCase("harvest") && args.length == 2) {
+            return filter(List.of("selfcheck", "test", "probe", "clear", "cell", "rng", "cooldown"), args[1]);
+        }
+        if (args[0].equalsIgnoreCase("harvest") && args.length == 3
+                && args[1].equalsIgnoreCase("cooldown")) {
+            return filter(List.of("clear"), args[2]);
+        }
+        // harvest cell <x> <y> <z> [面] ⇒ args.length == 5 时补第 5 个参数（面）
+        if (args[0].equalsIgnoreCase("harvest") && args.length == 5
+                && args[1].equalsIgnoreCase("cell")) {
+            return filter(Arrays.stream(org.bukkit.block.BlockFace.values())
+                    .map(Enum::name).collect(Collectors.toList()), args[4]);
         }
         if (args[0].equalsIgnoreCase("echo") && args.length == 2) {
             return filter(List.of("selfcheck", "rule", "container", "convert", "probe",
@@ -3832,6 +4472,6 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
     public static List<String> commands() {
         return List.of("reactor", "autobuild", "clickinfo", "structure", "saizen", "place", "remove",
                 "edit", "gui", "layout", "groups", "tags", "messages", "reload", "power",
-                "dreamcatcher", "seal", "lily", "lilywhite", "proj");
+                "dreamcatcher", "seal", "lily", "lilywhite", "harvest", "proj");
     }
 }

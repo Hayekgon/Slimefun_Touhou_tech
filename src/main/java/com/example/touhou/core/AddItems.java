@@ -34,14 +34,26 @@ public final class AddItems {
             + "YTAyZTc3YTIyNmFhOGJhZjlkMjkwMTYxMzliMWI2OTJhOTRlYTg4NzkwMWNhMzUzMDI3MzNjNzMxZjgxNDVlYSJ9fX0=";
 
     /**
-     * 粉白渐变的<b>起点</b>（粉）与<b>终点</b>（白）。
+     * 渐变配色表。
      *
-     * <p>★ 用户只说了"粉白色、左到右渐变"，没给具体色号，所以这两个值是本实现的判断：
-     * 起点选一个偏亮的粉（{@code #FFB3D9}）而不是正粉（{@code #FF00FF}）——
-     * 因为终点是纯白，起点太饱和的话中间会扫出一段发紫的过渡，反而看不出"粉"。
+     * <p>★ 起止色随配色走，而不是把"粉白"那组写死在 {@link #gradientName} 里 ——
+     * 第二件带渐变的物品（「丰收之时」的橙→黄）直接加一行即可，
+     * 也让"哪件物品用哪套渐变"在代码里一眼可查。
      */
-    private static final int GRADIENT_START_RGB = 0xFFB3D9;
-    private static final int GRADIENT_END_RGB = 0xFFFFFF;
+    private enum Gradient {
+        /** 莉莉白：粉 → 白。 */
+        PINK_WHITE(0xFFB3D9, 0xFFFFFF),
+        /** 丰收之时：橙 → 黄（用户要求"橙色→黄色 左到右渐变"）。 */
+        ORANGE_YELLOW(0xFF8C00, 0xFFE24A);
+
+        private final int start;
+        private final int end;
+
+        Gradient(int start, int end) {
+            this.start = start;
+            this.end = end;
+        }
+    }
 
     /** 多方块核心：旧地狱-灵乌路空反应堆。 */
     public static SlimefunItemStack UTSUHO_REACTOR_CORE;
@@ -101,6 +113,28 @@ public final class AddItems {
      * （{@code SlimefunItem#onEnable}，原文就写着"多产出请走 recipeOutput 参数"）。
      */
     public static SlimefunItemStack LILY_WHITE;
+
+    /**
+     * 丰收之时 —— 秋姐妹（秋穰子 / 秋静叶）的赠与，信奉丰收之人的宝物。
+     *
+     * <p>id 按本项目铁律 {@code TOUHOU_"物品组"_"英文名"}：它归属 2 级组
+     * {@link AddGroups#SIMPLE_MACHINE}，英文名取 <b>Harvest Time</b>
+     * ⇒ {@code TOUHOU_SIMPLE_MACHINE_HARVEST_TIME}。
+     *
+     * <p>★ 物品组为什么是 {@code SIMPLE_MACHINE}（而不是最初设想的 {@code MACHINE}）：
+     * 它是<b>可放置的单方块机器</b>（放下后右键催熟周围作物），归"机器"这一类没错；
+     * 但 {@code MACHINE} 是<b>容器组</b>（{@code TouhouNestedGroup} / {@code FlexItemGroup}），
+     * 往里面加物品会直接抛 {@code UnsupportedOperationException: You cannot add items to
+     * a FlexItemGroup!}（实测撞到过，见 {@link AddGroups#SIMPLE_MACHINE} 的注释）。
+     * 所以为它新建了 2 级组 {@code SIMPLE_MACHINE}（单方块机器），与多方块的
+     * {@code COMPLEX_MACHINE} 并列挂在 {@code MACHINE} 下 —— id 也随之变成
+     * {@code TOUHOU_SIMPLE_MACHINE_HARVEST_TIME}。
+     *
+     * <p>★ 材质：干草块（{@code Material.HAY_BLOCK}）+ 附魔光效
+     * （光效靠 {@code setup()} 末尾那段 {@code addUnsafeEnchantment} + {@code HIDE_ENCHANTS}，
+     * 与梦想封印 集 / 杀意的百合 / 另一个世界的回响同一套做法）。
+     */
+    public static SlimefunItemStack HARVEST_TIME;
 
     // ------------------------------------------------------------------ INFO 组：信息类纸张
     // 全部使用 PAPER 材质，纯信息展示，无配方、无功能。
@@ -320,6 +354,17 @@ public final class AddItems {
                 "",
                 gradientName("报春的妖精，莉莉白，"),
                 "&7请城管不要无辜殴打无害的莉莉白，她很可爱=v=");
+
+        // 丰收之时：秋姐妹的赠与（橙黄渐变的机器）。
+        // ★ 名字与描述【都是】橙→黄左到右渐变（用户要求"字体同上"）。
+        // ★ 材质：干草块 —— 与"丰收"意象直接对应。
+        // ★ 描述按用户原文，【一行】照抄、不折行、不改写。
+        HARVEST_TIME = new SlimefunItemStack(
+                "TOUHOU_SIMPLE_MACHINE_HARVEST_TIME",
+                Material.HAY_BLOCK,
+                gradientNameOrangeYellow("丰收之时"),
+                "",
+                gradientNameOrangeYellow("秋姐妹的赠与信奉丰收之人的宝物"));
 
 INFO_MODESHIFT = new SlimefunItemStack(
                 "TOUHOU_INFO_MODESHIFT",
@@ -622,6 +667,15 @@ INFO_MODESHIFT = new SlimefunItemStack(
             ECHO_OF_ANOTHER_WORLD.setItemMeta(echoMeta);
         }
 
+        // 丰收之时：附魔光效（与上面几件同一套"挂无用附魔 + HIDE_ENCHANTS"的做法）。
+        //   ★ 它没有"要看附魔行"的要求，所以照光效惯例把附魔行藏掉，只留光晕。
+        HARVEST_TIME.addUnsafeEnchantment(Enchantment.ARROW_INFINITE, 1);
+        ItemMeta harvestMeta = HARVEST_TIME.getItemMeta();
+        if (harvestMeta != null) {
+            harvestMeta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
+            HARVEST_TIME.setItemMeta(harvestMeta);
+        }
+
         // ------------------------------------------------------------------ POWER（1 级组）
         // 头贴图直接引用原生物品的贴图常量（HeadTexture 是公开枚举）。
         POWER_INTEGRATED_CORE = new SlimefunItemStack(
@@ -774,7 +828,30 @@ INFO_MODESHIFT = new SlimefunItemStack(
     }
 
     /**
-     * 把一段文字逐字符染成"粉 → 白"的左到右渐变，返回<b>已翻好的</b>
+     * 把一段文字逐字符染成<b>粉 → 白</b>的左到右渐变（莉莉白用的那套配色）。
+     *
+     * <p>配色与算法分离：本方法只是 {@link #gradientName(String, Gradient)} 的一个
+     * 便捷入口，真正的插值在那边。
+     *
+     * @param text 要染的文字（纯文本，不要带 {@code §}/{@code &} 颜色代码）
+     * @return 每字符都带 {@code §x§R§R§G§G§B§B} 前缀的字符串
+     */
+    public static String gradientName(String text) {
+        return gradientName(text, Gradient.PINK_WHITE);
+    }
+
+    /**
+     * 把一段文字逐字符染成<b>橙 → 黄</b>的左到右渐变（「丰收之时」用的配色）。
+     *
+     * @param text 要染的文字（纯文本，不要带 {@code §}/{@code &} 颜色代码）
+     * @return 每字符都带 {@code §x§R§R§G§G§B§B} 前缀的字符串
+     */
+    public static String gradientNameOrangeYellow(String text) {
+        return gradientName(text, Gradient.ORANGE_YELLOW);
+    }
+
+    /**
+     * 把一段文字逐字符染成渐变，返回<b>已翻好的</b>
      * {@code §x§R§R§G§G§B§B} 序列串。
      *
      * <h2>为什么不能用 &amp; 写法</h2>
@@ -789,7 +866,7 @@ INFO_MODESHIFT = new SlimefunItemStack(
      * <p>★ 那条构造器对名字/描述仍会执行一次
      * {@code translateAlternateColorCodes('&', …)}，但它只翻 {@code '&'} 开头的两位序列，
      * <b>不会动已有的 {@code §}</b> —— 所以上面那串带 {@code §x} 的渐变能原样穿过去。
-     * 这一条是实测过的（证据见 {@code /touhou lilywhite} 打印的 JSON 序列化）。
+     * 这一条是实测过的（证据见 {@code /touhou lilywhite} 与 {@code /touhou harvest} 打印的 JSON）。
      *
      * <h2>插值口径</h2>
      * 第 {@code i} 个字符的比例是 {@code t = i / (len - 1)}（首字符=起点色，末字符=终点色），
@@ -798,10 +875,11 @@ INFO_MODESHIFT = new SlimefunItemStack(
      * <p>★ 空格也照常染色：多几个无用字符对客户端无害，但"每个可见字符都能均匀分到
      * 自己的色号"这件事变得没有例外，验证命令的输出也更好读。
      *
-     * @param text 要染的文字（纯文本，不要带 {@code §}/{@code &} 颜色代码）
+     * @param text    要染的文字（纯文本，不要带 {@code §}/{@code &} 颜色代码）
+     * @param palette 用哪套起止色
      * @return 每字符都带 {@code §x§R§R§G§G§B§B} 前缀的字符串
      */
-    public static String gradientName(String text) {
+    public static String gradientName(String text, Gradient palette) {
         if (text == null || text.isEmpty()) {
             return "";
         }
@@ -809,7 +887,7 @@ INFO_MODESHIFT = new SlimefunItemStack(
         StringBuilder out = new StringBuilder(length * 14);
         for (int i = 0; i < length; i++) {
             double t = length == 1 ? 0.0 : (double) i / (double) (length - 1);
-            int rgb = lerpRgb(GRADIENT_START_RGB, GRADIENT_END_RGB, t);
+            int rgb = lerpRgb(palette.start, palette.end, t);
             // ★ ChatColor.of("#rrggbb") 造出来的 toString() 就是 §x§R§R§G§G§B§B 七个字符，
             //   直接拼进去即可（不经过 Slimefun 的 & 翻译，也就不会被它弄坏）。
             out.append(net.md_5.bungee.api.ChatColor.of(String.format("#%06X", rgb)))

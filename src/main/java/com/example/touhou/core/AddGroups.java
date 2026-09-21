@@ -68,6 +68,31 @@ public final class AddGroups {
     public static TouhouNestedGroup MACHINE;
     /** 2 级：挂在 MACHINE 下。 */
     public static SubItemGroup COMPLEX_MACHINE;
+    /**
+     * 2 级：<b>单方块机器</b>，同样挂在 MACHINE 下。
+     *
+     * <p>★ 为什么必须新建这个组，而不是把「丰收之时」直接塞进 {@link #MACHINE}：
+     * {@code MACHINE} 是 {@link TouhouNestedGroup}（继承 {@code FlexItemGroup}），
+     * 而 {@code FlexItemGroup#add(SlimefunItem)} 的实现是直接抛
+     * {@code UnsupportedOperationException("You cannot add items to a FlexItemGroup!")}
+     * —— 容器组<b>只装子组、不装物品</b>。实测症状很明确（服务端启动日志）：
+     * <pre>
+     *   [Touhou] Item "TOUHOU_MACHINE_HARVEST_TIME" from Touhou v1.0.0 has caused an Error!
+     *   Failed to properly load this Item
+     *   java.lang.UnsupportedOperationException: You cannot add items to a FlexItemGroup!
+     * </pre>
+     * 所以照本工程既有的层级形状，在 MACHINE 下再挂一个 2 级 {@code SubItemGroup}：
+     * 多方块的归 {@link #COMPLEX_MACHINE}，单方块的归本组。
+     * （另一条路是塞进 COMPLEX_MACHINE，但那组的定位写明了是"多方块大型机器"，
+     * 把一台单方块机器放进去会让分类失去意义。）
+     *
+     * <p>★ 随之而来的 id 变化：物品 id 铁律是
+     * {@code TOUHOU_"物品组ID"_"英文名"}，所以挂在本组下的物品 id 是
+     * {@code TOUHOU_SIMPLE_MACHINE_HARVEST_TIME}
+     * （不是最初设想的 {@code TOUHOU_MACHINE_HARVEST_TIME} —— 那是"MACHINE 能直接装物品"
+     * 这个前提下的推导，而那个前提不成立）。
+     */
+    public static SubItemGroup SIMPLE_MACHINE;
     /** 1 级。 */
     public static SubItemGroup PARTY_ITEM;
     /** 1 级：信息 / 说明类（GUI 内部件等）。 */
@@ -142,6 +167,16 @@ public final class AddGroups {
                         "&7需要搭建结构的多方块核心"),
                 1);
 
+        // 2 级：单方块机器（不需要搭结构、放下就能用的那种），同样挂在 MACHINE 容器下。
+        // ★ 见 SIMPLE_MACHINE 字段注释：MACHINE 是容器组，物品【不能】直接挂在它下面。
+        SIMPLE_MACHINE = new SubItemGroup(
+                new NamespacedKey(plugin, "touhou_simple_machine"),
+                MACHINE,
+                new CustomItemStack(Material.HAY_BLOCK,
+                        "&6单方块机器",
+                        "&7放下即可使用的机器"),
+                1);
+
         // ★ 菜单内容由这里决定（顺序就是指南里的显示顺序）。
         //   注意不要用父类的 addSubGroup：它只收 SubItemGroup，装不下 MACHINE，
         //   而且那个 private 列表我们也渲染不到。
@@ -151,6 +186,7 @@ public final class AddGroups {
         TH_TECH.addChild(INFO);
         TH_TECH.addChild(POWER);
         MACHINE.addChild(COMPLEX_MACHINE);
+        MACHINE.addChild(SIMPLE_MACHINE);
 
         // 显式注册全部组。
         // 不注册也能用（菜单渲染读的是 mixedChildren），但显式注册让层级与注册表一致，
@@ -160,6 +196,7 @@ public final class AddGroups {
         MACHINE.register(plugin);
         MATERIAL.register(plugin);
         COMPLEX_MACHINE.register(plugin);
+        SIMPLE_MACHINE.register(plugin);
         PARTY_ITEM.register(plugin);
         INFO.register(plugin);
         POWER.register(plugin);
@@ -168,7 +205,8 @@ public final class AddGroups {
     /** 供诊断输出：层级关系一览。 */
     public static String describeHierarchy() {
         return "TOUHOU_TH_TECH(0级容器) -> [TOUHOU_MATERIAL, TOUHOU_MACHINE(1级容器) -> "
-                + "[TOUHOU_COMPLEX_MACHINE(2级)], TOUHOU_PARTY_ITEM, TOUHOU_INFO, TOUHOU_POWER]";
+                + "[TOUHOU_COMPLEX_MACHINE(2级), TOUHOU_SIMPLE_MACHINE(2级)], "
+                + "TOUHOU_PARTY_ITEM, TOUHOU_INFO, TOUHOU_POWER]";
     }
 
     /** 供命令输出：实际注册出来的组。 */
@@ -178,6 +216,7 @@ public final class AddGroups {
                 "MATERIAL        = " + keyOf(MATERIAL) + "  (SubItemGroup of TH_TECH, 1 级)",
                 "MACHINE         = " + keyOf(MACHINE) + "  (容器, 1 级, 主菜单: 隐藏)",
                 "COMPLEX_MACHINE = " + keyOf(COMPLEX_MACHINE) + "  (SubItemGroup of MACHINE, 2 级)",
+                "SIMPLE_MACHINE  = " + keyOf(SIMPLE_MACHINE) + "  (SubItemGroup of MACHINE, 2 级)",
                 "PARTY_ITEM      = " + keyOf(PARTY_ITEM) + "  (SubItemGroup of TH_TECH, 1 级)",
                 "INFO            = " + keyOf(INFO) + "  (SubItemGroup of TH_TECH, 1 级)",
                 "POWER           = " + keyOf(POWER) + "  (SubItemGroup of TH_TECH, 1 级, 图标 RED_WOOL)");
@@ -254,6 +293,7 @@ public final class AddGroups {
         listItems("MATERIAL", MATERIAL, out);
         listItems("MACHINE(容器)", MACHINE, out);
         listItems("COMPLEX_MACHINE", COMPLEX_MACHINE, out);
+        listItems("SIMPLE_MACHINE", SIMPLE_MACHINE, out);
         listItems("PARTY_ITEM", PARTY_ITEM, out);
         listItems("INFO", INFO, out);
         listItems("POWER", POWER, out);

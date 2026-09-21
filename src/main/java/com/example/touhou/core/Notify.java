@@ -211,6 +211,21 @@ public final class Notify {
     }
 
     /**
+     * 「丰收之时」作用域 —— 前缀独立（{@code config.yml} 的 {@code harvest:} 段）。
+     *
+     * <p>★ 与 {@link #seal()} / {@link #lily()} / {@link #echo()} 同理：一台机器的提示
+     * 不该顶着别的机器或反应堆的前缀出现（赛钱箱踩过的老路）。
+     *
+     * <p>档位那一格<b>刻意留空</b>（{@code null} = 回落到反应堆的 {@code messages.level}）：
+     * 本机器只发 {@link #warn}（催熟结果 / 冷却中 / 没权限），而 warn 永远输出、不受档位影响，
+     * 所以配一个没有任何调用点的档位只会让人以为"调了没用"。
+     */
+    public static Scope harvest() {
+        AddonConfig cfg = AddonConfig.get();
+        return new Scope(cfg.harvestPrefix, null);
+    }
+
+    /**
      * 指定作用域的 warning / error —— <b>永远输出</b>。
      *
      * <p>判据：玩家主动做了一件事但没成功。这类必须说，否则玩家只看到"点了没反应"。
