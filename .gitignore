@@ -11,6 +11,14 @@
 /_jv.txt
 autotest-result.log
 
+# ---- test run logs (do NOT publish) ----
+tools/_run_result*.txt
+*_run_result*.txt
+
+# ---- internal dev reports + local notes (do NOT publish) ----
+*-REPORT.md
+/_local-notes/
+
 # ---- IDE / OS ----
 .idea/
 *.iml
