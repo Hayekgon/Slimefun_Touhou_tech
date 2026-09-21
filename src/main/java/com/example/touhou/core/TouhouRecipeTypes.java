@@ -48,7 +48,7 @@ public final class TouhouRecipeTypes {
      * 反应堆核心的配方类型。
      *
      * <p>它承载的是 {@code UtsuhoReactorCore#getDisplayRecipes()} 那一页
-     * （原油桶 → 逻辑奇点 + 发电参数）。
+     * （原油桶 → 炙热的灰烬 + 发电参数）。
      */
     public static RecipeType REACTOR_CORE;
 

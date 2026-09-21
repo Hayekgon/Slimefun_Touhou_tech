@@ -24,8 +24,8 @@ public final class AddSlimefunItems {
 
     /** 反应堆核心（多方块核心 + 发电机）。 */
     public static UtsuhoReactorCore UTSUHO_REACTOR_CORE;
-    /** 逻辑奇点（材料）。 */
-    public static SlimefunItem LOGIC_SINGULARITY;
+    /** 炙热的灰烬（材料）。 */
+    public static SlimefunItem BLAZING_ASH;
     /** 模式切换玻璃板（GUI 功能件，归属 1 级组 INFO，无配方）。 */
     public static SlimefunItem INFO_MODESHIFT;
 
@@ -92,11 +92,11 @@ public final class AddSlimefunItems {
         //   放最前面是为了"顺着往下读注册流程时先看到它"。
         TouhouRecipeTypes.setup();
 
-        // 材料：逻辑奇点本身就是反应堆的产物，所以给一个"没有配方"的占位，
+        // 材料：炙热的灰烬本身就是反应堆的产物，所以给一个"没有配方"的占位，
         // 只作为物品存在（玩家只能从反应堆拿到）。
-        LOGIC_SINGULARITY = register(new SlimefunItem(
+        BLAZING_ASH = register(new SlimefunItem(
                 AddGroups.MATERIAL,
-                AddItems.LOGIC_SINGULARITY,
+                AddItems.BLAZING_ASH,
                 RecipeType.NULL,
                 noRecipe()), plugin);
 
@@ -253,7 +253,7 @@ public final class AddSlimefunItems {
     /** 梦想封印 集的配方：竖着一条，模仿钓鱼竿的形状（与改名前一致，没有动）。 */
     private static ItemStack[] goheiRecipe() {
         return new ItemStack[] {
-                null, AddItems.LOGIC_SINGULARITY, null,
+                null, AddItems.BLAZING_ASH, null,
                 null, SlimefunItems.REINFORCED_PLATE, null,
                 null, SlimefunItems.ELECTRIC_MOTOR, null
         };
@@ -325,7 +325,7 @@ public final class AddSlimefunItems {
     public static String describe() {
         return "TOUHOU 注册："
                 + (UTSUHO_REACTOR_CORE == null ? "反应堆核心=未注册" : "反应堆核心=OK")
-                + " / " + (LOGIC_SINGULARITY == null ? "逻辑奇点=未注册" : "逻辑奇点=OK")
+                + " / " + (BLAZING_ASH == null ? "炙热的灰烬=未注册" : "炙热的灰烬=OK")
                 + " / " + (INFO_MODESHIFT == null ? "模式玻璃板=未注册" : "模式玻璃板=OK")
                 + " / INFO=" + (INFO_PLUGIN_MESSAGE == null ? "未注册"
                         : (INFO_PLUGIN_MESSAGE.getId() + "," + INFO_DECLARATION_1.getId()

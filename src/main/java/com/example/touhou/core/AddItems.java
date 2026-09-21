@@ -26,8 +26,8 @@ public final class AddItems {
     /** 多方块核心：旧地狱-灵乌路空反应堆。 */
     public static SlimefunItemStack UTSUHO_REACTOR_CORE;
 
-    /** 顶级产能机器的产物：逻辑奇点。 */
-    public static SlimefunItemStack LOGIC_SINGULARITY;
+    /** 顶级产能机器的产物：炙热的灰烬。 */
+    public static SlimefunItemStack BLAZING_ASH;
 
     /**
      * 模式切换玻璃板（GUI 的 K 槽位内部件）。
@@ -193,18 +193,25 @@ public final class AddItems {
                 "&6旧地狱-灵乌路空反应堆",
                 "",
                 "&7以地狱鸦之躯驾驭核融合的&c制御棒&7主人",
-                "&7把&e桶装原油&7烧成电力与&d逻辑奇点",
+                "&7把&e桶装原油&7烧成电力与&6炙热的灰烬",
                 "",
                 "&8多方块核心 · 需要搭建完整结构",
                 "&8结构不完整时会进入 &c未激活&8 状态");
 
-        LOGIC_SINGULARITY = new SlimefunItemStack(
+        // ★ 2026-09-21：由「逻辑奇点」改名为「炙热的灰烬」——显示名 / 材质 / 描述全换，
+        //   但【物品 id 保持不变】（TOUHOU_MATERIAL_LOGIC_SINGULARITY）。
+        //   理由：它是反应堆的产物，玩家存档里可能已经攒了一堆；改 id 会让那些物品
+        //   变成"未知物品"。若日后确实要改 id，记得连 TohouCommand 里那处
+        //   硬编码的 id 判断一起改。
+        // 描述按语义断成三行（原文一字未改，只是折行——单行 60+ 字符在 tooltip 里会很难读）。
+        BLAZING_ASH = new SlimefunItemStack(
                 "TOUHOU_MATERIAL_LOGIC_SINGULARITY",
-                Material.ENDER_EYE,
-                "&d逻辑奇点",
+                Material.GUNPOWDER,
+                "&6炙热的灰烬",
                 "",
-                "&7被压缩到极致的因果残渣",
-                "&8来自旧地狱反应堆的副产物");
+                "&7来自旧地狱的碎片，沾有些许灰烬。已经发光发热了许久，",
+                "&7但过去了那么久，握在手中仍然炽热无比，",
+                "&7或许是灵魂永不消逝的残念构成的奇妙物质");
 
         INFO_MODESHIFT = new SlimefunItemStack(
                 "TOUHOU_INFO_MODESHIFT",
@@ -478,6 +485,16 @@ public final class AddItems {
         if (sealMeta != null) {
             sealMeta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
             FANTASY_SEAL.setItemMeta(sealMeta);
+
+        // 炙热的灰烬：附魔光效 + 火焰附加 15 级。
+        //   ★ 这里刻意【不】加 HIDE_ENCHANTS —— 用户要的是"火焰附加15级"这条能看见，
+        //     藏掉附魔行就只剩光晕、看不到那条了。
+        //   ★ "附魔光效"本身就由附魔产生（挂任何附魔物品都会发光），所以一条
+        //     FIRE_ASPECT(15) 同时满足「附魔光效」与「火焰附加15级」两个要求，
+        //     不需要再额外挂一个无用的假附魔。
+        //   ★ 15 级远超原版上限（火焰附加自然上限是 2），必须用 addUnsafeEnchantment。
+        //   ★ 火药不是武器，这个附魔不会有任何实际战斗效果，纯粹是显示与光效。
+        BLAZING_ASH.addUnsafeEnchantment(Enchantment.FIRE_ASPECT, 15);
         }
 
         MURDEROUS_LILY.addUnsafeEnchantment(Enchantment.ARROW_INFINITE, 1);

@@ -303,7 +303,7 @@ public class UtsuhoReactorCore extends AGenerator
         registerFuel(new MachineFuel(
                 ReactorManager.config().processTicks,
                 SlimefunItems.OIL_BUCKET,
-                AddItems.LOGIC_SINGULARITY.clone()));
+                AddItems.BLAZING_ASH.clone()));
     }
 
     @Override
@@ -1155,7 +1155,7 @@ public class UtsuhoReactorCore extends AGenerator
 
     /** 进程结束后补上本机器特有的产物（空桶由本体 AGenerator 负责吐）。 */
     private void pushExtraOutputs(BlockMenu inv) {
-        inv.pushItem(AddItems.LOGIC_SINGULARITY.clone(), getOutputSlots());
+        inv.pushItem(AddItems.BLAZING_ASH.clone(), getOutputSlots());
     }
 
     private int fuelSlotOf(BlockMenu inv) {
@@ -1191,7 +1191,7 @@ public class UtsuhoReactorCore extends AGenerator
      *       要不要推进度（发电模式到阈值就返回 0 且不推进 = 暂停）；</li>
      *   <li>推进<b>之后</b>画一次进度条 —— 这样满进度那一帧（100%）玩家真的看得到，
      *       而不是停在 total−1 的百分比上；</li>
-     *   <li>进程已完成 → 吐空桶 + 逻辑奇点，然后结束进程。</li>
+     *   <li>进程已完成 → 吐空桶 + 炙热的灰烬，然后结束进程。</li>
      * </ol>
      *
      * <h2>★★ 参数类型必须是 {@code ASlimefunDataContainer}（血泪教训）</h2>
@@ -1364,7 +1364,7 @@ public class UtsuhoReactorCore extends AGenerator
     }
 
     /**
-     * 收尾：吐空桶 + 逻辑奇点，然后结束进程。
+     * 收尾：吐空桶 + 炙热的灰烬，然后结束进程。
      *
      * <p>★ 这里有一个必须自己做的理由：本体 {@code AGenerator#getGeneratedOutput} 的
      * "进程已完成"分支里会 {@code pushItem(new ItemStack(Material.BUCKET))} 并
@@ -1394,7 +1394,7 @@ public class UtsuhoReactorCore extends AGenerator
             if (bucket) {
                 inv.pushItem(new ItemStack(Material.BUCKET), getOutputSlots());
             }
-            inv.pushItem(AddItems.LOGIC_SINGULARITY.clone(), getOutputSlots());
+            inv.pushItem(AddItems.BLAZING_ASH.clone(), getOutputSlots());
             if (Boolean.getBoolean("touhou.debugReactor")) {
                 Log.info("[MBREACTOR-FINISH] @"
                         + loc.getBlockX() + "," + loc.getBlockY() + "," + loc.getBlockZ()
