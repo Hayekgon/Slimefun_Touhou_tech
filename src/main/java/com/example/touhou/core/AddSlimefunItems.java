@@ -7,6 +7,7 @@ import com.example.touhou.power.PowerRepeater;
 import com.example.touhou.power.PowerStorageUnit;
 import com.example.touhou.power.PowerSupplyUnit;
 import io.github.thebusybiscuit.slimefun4.api.items.SlimefunItem;
+import io.github.thebusybiscuit.slimefun4.api.items.SlimefunItemStack;
 import io.github.thebusybiscuit.slimefun4.api.recipes.RecipeType;
 import io.github.thebusybiscuit.slimefun4.implementation.SlimefunItems;
 import org.bukkit.Material;
@@ -23,12 +24,41 @@ public final class AddSlimefunItems {
     private AddSlimefunItems() {
     }
 
+    /**
+     * 「莉莉白」每次合成的产出数量 —— <b>2</b>。
+     *
+     * <p>抽成常量是为了让"需求说 2 个"只有一个出处：注册处（第 5 个参数
+     * {@code new SlimefunItemStack(AddItems.LILY_WHITE, LILY_WHITE_OUTPUT_AMOUNT)}）
+     * 与验证命令 {@code /touhou lilywhite} 都读它，
+     * 于是命令打印的"期望产出"与真正写进合成表的数量不可能对不上。
+     */
+    public static final int LILY_WHITE_OUTPUT_AMOUNT = 2;
+
     /** 反应堆核心（多方块核心 + 发电机）。 */
     public static UtsuhoReactorCore UTSUHO_REACTOR_CORE;
     /** 炙热的灰烬（材料）。 */
     public static SlimefunItem BLAZING_ASH;
     /** 春泥（妖精之力素材）。 */
     public static SlimefunItem SPRING_MUD;
+    /**
+     * 莉莉白（报春的妖精；<b>魔法工作台</b>合成，一次产出 <b>2</b> 个）。
+     *
+     * <p>★ "产出 2 个"用的是<b>粘液本体的机制</b>：{@code SlimefunItem} 那条吃第 5 个参数
+     * {@code recipeOutput} 的构造器，传 {@code new SlimefunItemStack(模板, 2)}。
+     * 本家 90+ 处多产出物品（能源连接器 8 个 / 铜线 8 个 / 硬质玻璃 16 个…）都是这个写法，
+     * 而 {@code SlimefunItem#onEnable} 里那条 "illegal stack size" 告警的原话就是
+     * "Crafting Results with amounts of higher should be handled via the recipeOutput parameter"。
+     *
+     * <p>★ 为什么<b>不</b>自造 {@code RecipeType + BiConsumer}：那条路只改得到
+     * {@code MultiBlockMachine} 的配方表，改不到本物品的 {@code recipeOutput} 字段，
+     * 而<b>指南页产物格</b>（{@code SurvivalSlimefunGuide} 的 {@code menu.addItem(16, output, …)}）
+     * 与<b>自动合成机</b>（{@code SlimefunItemRecipe} 的 {@code item.getRecipeOutput()}）
+     * 读的正是后者 ⇒ 那两处会少一半。用本家机制则天然全对。
+     *
+     * <p>⚠ {@link AddItems#LILY_WHITE} 模板本身的数量必须保持 <b>1</b>：
+     * 改模板会连累 {@code /sf give} 与指南页物品图标，而且会踩上面那条告警。
+     */
+    public static SlimefunItem LILY_WHITE;
     /**
      * 另一个世界的回响（材料；玩家穿过维度之门时由能量水晶转化而来）。
      *
@@ -130,6 +160,22 @@ public final class AddSlimefunItems {
                 AddItems.SPRING_MUD,
                 RecipeType.ENHANCED_CRAFTING_TABLE,
                 springMudRecipe()), plugin);
+
+        // 莉莉白：普通材料，用【魔法工作台】合成，一次产出 2 个。
+        // ★ 配方类型就用本体 RecipeType.MAGIC_WORKBENCH —— 它的 machine 是 "MAGIC_WORKBENCH"
+        //   （SlimefunItems 里的 id），属于 MultiBlockMachine 子孙，走的是
+        //   RecipeType#register 的第 2 条路（mbm.addRecipe），而传进去的 result 已经是
+        //   我们在第 5 参数里给的 amount=2 栈 ⇒ 合成表里存的就是 2 个。
+        //   指南页槽 10 显示的也是魔法工作台图标（本体类型的图标就是那台机器），
+        //   不需要再自造门面类型。
+        // ★ "产出 2 个"只在最后一个参数里出现一次（单一出处），
+        //   模板 AddItems.LILY_WHITE 保持 1 个 —— 判据见本字段的注释。
+        LILY_WHITE = register(new SlimefunItem(
+                AddGroups.MATERIAL,
+                AddItems.LILY_WHITE,
+                RecipeType.MAGIC_WORKBENCH,
+                lilyWhiteRecipe(),
+                new SlimefunItemStack(AddItems.LILY_WHITE, LILY_WHITE_OUTPUT_AMOUNT)), plugin);
 
         // GUI 模式玻璃板：必须真实注册，否则它的粘液 id 不存在。
         // 归属 INFO（1 级）—— 它是 GUI 内部功能件，不是可制造的材料。
@@ -302,6 +348,36 @@ public final class AddSlimefunItems {
                 new ItemStack(Material.DIRT), new ItemStack(Material.DIRT), new ItemStack(Material.DIRT)
         };
     }
+
+    /**
+     * 莉莉白的合成配方（<b>魔法工作台</b>）：八格春泥围边，正中间一个水桶。
+     *
+     * <pre>
+     *   春泥   春泥   春泥
+     *   春泥   水桶   春泥
+     *   春泥   春泥   春泥
+     * </pre>
+     *
+     * <p>★ 「春泥」用的是本项目自己的物品模板 {@link AddItems#SPRING_MUD}
+     * （id {@code TOUHOU_MATERIAL_SPRING_MUD}）—— 配方匹配是拿<b>粘液 id</b>比的
+     * （{@code SlimefunUtils.isItemSimilar}），所以这里必须给模板本身，
+     * 给"看起来一样"的苔藓块是匹配不上的。
+     *
+     * <p>★ 「水桶」是原版 {@code Material.WATER_BUCKET}：合成后会照常消耗掉那个桶
+     * （不做"返还空桶"处理 —— 本体也不做，见 {@code MagicWorkbench#craft}）。
+     *
+     * <p>★ 产出数量 <b>2</b> 不在这里写 —— 本方法只管 9 格图案，
+     * 数量由注册处那个第 5 参数 {@code new SlimefunItemStack(模板, 2)} 统一决定
+     * （判据见 {@link #LILY_WHITE}）。
+     */
+    private static ItemStack[] lilyWhiteRecipe() {
+        return new ItemStack[] {
+                AddItems.SPRING_MUD, AddItems.SPRING_MUD, AddItems.SPRING_MUD,
+                AddItems.SPRING_MUD, new ItemStack(Material.WATER_BUCKET), AddItems.SPRING_MUD,
+                AddItems.SPRING_MUD, AddItems.SPRING_MUD, AddItems.SPRING_MUD
+        };
+    }
+
     private static ItemStack[] goheiRecipe() {
         return new ItemStack[] {
                 null, AddItems.BLAZING_ASH, null,
@@ -377,6 +453,9 @@ public final class AddSlimefunItems {
         return "TOUHOU 注册："
                 + (UTSUHO_REACTOR_CORE == null ? "反应堆核心=未注册" : "反应堆核心=OK")
                 + " / " + (BLAZING_ASH == null ? "炙热的灰烬=未注册" : "炙热的灰烬=OK")
+                + " / " + (LILY_WHITE == null ? "莉莉白=未注册"
+                        : "莉莉白=OK(" + LILY_WHITE.getId()
+                                + ",产出" + LILY_WHITE_OUTPUT_AMOUNT + ")")
                 + " / " + (ECHO_OF_ANOTHER_WORLD == null ? "另一个世界的回响=未注册"
                         : "另一个世界的回响=OK(" + ECHO_OF_ANOTHER_WORLD.getId() + ")")
                 + " / " + (INFO_MODESHIFT == null ? "模式玻璃板=未注册" : "模式玻璃板=OK")

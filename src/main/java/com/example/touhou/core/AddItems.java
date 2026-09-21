@@ -23,6 +23,26 @@ public final class AddItems {
     private AddItems() {
     }
 
+    /**
+     * 「莉莉白」的头颅 Value —— 用户给定的那串 base64（原样照抄，不做任何加工）。
+     *
+     * <p>★ 调试命令 {@code /touhou lilywhite} 也读这个常量做比对，
+     * 于是"用户给的那串"与"物品实际带着的那串"是同一份字符串、只有一个出处。
+     */
+    public static final String LILY_WHITE_TEXTURE =
+            "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUv"
+            + "YTAyZTc3YTIyNmFhOGJhZjlkMjkwMTYxMzliMWI2OTJhOTRlYTg4NzkwMWNhMzUzMDI3MzNjNzMxZjgxNDVlYSJ9fX0=";
+
+    /**
+     * 粉白渐变的<b>起点</b>（粉）与<b>终点</b>（白）。
+     *
+     * <p>★ 用户只说了"粉白色、左到右渐变"，没给具体色号，所以这两个值是本实现的判断：
+     * 起点选一个偏亮的粉（{@code #FFB3D9}）而不是正粉（{@code #FF00FF}）——
+     * 因为终点是纯白，起点太饱和的话中间会扫出一段发紫的过渡，反而看不出"粉"。
+     */
+    private static final int GRADIENT_START_RGB = 0xFFB3D9;
+    private static final int GRADIENT_END_RGB = 0xFFFFFF;
+
     /** 多方块核心：旧地狱-灵乌路空反应堆。 */
     public static SlimefunItemStack UTSUHO_REACTOR_CORE;
 
@@ -56,6 +76,31 @@ public final class AddItems {
 
     /** 春泥（妖精之力素材）。 */
     public static SlimefunItemStack SPRING_MUD;
+
+    /**
+     * 莉莉白 —— 报春的妖精（东方 Project 的「リリーホワイト」）。
+     *
+     * <p>id 按本项目铁律 {@code TOUHOU_"物品组"_"英文名"}：它归属 1 级组
+     * {@link AddGroups#MATERIAL}，英文名取 <b>Lily White</b>
+     * ⇒ {@code TOUHOU_MATERIAL_LILY_WHITE}。
+     *
+     * <p>★ 为什么物品组选 {@code MATERIAL}：用户没有指定物品组。它没有任何功能
+     * （不能右键、不耗电、不参与结构、不接 POWER），只是魔法工作台合成出来的
+     * <b>角色道具/材料</b>，与同样是"纯素材"的 {@link #SPRING_MUD} 并列。
+     * 这也是本实现的判断（见最终报告）。
+     *
+     * <p>★ 材质是<b>头颅 Value</b>（用户给定的一串 base64），不是 Material ——
+     * {@link SlimefunItemStack#SlimefunItemStack(String, String, String, String...)}
+     * 那条构造器会把它交给 {@code getSkull}（本机运算，不发网络请求）。
+     * 选这条构造器的判据见 {@link #gradientName}。
+     *
+     * <p>★ <b>本模板的数量必须保持 1</b>：合成时"产出 2 个"由配方侧的第 5 参数
+     * {@code recipeOutput} 决定（见 {@link AddSlimefunItems#LILY_WHITE}），
+     * 不是靠改这里。改了这里会连累 {@code /sf give} 与指南页，
+     * 而且会踩 Slimefun 那条 "illegal stack size" 告警
+     * （{@code SlimefunItem#onEnable}，原文就写着"多产出请走 recipeOutput 参数"）。
+     */
+    public static SlimefunItemStack LILY_WHITE;
 
     // ------------------------------------------------------------------ INFO 组：信息类纸张
     // 全部使用 PAPER 材质，纯信息展示，无配方、无功能。
@@ -251,6 +296,31 @@ public final class AddItems {
                 "",
                 "&a化作春泥更护花......",
                 "&a散发出微弱的妖精之力");
+
+        // 莉莉白：报春的妖精。
+        // ★ 材质：用户给定的【头颅 Value】（base64）。链路（已核实，见 SlimefunItemStack）：
+        //   SlimefunItemStack(id, texture, name, lore...)
+        //     → getTexture(id, texture)：texture.startsWith("ey") ⇒ 原样返回（这串正好以 "ey" 开头）
+        //     → getSkull(id, texture)：PlayerSkin.fromBase64(...) → PlayerHead.getItemStack(...)
+        //   所以这里【直接】把那串 Value 当第二个参数传进去即可，不用自己拼 SkullMeta。
+        //   运行期用 LILY_WHITE.getSkullTexture() 读回来核对（/touhou lilywhite）。
+        //
+        // ★ 名字「莉莉白」与描述第一行用【粉白左到右渐变】：那串已经翻好的
+        //   §x§R§R§G§G§B§B 序列【必须】直接塞进构造器，绝不能写成 "&x&f&f&b&3&d&9..." ——
+        //   构造器内部只调 ChatColor.translateAlternateColorCodes('&', name)，
+        //   而它【不认】&x 这种十六进制序列（'x' 不是合法颜色字符，会被原样留下）。
+        //   同理：不带渐变的普通行才用 "&7" 写法（构造器会翻成 §7）。
+        //   判据与实测证据见本类的 gradientName 与最终报告。
+        //
+        // ★ 描述按用户原文：[第一行渐变] / (endl)换行 / [第二行灰色]。中间的 "" 就是换行。
+        LILY_WHITE = new SlimefunItemStack(
+                "TOUHOU_MATERIAL_LILY_WHITE",
+                LILY_WHITE_TEXTURE,
+                gradientName("莉莉白"),
+                "",
+                gradientName("报春的妖精，莉莉白，"),
+                "&7请城管不要无辜殴打无害的莉莉白，她很可爱=v=");
+
 INFO_MODESHIFT = new SlimefunItemStack(
                 "TOUHOU_INFO_MODESHIFT",
                 Material.PURPLE_STAINED_GLASS_PANE,
@@ -701,6 +771,65 @@ INFO_MODESHIFT = new SlimefunItemStack(
         }
         meta.setLore(lore);
         core.setItemMeta(meta);
+    }
+
+    /**
+     * 把一段文字逐字符染成"粉 → 白"的左到右渐变，返回<b>已翻好的</b>
+     * {@code §x§R§R§G§G§B§B} 序列串。
+     *
+     * <h2>为什么不能用 &amp; 写法</h2>
+     * Slimefun 的颜色工具 {@code ChatColors#color} 内部只调用了
+     * {@code ChatColor.translateAlternateColorCodes('&', s)}，而它<b>不认</b>
+     * {@code &x&f&f&b&3&d&9} 这种十六进制序列 —— {@code 'x'} 不是合法颜色字符，
+     * 会被原样留下，玩家看到的就是字面的 {@code &x&f&f...}。
+     * 这里改用 {@code net.md_5.bungee.api.ChatColor#of(String)}（Slimefun 自带 bungee-chat）
+     * 生成 {@code §x§R§R§G§G§B§B}，再把整串直接交给
+     * {@link SlimefunItemStack#SlimefunItemStack(String, String, String, String...)}。
+     *
+     * <p>★ 那条构造器对名字/描述仍会执行一次
+     * {@code translateAlternateColorCodes('&', …)}，但它只翻 {@code '&'} 开头的两位序列，
+     * <b>不会动已有的 {@code §}</b> —— 所以上面那串带 {@code §x} 的渐变能原样穿过去。
+     * 这一条是实测过的（证据见 {@code /touhou lilywhite} 打印的 JSON 序列化）。
+     *
+     * <h2>插值口径</h2>
+     * 第 {@code i} 个字符的比例是 {@code t = i / (len - 1)}（首字符=起点色，末字符=终点色），
+     * 在每个通道上做线性插值。长度只有 1 时直接取起点色，不做除零。
+     *
+     * <p>★ 空格也照常染色：多几个无用字符对客户端无害，但"每个可见字符都能均匀分到
+     * 自己的色号"这件事变得没有例外，验证命令的输出也更好读。
+     *
+     * @param text 要染的文字（纯文本，不要带 {@code §}/{@code &} 颜色代码）
+     * @return 每字符都带 {@code §x§R§R§G§G§B§B} 前缀的字符串
+     */
+    public static String gradientName(String text) {
+        if (text == null || text.isEmpty()) {
+            return "";
+        }
+        int length = text.length();
+        StringBuilder out = new StringBuilder(length * 14);
+        for (int i = 0; i < length; i++) {
+            double t = length == 1 ? 0.0 : (double) i / (double) (length - 1);
+            int rgb = lerpRgb(GRADIENT_START_RGB, GRADIENT_END_RGB, t);
+            // ★ ChatColor.of("#rrggbb") 造出来的 toString() 就是 §x§R§R§G§G§B§B 七个字符，
+            //   直接拼进去即可（不经过 Slimefun 的 & 翻译，也就不会被它弄坏）。
+            out.append(net.md_5.bungee.api.ChatColor.of(String.format("#%06X", rgb)))
+                    .append(text.charAt(i));
+        }
+        return out.toString();
+    }
+
+    /** 两个 RGB 整数之间按比例 t 做线性插值（t=0 取 from，t=1 取 to）。 */
+    private static int lerpRgb(int from, int to, double t) {
+        int fr = (from >> 16) & 0xFF;
+        int fg = (from >> 8) & 0xFF;
+        int fb = from & 0xFF;
+        int tr = (to >> 16) & 0xFF;
+        int tg = (to >> 8) & 0xFF;
+        int tb = to & 0xFF;
+        int r = (int) Math.round(fr + (tr - fr) * t);
+        int g = (int) Math.round(fg + (tg - fg) * t);
+        int b = (int) Math.round(fb + (tb - fb) * t);
+        return (r << 16) | (g << 8) | b;
     }
 
     /**

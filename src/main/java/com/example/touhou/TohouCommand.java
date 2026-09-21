@@ -89,6 +89,8 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
             case "lily", "murderouslily" -> lily(sender, Arrays.copyOfRange(args, 1, args.length));
             case "echo", "shuttle", "dimensionshuttle" ->
                     echo(sender, Arrays.copyOfRange(args, 1, args.length));
+            case "lilywhite", "lw", "lily_white" ->
+                    lilyWhite(sender, Arrays.copyOfRange(args, 1, args.length));
             case "autobuild" -> autobuild(sender, Arrays.copyOfRange(args, 1, args.length));
             case "reactor" -> reactor(sender, Arrays.copyOfRange(args, 1, args.length));
             case "clickinfo" -> clickInfo(sender, Arrays.copyOfRange(args, 1, args.length));
@@ -175,6 +177,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         s.sendMessage("\u00a77/touhou lily tracers <x> <y> <z> [玩家]       衍生箭实弹测试（命中范围伤害 + 2 tick 消失）");
         s.sendMessage("\u00a77/touhou lily cleanup               把两张追踪表收干净并打印条目数");
         s.sendMessage("\u00a77/touhou echo selfcheck | rule | container <x> <y> <z> | convert [玩家] | probe <玩家> [世界] | shuttle <玩家> <from> <to> [--force] | cooldown [clear]   「维度穿梭」无头验证");
+        s.sendMessage("\u00a77/touhou lilywhite [selfcheck|name|recipe]   莉莉白：头贴图 / 粉白渐变（JSON 证据）/ 配方产出 2 个");
         s.sendMessage("\u00a77/touhou guide [reactor|saizen|echo]   粘液书自定义配方页的内容自检（展示列表 + 可合成性核查）");
         s.sendMessage("\u00a77/touhou place <x> <y> <z> <sfId> [world] [--force]");
         s.sendMessage("\u00a77/touhou remove <x> <y> <z>            删除方块 + Slimefun 方块数据（setblock 清不掉）");
@@ -349,9 +352,20 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
      * {@code TouhouRecipeTypes} 的类注释）。所以"工作台摆不出来"必须两边都查：
      * <pre>
      *   原版工作台口径 → Bukkit.recipeIterator()      （countRecipesFor）
-     *   增强工作台口径 → 各 MultiBlockMachine 的展示列表（本方法）
+     *   增强工作台口径 → 各 MultiBlockMachine 的配方表（本方法）
      * </pre>
-     * 展示列表是"输入, 输出, 输入, 输出…"的扁平表，所以输出落在<b>奇数下标</b>。
+     *
+     * <p>★★ 必须扫 {@code getRecipes()}，<b>不能</b>扫 {@code getDisplayRecipes()}：
+     * 本方法的上一版扫的是展示表，而运行期的 {@code MagicWorkbench} 走的是
+     * "machineRecipes 为空"的那条构造器（{@code AbstractCraftingTable} 传的就是空数组），
+     * 展示表里一条都没有；真正的配方表是 {@code addRecipe} 一条条攒出来的
+     * （见 {@code RecipeType#register} → {@code MultiBlockMachine#addRecipe}）。
+     * 实测症状：莉莉白的配方明明登记成功
+     * （{@code recipes[148]=输入, recipes[149]=产出}），这个计数却报 0
+     * —— 那是计数口径错，不是配方没落上。
+     *
+     * <p>配方表是"输入, 输出, 输入, 输出…"的扁平表，所以产物落在<b>奇数下标</b>；
+     * 每个元素是一个长度 1 的数组（{@code addRecipe} 的写法）。
      */
     private static int countMachineRecipesFor(
             io.github.thebusybiscuit.slimefun4.api.items.SlimefunItem item) {
@@ -361,18 +375,68 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
             if (!(machine instanceof io.github.thebusybiscuit.slimefun4.core.multiblocks.MultiBlockMachine mbm)) {
                 continue;
             }
-            java.util.List<ItemStack> display = mbm.getDisplayRecipes();
-            if (display == null) {
+            List<ItemStack[]> recipes = mbm.getRecipes();
+            if (recipes == null) {
                 continue;
             }
-            for (int i = 1; i < display.size(); i += 2) {
-                ItemStack out = display.get(i);
+            for (int i = 1; i < recipes.size(); i += 2) {
+                ItemStack[] holder = recipes.get(i);
+                if (holder == null || holder.length == 0) {
+                    continue;
+                }
+                ItemStack out = holder[0];
                 if (out != null && item.isItem(out)) {
                     count++;
                 }
             }
         }
         return count;
+    }
+
+    /**
+     * <b>自动合成机路径的真·端到端读数</b>。
+     *
+     * <p>《自动合成机》家族的配方对象是 {@code SlimefunItemRecipe}，它构造时调
+     * {@code super(getInputs(item), item.getRecipeOutput())} —— 也就是说
+     * <b>它吐出来的产物就是 {@code getRecipeOutput()}</b>。
+     * 这里用本家的公开工厂 {@code AbstractRecipe.of(SlimefunItem, RecipeType)}
+     * 把那份配方对象造出来，
+     * 再读它的 {@code getResult()}，于是"自动合成机会吐几个"是<b>读出来的</b>，不是推断的。
+     *
+     * <p>★ 为什么要反射：{@code SlimefunItemRecipe} 是包私有类，
+     * 但它的父类 {@code AbstractRecipe} 与 {@code of(SlimefunItem, RecipeType)} 都是 public，
+     * 所以只需 {@code getResult()} 那一步反射。拿不到时如实报，不抛（这是诊断命令）。
+     *
+     * <p>⚠ 运行期（Slimefun 2026.07）的工厂是 <b>两参数</b>
+     * {@code of(SlimefunItem, RecipeType)}；反编译的 2025.1 源码里是单参数
+     * {@code of(SlimefunItem)}。以运行期为准 —— 这正是"以运行期 jar 为准"的又一个实例
+     * （第一次实测就是按单参数反射，直接吃了个 NoSuchMethodException）。
+     */
+    private static String autocrafterResult(
+            io.github.thebusybiscuit.slimefun4.api.items.SlimefunItem item) {
+        try {
+            Class<?> factory = Class.forName(
+                    "io.github.thebusybiscuit.slimefun4.implementation.items.autocrafters.AbstractRecipe");
+            java.lang.reflect.Method of = factory.getMethod("of",
+                    io.github.thebusybiscuit.slimefun4.api.items.SlimefunItem.class,
+                    io.github.thebusybiscuit.slimefun4.api.recipes.RecipeType.class);
+            Object recipe = of.invoke(null, item, item.getRecipeType());
+            if (recipe == null) {
+                return "AbstractRecipe.of() 返回 null（该物品不被自动合成机支持）";
+            }
+            java.lang.reflect.Method getResult = factory.getMethod("getResult");
+            ItemStack result = (ItemStack) getResult.invoke(recipe);
+            if (result == null) {
+                return "配方对象 = " + recipe.getClass().getName() + "，getResult() = null";
+            }
+            return "配方对象 = " + recipe.getClass().getSimpleName()
+                    + "   产物 = " + result.getType() + " x" + result.getAmount()
+                    + "  粘液id=" + idOf(result)
+                    + "  ⇒ " + (result.getAmount() == AddSlimefunItems.LILY_WHITE_OUTPUT_AMOUNT
+                            ? "\u00a7a会吐 " + result.getAmount() + " 个" : "\u00a7c数量不符");
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+            return "(自动合成机路径读取失败: " + e + ")";
+        }
     }
 
     /**
@@ -476,6 +540,380 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
                 + " self=" + dc.powerCharge(loc) + "/" + dc.powerCapacity(loc)
                 + " produced=" + com.example.touhou.core.TouhouData.getLong(
                         loc, com.example.touhou.power.DreamCatcher.KEY_PRODUCED, 0L));
+    }
+
+    // ------------------------------------------------------------------ lilywhite（莉莉白）
+
+    /**
+     * 「莉莉白」的无头验证入口。
+     *
+     * <pre>
+     *   /touhou lilywhite            全部打印（默认）
+     *   /touhou lilywhite selfcheck  只看物品本身：id / 材质 / 头贴图 / 名·描述
+     *   /touhou lilywhite name       只看显示名与描述第一行的【渐变】证据
+     *   /touhou lilywhite recipe     只看配方：类型 key / 产出数量 / 9 格内容 / 可合成性核查
+     * </pre>
+     *
+     * <p>★ 这个命令要证明三件事，每一件都有<b>两个独立读数</b>互相印证：
+     * <ol>
+     *   <li><b>头贴图</b>：物品材质是 {@code PLAYER_HEAD}，
+     *       且 {@code getSkullTexture()} 与用户给的那串 Value 逐字符相等；</li>
+     *   <li><b>粉白渐变</b>：把显示名序列化成 <b>JSON 组件</b>打出来
+     *       （{@code ItemMeta#displayName()} 是 adventure 的 {@code Component}），
+     *       里面必须是<b>逐字符不同的</b> {@code #rrggbb} 颜色；
+     *       同时打出"每个字符 + 它前面的颜色码"的逐字符清单，
+     *       证明 {@code §x} 序列是<b>真的穿上去了</b>、而不是被当字面量留在字符串里；</li>
+     *   <li><b>产出 2 个</b>：分别读<b>两条消费路径</b>各自看到的数量 ——
+     *       ① {@code SlimefunItem#getRecipeOutput()#getAmount()}（指南页产物格 / 自动合成机读它）
+     *       ② {@code MultiBlockMachine#getRecipes()} 里那条记录的 output（合成表实际执行的那个）
+     *       并且再读一次<b>模板本身</b>的数量，证明它仍然是 1（没污染模板、
+     *       也就没踩 {@code SlimefunItem#onEnable} 的 "illegal stack size" 告警）。</li>
+     * </ol>
+     *
+     * <p>输出走 {@link Log#command}（不受 {@code logging.console-info} 影响），
+     * 于是"跑一次服务端 + 从 stdin 敲一条命令"就能拿到全部证据。
+     */
+    private void lilyWhite(CommandSender sender, String[] args) {
+        SlimefunItem item = AddSlimefunItems.LILY_WHITE;
+        if (item == null) {
+            sender.sendMessage(PREFIX + "\u00a7c莉莉白未注册（物品注册失败？看控制台）");
+            return;
+        }
+        String sub = args.length >= 1 ? args[0].toLowerCase() : "all";
+        boolean all = sub.equals("all") || sub.equals("check");
+        boolean selfcheck = all || sub.equals("selfcheck");
+        boolean name = all || sub.equals("name") || sub.equals("gradient");
+        boolean recipe = all || sub.equals("recipe") || sub.equals("craft");
+        if (!selfcheck && !name && !recipe) {
+            sender.sendMessage(PREFIX
+                    + "\u00a7c用法: /touhou lilywhite [selfcheck|name|recipe]");
+            return;
+        }
+
+        if (selfcheck) {
+            guideLine(sender, PREFIX + "\u00a7e莉莉白 · 物品自检");
+            guideLine(sender, "\u00a78  id = " + item.getId());
+            ItemStack icon = item.getItem();
+            guideLine(sender, "\u00a78  材质 = " + (icon == null ? "(null)" : String.valueOf(icon.getType()))
+                    + "（应为 PLAYER_HEAD）");
+            // 头贴图：从物品模板读回来的那串，与用户给定值逐字符比对
+            String expect = AddItems.LILY_WHITE_TEXTURE;
+            String actual = null;
+            if (AddItems.LILY_WHITE != null) {
+                actual = AddItems.LILY_WHITE.getSkullTexture().orElse(null);
+            }
+            guideLine(sender, "\u00a78  getSkullTexture() = "
+                    + (actual == null ? "\u00a7c(null —— 这个材质不是头颅，或贴图没写进去）" : actual));
+            guideLine(sender, "\u00a78  用户给定的 Value  = " + expect);
+            guideLine(sender, "\u00a78  两者相等 = "
+                    + (expect.equals(actual) ? "\u00a7a是" : "\u00a7c否"));
+            guideLine(sender, "\u00a78  物品组 = " + (item.getItemGroup() == null
+                    ? "(null)" : item.getItemGroup().getKey().toString()));
+            guideLine(sender, "\u00a78  在 Slimefun 注册表里（/sf give 能不能拿到） = "
+                    + (SlimefunItem.getById(item.getId()) == item
+                            ? "\u00a7a能" : "\u00a7c查不到"));
+            // 模板数量必须还是 1：这是"没污染模板"的直接读数
+            guideLine(sender, "\u00a78  模板 getAmount() = "
+                    + (AddItems.LILY_WHITE == null ? "(null)" : AddItems.LILY_WHITE.getAmount())
+                    + "（应为 1 —— 改了它会连累 /sf give 与指南页图标）");
+            log("[TOUHOU] lilywhite selfcheck id=" + item.getId()
+                    + " material=" + (icon == null ? "null" : icon.getType())
+                    + " skullMatch=" + expect.equals(actual)
+                    + " templateAmount="
+                    + (AddItems.LILY_WHITE == null ? -1 : AddItems.LILY_WHITE.getAmount()));
+        }
+
+        if (name) {
+            ItemMeta meta = item.getItem() == null ? null : item.getItem().getItemMeta();
+            guideLine(sender, PREFIX + "\u00a7e莉莉白 · 显示名 / 描述（渐变证据）");
+            if (meta == null) {
+                guideLine(sender, "\u00a7c  拿不到 ItemMeta");
+            } else {
+                printDisplayNameEvidence(sender, "显示名", meta);
+                // 描述第一行也应当是渐变；第二行是普通灰色
+                List<String> lore = meta.getLore();
+                if (lore == null || lore.isEmpty()) {
+                    guideLine(sender, "\u00a78  (没有 lore)");
+                } else {
+                    for (int i = 0; i < lore.size(); i++) {
+                        String line = lore.get(i);
+                        String raw = line == null ? "" : line.replace("\u00a7", "\\u00a7");
+                        guideLine(sender, "\u00a77  lore[" + i + "] 原样 = " + raw);
+                        // 逐字符颜色清单只对第一行（渐变行）打，第二行是普通灰、不用刷屏
+                        if (i == 1) {
+                            for (String cl : colorPerChar(line)) {
+                                guideLine(sender, "\u00a78    " + cl);
+                            }
+                        }
+                    }
+                }
+            }
+            // ★ 这里刻意【不】再打一遍 displayNameJson：
+            //   上面 guideLine 已经把完整 JSON 打出来了，日志里同一份长串出现两次
+            //   只会让 grep 更难读。这一行只留"有没有名字 + 几段渐变色"这种短读数，
+            //   要完整 JSON 就往上翻那一行。
+            log("[TOUHOU] lilywhite name hasDisplayName="
+                    + (meta != null && meta.hasDisplayName())
+                    + " gradientHexCount="
+                    + (meta == null ? 0 : hexSequenceCount(meta.getDisplayName())));
+        }
+
+        if (recipe) {
+            guideLine(sender, PREFIX + "\u00a7e莉莉白 · 配方（魔法工作台，产出 2 个）");
+            guideLine(sender, "\u00a78  配方类型 = " + (item.getRecipeType() == null
+                    ? "(null)" : item.getRecipeType().getKey().toString())
+                    + "   指向的机器 = " + (item.getRecipeType() == null
+                            || item.getRecipeType().getMachine() == null
+                                    ? "(无)" : item.getRecipeType().getMachine().getId()));
+            guideLine(sender, "\u00a78  期望产出数量（需求）= "
+                    + AddSlimefunItems.LILY_WHITE_OUTPUT_AMOUNT);
+
+            // ---- ① SlimefunItem#getRecipeOutput()：指南页产物格 / 自动合成机读的就是它
+            ItemStack declared = item.getRecipeOutput();
+            int declaredAmount = declared == null ? -1 : declared.getAmount();
+            guideLine(sender, "\u00a78  [路径①] SlimefunItem.getRecipeOutput().getAmount() = "
+                    + declaredAmount + "  期望 "
+                    + AddSlimefunItems.LILY_WHITE_OUTPUT_AMOUNT + " ⇒ "
+                    + (declaredAmount == AddSlimefunItems.LILY_WHITE_OUTPUT_AMOUNT
+                            ? "\u00a7a符合" : "\u00a7c不符")
+                    + "\u00a78（指南页产物格 / 自动合成机读这一条）");
+
+            // ---- ② 魔法工作台配方表里那条记录：合成时实际执行的那个
+            io.github.thebusybiscuit.slimefun4.core.multiblocks.MultiBlockMachine workbench =
+                    findMagicWorkbench();
+            ItemStack tableOutput = workbench == null
+                    ? null : findRecipeOutput(workbench, item.getRecipe());
+            int tableAmount = tableOutput == null ? -1 : tableOutput.getAmount();
+            guideLine(sender, "\u00a78  [路径②] 魔法工作台配方表里那条 output.getAmount() = "
+                    + tableAmount + "  期望 "
+                    + AddSlimefunItems.LILY_WHITE_OUTPUT_AMOUNT + " ⇒ "
+                    + (tableAmount == AddSlimefunItems.LILY_WHITE_OUTPUT_AMOUNT
+                            ? "\u00a7a符合" : "\u00a7c不符")
+                    + "\u00a78（合成表实际执行这一条）");
+            guideLine(sender, "\u00a78  魔法工作台配方总数（含本体自带）= "
+                    + (workbench == null ? "(找不到魔法工作台)" : workbench.getRecipes().size() / 2 + " 条"));
+
+            // ---- ③ 模板数量：必须还是 1
+            int templateAmount = AddItems.LILY_WHITE == null ? -1 : AddItems.LILY_WHITE.getAmount();
+            guideLine(sender, "\u00a78  [模板] AddItems.LILY_WHITE.getAmount() = "
+                    + templateAmount + "  期望 1 ⇒ "
+                    + (templateAmount == 1 ? "\u00a7a符合（没污染模板）" : "\u00a7c不符"));
+
+            // ---- 配方 9 格
+            guideLine(sender, "\u00a7e  -- 配方 9 格 --");
+            ItemStack[] grid = item.getRecipe();
+            for (int i = 0; i < (grid == null ? 0 : grid.length); i++) {
+                ItemStack cell = grid[i];
+                guideLine(sender, "\u00a78    [" + i + "] = "
+                        + (cell == null ? "(空)"
+                                : cell.getType() + " x" + cell.getAmount()
+                                        + "  粘液id=" + idOf(cell)
+                                        + "  名=" + com.example.touhou.core.RecipePages.labelOf(cell)));
+            }
+
+            // ---- 可合成性核查（两面口径）
+            guideLine(sender, "\u00a7e  -- 可合成性核查（这里【应该】都 > 0）--");
+            guideLine(sender, "\u00a78    Bukkit 配方表里能产出它的 = " + countRecipesFor(item)
+                    + " 条（原版工作台口径，本物品走粘液多方块、应为 0）");
+            guideLine(sender, "\u00a78    Slimefun 多方块机器配方表里能产出它的 = " + countMachineRecipesFor(item)
+                    + " 条（增强工作台 / 魔法工作台口径，应为 1）");
+            log("[TOUHOU] lilywhite recipe type="
+                    + (item.getRecipeType() == null ? "null" : item.getRecipeType().getKey())
+                    + " declaredOutput=" + declaredAmount
+                    + " machineRecipeTable=" + tableAmount
+                    + " templateAmount=" + templateAmount
+                    + " machineRecipes=" + countMachineRecipesFor(item));
+
+            // ---- 诊断：把魔法工作台配方表里所有"输出是莉莉白"的条目原样打出来。
+            //      ★ 必须扫 getRecipes()（真表），不能扫 getDisplayRecipes()：
+            //      运行期的 MagicWorkbench 走 4 参数构造器（machineRecipes 为空），
+            //      本体的展示表里一条都没有；真正的配方表是 addRecipe 一条条攒出来的。
+            if (workbench != null) {
+                List<ItemStack> display = workbench.getDisplayRecipes();
+                List<ItemStack[]> raw = workbench.getRecipes();
+                guideLine(sender, "\u00a78  [诊断] 魔法工作台 displayRecipes 大小 = " + display.size()
+                        + " / recipes 大小 = " + raw.size());
+                int foundRaw = 0;
+                for (int i = 0; i < raw.size(); i++) {
+                    ItemStack[] holder = raw.get(i);
+                    if (holder != null && holder.length > 0 && holder[0] != null
+                            && item.isItem(holder[0])) {
+                        guideLine(sender, "\u00a78    recipes[" + i + "] = " + holder[0].getType()
+                                + " x" + holder[0].getAmount() + "  粘液id=" + idOf(holder[0])
+                                + "  \u21d0 是莉莉白（" + (i % 2 == 1 ? "奇数下标＝产物位" : "偶数下标＝输入位") + "）");
+                        foundRaw++;
+                    }
+                }
+                guideLine(sender, "\u00a78    recipes 里莉莉白条目数 = " + foundRaw);
+                // 再直说一句：isItem 判据本身有没有问题（排除"数不出来"是判据的锅）
+                guideLine(sender, "\u00a78    isItem(模板自己) = "
+                        + item.isItem(AddItems.LILY_WHITE)
+                        + "   isItem(getRecipeOutput()) = "
+                        + (declared == null ? "(null)" : String.valueOf(item.isItem(declared))));
+            }
+
+            // ---- ④ 自动合成机路径的【真·端到端】证据
+            //      《自动合成机》（AutoCrafter 家族）用的就是 SlimefunItemRecipe，
+            //      而它的产物来自 AbstractRecipe#getResult() —— 正是 getRecipeOutput()。
+            //      所以把那份配方对象造出来读它的产物，等于把"自动合成机实际会吐几个"
+            //      直接读出来了（不是推断）。AbstractRecipe 是 public，of(SlimefunItem)
+            //      也是 public；SlimefunItemRecipe 包私有，用反射拿 getResult()。
+            guideLine(sender, "\u00a7e  -- 自动合成机路径（本家 AutoCrafter 读的就是这一条）--");
+            guideLine(sender, "\u00a78    " + autocrafterResult(item));
+        }
+    }
+
+    /**
+     * 打印显示名的<b>渐变证据</b>：JSON 序列化 + 逐字符颜色清单。
+     *
+     * <p>★ 为什么用 JSON 组件：{@code ItemMeta#displayName()} 返回的是 Paper 的
+     * adventure {@code Component}，{@code toString()} 就是 JSON。
+     * 于是"渐变有没有真穿上"不再靠肉眼看 tooltip —— JSON 里每个字符都会带自己的
+     * {@code color} 字段，逐字不同就是渐变、整行同色就是没渐变。
+     *
+     * <p>★ 逐字符清单是第二重证据：它直接看<b>底层字符串</b>，
+     * 能区分"渐变生效"与"§x 被当字面量留在名字里"（后者会看到字面的 'x' 字符带上色）。
+     */
+    private void printDisplayNameEvidence(CommandSender sender, String label, ItemMeta meta) {
+        if (!meta.hasDisplayName()) {
+            guideLine(sender, "\u00a7c  " + label + "：没有 displayName");
+            return;
+        }
+        guideLine(sender, "\u00a7e  -- " + label + " --");
+        guideLine(sender, "\u00a77    JSON 序列化 = " + displayNameJson(meta));
+        guideLine(sender, "\u00a77    原样字符串（§ 显示为 \\u00a7）= "
+                + (meta.getDisplayName() == null
+                        ? "(null)" : meta.getDisplayName().replace("\u00a7", "\\u00a7")));
+        for (String line : colorPerChar(meta.getDisplayName())) {
+            guideLine(sender, "\u00a78    " + line);
+        }
+    }
+
+    /** 取显示名的 adventure 组件 JSON（Paper 的 {@code ItemMeta#displayName()}）。 */
+    private static String displayNameJson(ItemMeta meta) {
+        if (meta == null || !meta.hasDisplayName()) {
+            return "(无)";
+        }
+        try {
+            net.kyori.adventure.text.Component component = meta.displayName();
+            if (component == null) {
+                return "(adventure 组件为 null)";
+            }
+            return component.toString();
+        } catch (RuntimeException | LinkageError e) {
+            // 旧 API 或序列化器缺失时如实报，不抛（这是条诊断命令）
+            return "(adventure 序列化失败: " + e + ")；legacy 文本 = "
+                    + (meta.getDisplayName() == null ? "(null)" : meta.getDisplayName());
+        }
+    }
+
+    /**
+     * 把一段带 {@code §} 颜色码的文本拆成"每个字符 + 它生效的颜色"清单。
+     *
+     * <p>颜色码本身不显示（它们不是可见字符）；本方法把它们翻译成
+     * {@code #RRGGBB} 这样的<b>纯 ASCII 可读记号</b>，附在紧随其后的那个字符前面。
+     * 于是"是不是逐字符换色"一眼可见 —— 而且输出里不含 {@code §} 这种难伺候的字符，
+     * 无论日志走 UTF-8 还是 GBK 都不会看不清。
+     *
+     * <p>★ 十六进制序列必须当<b>一个整体</b>消费：{@code §x} 之后紧跟着 6 组
+     * {@code §R§R§G§G§B§B}（共 12 个字符）。早先这里只跳过了 {@code §x} 两个字符，
+     * 后面那 6 组就被当成了"独立的普通颜色码"，于是同一个字符被报了 7 遍、
+     * 字符数也数多了（实测症状：3 个字的显示名报成 10 个字符）。
+     * 现在显式识别并整段消费。
+     */
+    private static List<String> colorPerChar(String text) {
+        List<String> out = new ArrayList<>();
+        if (text == null) {
+            return out;
+        }
+        // 本字符之前累积的颜色记号（纯 ASCII：#RRGGBB；普通颜色码则原样记成 &a 这类）
+        StringBuilder pending = new StringBuilder();
+        int visible = 0;
+        int hexSeen = 0;
+        int i = 0;
+        while (i < text.length()) {
+            char c = text.charAt(i);
+            if (c == '\u00a7' && i + 1 < text.length()) {
+                char code = text.charAt(i + 1);
+                if ((code == 'x' || code == 'X') && i + 13 < text.length()) {
+                    // §x 后面固定跟 6 组 §RGB：把每组里的十六进制位拼成 #RRGGBB
+                    StringBuilder digits = new StringBuilder(6);
+                    for (int k = 0; k < 6; k++) {
+                        int at = i + 2 + k * 2;
+                        digits.append(text.charAt(at + 1));
+                    }
+                    pending.append('#').append(digits);
+                    hexSeen++;
+                    i += 14;
+                    continue;
+                }
+                pending.append('&').append(code);
+                i += 2;
+                continue;
+            }
+            visible++;
+            out.add("'" + c + "' 颜色=" + (pending.length() == 0
+                    ? "(无，继承上一个)" : pending.toString()));
+            pending.setLength(0);
+            i++;
+        }
+        out.add(0, "可见字符数=" + visible + "  十六进制颜色序列个数=" + hexSeen);
+        return out;
+    }
+
+    /** 数一段文本里有几个 {@code §x§R§R§G§G§B§B} 十六进制颜色序列（供一行短日志用）。 */
+    private static int hexSequenceCount(String text) {
+        if (text == null) {
+            return 0;
+        }
+        int count = 0;
+        for (int i = 0; i + 1 < text.length(); i++) {
+            if (text.charAt(i) == '\u00a7'
+                    && (text.charAt(i + 1) == 'x' || text.charAt(i + 1) == 'X')) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /** 取物品的粘液 id（不是粘液物品就返回 "(无)"）。 */
+    private static String idOf(ItemStack stack) {
+        try {
+            SlimefunItem sf = SlimefunItem.getByItem(stack);
+            return sf == null ? "(无)" : sf.getId();
+        } catch (RuntimeException e) {
+            return "(读取失败)";
+        }
+    }
+
+    /** 找运行期的魔法工作台本体（不是 Touhou 的物品，是 Slimefun 本体那台多方块机器）。 */
+    private static io.github.thebusybiscuit.slimefun4.core.multiblocks.MultiBlockMachine findMagicWorkbench() {
+        SlimefunItem machine = SlimefunItem.getById("MAGIC_WORKBENCH");
+        return machine instanceof io.github.thebusybiscuit.slimefun4.core.multiblocks.MultiBlockMachine mbm
+                ? mbm : null;
+    }
+
+    /**
+     * 在魔法工作台的配方表里找"输入数组 == 给定 9 格图案"的那条，返回它的产物。
+     *
+     * <p>★ 配方表是 {@code [输入, 输出, 输入, 输出, …]} 的扁平表
+     * （见 {@code MultiBlockMachine#addRecipe} 与 {@code RecipeType#getRecipeOutputList}），
+     * 所以按 {@code indexOf} 找到输入之后，<b>下一个</b>元素就是产物。
+     * 这里用 {@code ItemStack#equals} 比数组内容 —— 配方表里存的正是我们传进去的那个数组。
+     */
+    private static ItemStack findRecipeOutput(
+            io.github.thebusybiscuit.slimefun4.core.multiblocks.MultiBlockMachine machine,
+            ItemStack[] recipe) {
+        if (machine == null || recipe == null) {
+            return null;
+        }
+        List<ItemStack[]> recipes = machine.getRecipes();
+        int index = recipes.indexOf(recipe);
+        if (index < 0 || index + 1 >= recipes.size()) {
+            return null;
+        }
+        ItemStack[] holders = recipes.get(index + 1);
+        return holders != null && holders.length > 0 ? holders[0] : null;
     }
 
     // ------------------------------------------------------------------ seal
@@ -3303,7 +3741,10 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         if (args.length == 1) {
             return filter(List.of("reactor", "autobuild", "clickinfo", "structure", "saizen", "place",
                     "remove", "edit", "gui", "layout", "groups", "tags", "messages", "reload",
-                    "power", "dreamcatcher", "seal", "lily", "echo", "proj", "guide"), args[0]);
+                    "power", "dreamcatcher", "seal", "lily", "lilywhite", "echo", "proj", "guide"), args[0]);
+        }
+        if (args[0].equalsIgnoreCase("lilywhite") && args.length == 2) {
+            return filter(List.of("selfcheck", "name", "recipe"), args[1]);
         }
         if (args[0].equalsIgnoreCase("echo") && args.length == 2) {
             return filter(List.of("selfcheck", "rule", "container", "convert", "probe",
@@ -3391,6 +3832,6 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
     public static List<String> commands() {
         return List.of("reactor", "autobuild", "clickinfo", "structure", "saizen", "place", "remove",
                 "edit", "gui", "layout", "groups", "tags", "messages", "reload", "power",
-                "dreamcatcher", "seal", "lily", "proj");
+                "dreamcatcher", "seal", "lily", "lilywhite", "proj");
     }
 }
