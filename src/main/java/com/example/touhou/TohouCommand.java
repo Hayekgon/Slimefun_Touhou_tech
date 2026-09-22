@@ -27,6 +27,7 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
+import org.bukkit.entity.Entity;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -95,6 +96,8 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
                     springHerald(sender, Arrays.copyOfRange(args, 1, args.length));
             case "momiji", "momijitengu", "momiji_tengu" ->
                     momiji(sender, Arrays.copyOfRange(args, 1, args.length));
+            case "cirno", "icefairy", "ice_fairy" ->
+                    cirno(sender, Arrays.copyOfRange(args, 1, args.length));
             case "harvest", "harvesttime" ->
                     harvest(sender, Arrays.copyOfRange(args, 1, args.length));
             case "leaves", "fallenleaves", "fallen_leaves" ->
@@ -189,6 +192,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         s.sendMessage("\u00a77/touhou echo selfcheck | rule | container <x> <y> <z> | convert [玩家] | probe <玩家> [世界] | shuttle <玩家> <from> <to> [--force] | cooldown [clear]   「维度穿梭」无头验证");
         s.sendMessage("\u00a77/touhou springherald [selfcheck|name|recipe]   报春の妖精：头贴图 / 粉白渐变（JSON 证据）/ 配方产出 2 个");
         s.sendMessage("\u00a77/touhou momiji [selfcheck|name|recipe|attr]   红叶飞散の天狗：头贴图 / 橙金渐变+灰删除线 / 配方产出 1 / 属性加成读数");
+        s.sendMessage("\u00a77/touhou cirno [selfcheck|recipe|effect <x> <y> <z>|cooldown [clear|wait]]   冰の妖精：头贴图逐字符比对 / 浅蓝白渐变 / 配方产出 1 / 9x9x9 冰冻+缓慢9 效果内核");
         s.sendMessage("\u00a77/touhou harvest [selfcheck | test <x> <y> <z> | probe <x> <y> <z> | clear <x> <y> <z> | cell <x> <y> <z> [面] | rng <x> <y> <z> | wake <x> <y> <z> [crops|empty] | cooldown [clear]]   丰收之时：范围催熟 / 骨粉行为 / 提示语验证");
         s.sendMessage("\u00a77/touhou acquisition [all|rule|<物品id>]   获取方式标注核查（所有物品统一，含 null 配方）");
         s.sendMessage("\u00a77/touhou leaves [selfcheck | tools | drop [n] | watch [n|off] | field <x> <y> <z> [n] | check <x> <y> <z> | clear <x> <y> <z>]   落叶：掉率/数量分布/工具判据/非树叶对照；watch=实机追踪（走 Log.always）");
@@ -1331,6 +1335,627 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
                 z.remove();
             }
         }
+    }
+
+    // ------------------------------------------------------------------ cirno（冰の妖精）
+
+    /**
+     * 「冰の妖精」的无头验证入口。
+     *
+     * <pre>
+     *   /touhou cirno                    全部打印（selfcheck + recipe）
+     *   /touhou cirno selfcheck          物品 / 头贴图逐字符比对 / 名称与三行描述逐字符颜色 / 冷却值
+     *   /touhou cirno recipe             配方 9 格逐格 + 两条消费路径的产出数量
+     *   /touhou cirno effect &lt;x&gt; &lt;y&gt; &lt;z&gt;  造水与实体 → 跑效果内核 → 逐格/逐实体回读 → 清场
+     *   /touhou cirno cooldown [clear|wait]  冷却计时内核 / 等满冷却（默认 8.5 秒）
+     * </pre>
+     *
+     * <p>★★ <b>诚实性声明（必须写进报告）</b>：无头测试服<b>没有真玩家</b>，
+     * 所以 {@code effect} 验的是<b>效果内核</b>（{@code Cirno.freeze}，
+     * 与右键处理器调的<b>同一个</b>方法），<b>不是</b>"玩家右键那一步" ——
+     * 权限判据、冷却拦截、以及那句聊天栏 {@code Bakabakabakabaka} 都不会被执行。
+     * 那三步留给作者在游戏里亲测（见 {@code modules/07} §9.6 的口径）。
+     */
+    private void cirno(CommandSender sender, String[] args) {
+        String sub = args.length >= 1 ? args[0].toLowerCase(Locale.ROOT) : "all";
+        boolean all = sub.equals("all") || sub.equals("check");
+        boolean selfcheck = all || sub.equals("selfcheck");
+        boolean recipe = all || sub.equals("recipe");
+        if (sub.equals("effect")) {
+            cirnoEffect(sender, Arrays.copyOfRange(args, 1, args.length));
+            return;
+        }
+        if (sub.equals("cooldown")) {
+            cirnoCooldown(sender, Arrays.copyOfRange(args, 1, args.length));
+            return;
+        }
+        if (!selfcheck && !recipe) {
+            sender.sendMessage(PREFIX + "\u00a7c用法: /touhou cirno [selfcheck|recipe|effect <x> <y> <z>|cooldown [clear|wait]]");
+            return;
+        }
+        if (selfcheck) {
+            cirnoSelfCheck(sender);
+        }
+        if (recipe) {
+            cirnoRecipe(sender);
+        }
+    }
+
+    /** 物品自检：id / 材质 / 头贴图（逐字符比对）/ 名称与三行描述的逐字符颜色 / 冷却值 / 光效。 */
+    private void cirnoSelfCheck(CommandSender sender) {
+        SlimefunItem item = com.example.touhou.core.Cirno.find();
+        guideLine(sender, PREFIX + "\u00a7e冰の妖精 · 物品自检");
+        if (item == null) {
+            guideLine(sender, "\u00a7c  未注册（Slimefun 注册表里查不到 "
+                    + com.example.touhou.core.Cirno.ID + "）");
+            return;
+        }
+        ItemStack icon = item.getItem();
+        guideLine(sender, "\u00a78  id = " + item.getId()
+                + "   类 = " + item.getClass().getSimpleName());
+        guideLine(sender, "\u00a78  材质 = " + (icon == null ? "(null)" : String.valueOf(icon.getType()))
+                + "（应为 PLAYER_HEAD）");
+        guideLine(sender, "\u00a78  物品组 = " + (item.getItemGroup() == null
+                ? "(null)" : item.getItemGroup().getKey().toString()));
+
+        // ---- 头贴图：逐字符比对（两串都打出来，不只写"相等"）
+        String expect = AddItems.CIRNO_TEXTURE;
+        String actual = AddItems.CIRNO == null
+                ? null : AddItems.CIRNO.getSkullTexture().orElse(null);
+        guideLine(sender, "\u00a78  ---- 头贴图比对（逐字符） ----");
+        guideLine(sender, "\u00a78  模板常量 CIRNO_TEXTURE     = " + expect);
+        guideLine(sender, "\u00a78  getSkullTexture() 读回     = " + actual);
+        boolean same = expect.equals(actual);
+        guideLine(sender, "\u00a78  两串逐字符相等 = " + same
+                + (same ? "  \u00a7a[SKULL-MATCH]" : "  \u00a7c[SKULL-MISMATCH]"));
+        guideLine(sender, "\u00a78  模板数量 = "
+                + (AddItems.CIRNO == null ? "(null)" : AddItems.CIRNO.getAmount())
+                + "（应为 1 ⇒ 数量 1 的判据：" + (AddItems.CIRNO != null
+                        && AddItems.CIRNO.getAmount() == 1) + "）");
+
+        ItemMeta meta = icon == null ? null : icon.getItemMeta();
+        if (meta != null) {
+            guideLine(sender, "\u00a78  附魔光效 = 附魔数 " + meta.getEnchants().size()
+                    + "，HIDE_ENCHANTS=" + meta.hasItemFlag(org.bukkit.inventory.ItemFlag.HIDE_ENCHANTS));
+        }
+
+        // ---- 名称与三行描述：逐字符颜色读数（要能看出浅蓝 → 白）
+        cirnoName(sender, meta);
+
+        // ---- 冷却值（用户口径 8000 ms）
+        guideLine(sender, "\u00a7e  -- 冷却（按方块记） --");
+        long cd = AddonConfig.get().cirnoCooldownMillis;
+        guideLine(sender, "\u00a78  config.yml cirno.cooldown-millis = " + cd
+                + " ms（用户口径 8000）⇒ " + (cd == 8000 ? "\u00a7a符合" : "\u00a7c不符"));
+        guideLine(sender, "\u00a78  冷却中的方块数 = " + com.example.touhou.core.Cirno.coolingCount());
+        guideLine(sender, "\u00a78  冷却文案（唯一出处）= \u00a7f"
+                + com.example.touhou.core.Notify.plain(
+                        com.example.touhou.core.Cirno.cooldownText(cd)));
+
+        // ---- 范围与效果参数
+        guideLine(sender, "\u00a7e  -- 效果参数 --");
+        guideLine(sender, "\u00a78  范围半径 = ±" + com.example.touhou.core.Cirno.RADIUS
+                + "（三轴都是 ⇒ 9*9*9 = 729 格）");
+        guideLine(sender, "\u00a78  缓慢 = " + com.example.touhou.core.Cirno.SLOW_AMPLIFIER
+                + " 级（amplifier，游戏内显示「缓慢 X」） / "
+                + com.example.touhou.core.Cirno.SLOW_DURATION_TICKS + " tick（= "
+                + (com.example.touhou.core.Cirno.SLOW_DURATION_TICKS / 20)
+                + " 秒，原版 tick 口径）");
+        guideLine(sender, "\u00a78  药水常量 = PotionEffectType.SLOW（javap 核实；本版本没有 SLOWNESS）");
+        guideLine(sender, "\u00a78  触发消息 = \u00a7f" + com.example.touhou.core.Cirno.MESSAGE
+                + " \u00a79（颜色 = \\u00a79 = 蓝色，不走 Notify 前缀）");
+        guideLine(sender, "\u00a78  水 → 冰判据 = Material.WATER（水源与水流同一个 Material；"
+                + "炼药锅 / 海带 / 海草 / 岩浆都不动）");
+
+        log("[TOUHOU] cirno selfcheck id=" + item.getId()
+                + " material=" + (icon == null ? "null" : icon.getType())
+                + " skullMatch=" + same
+                + " templateAmount=" + (AddItems.CIRNO == null ? -1 : AddItems.CIRNO.getAmount())
+                + " cooldownMillis=" + cd);
+    }
+
+    /** 名称与三行描述的逐字符颜色读数（副标题 + lore）。 */
+    private void cirnoName(CommandSender sender, ItemMeta meta) {
+        guideLine(sender, "\u00a7e  -- 名称与描述（浅蓝 → 白 逐字符渐变） --");
+        if (meta == null) {
+            guideLine(sender, "\u00a7c  拿不到 ItemMeta");
+            return;
+        }
+        printDisplayNameEvidence(sender, "显示名（应为 #87CEEB → #FFFFFF 逐字符）", meta);
+        List<String> lore = meta.getLore();
+        if (lore == null) {
+            guideLine(sender, "\u00a7c  (没有 lore)");
+            return;
+        }
+        int coloredLines = 0;
+        for (int i = 0; i < lore.size(); i++) {
+            String line = lore.get(i);
+            guideLine(sender, "\u00a77  lore[" + i + "] 原样 = "
+                    + (line == null ? "" : line.replace("\u00a7", "\\u00a7")));
+            if (line == null || line.isEmpty()) {
+                continue;               // 名称与描述之间的空行
+            }
+            coloredLines++;
+            for (String cl : colorPerChar(line)) {
+                guideLine(sender, "\u00a78    " + cl);
+            }
+        }
+        // 机器可读汇总：三行描述各自应当是"首字符 #87CEEB、末字符 #FFFFFF"
+        guideLine(sender, "\u00a78  ---- 汇总 ----");
+        guideLine(sender, "\u00a78  非空 lore 行数 = " + coloredLines + "（名称之外应为 3 行描述）");
+        List<String> checks = new ArrayList<>();
+        for (String line : lore) {
+            if (line == null || line.isEmpty()) {
+                continue;
+            }
+            List<String> per = colorPerChar(line);
+            String first = per.size() > 1 ? per.get(1) : "(空)";
+            String last = per.size() > 1 ? per.get(per.size() - 1) : "(空)";
+            boolean ok = first.contains("#87CEEB") && last.contains("#FFFFFF");
+            checks.add(ok ? "OK" : "BAD");
+            guideLine(sender, "\u00a78    首字符 " + shortColor(first)
+                    + "  末字符 " + shortColor(last) + "  ⇒ " + (ok ? "\u00a7a符合" : "\u00a7c不符"));
+        }
+        log("[TOUHOU] cirno name lines=" + coloredLines
+                + " gradientPerLine=" + checks);
+    }
+
+    /** 从 {@code colorPerChar} 的一行里抽出颜色记号（形如 {@code '冰' 颜色=#87CEEB}）。 */
+    private static String shortColor(String colorPerCharLine) {
+        if (colorPerCharLine == null) {
+            return "(null)";
+        }
+        int at = colorPerCharLine.indexOf("颜色=");
+        return at < 0 ? colorPerCharLine : colorPerCharLine.substring(at + 3);
+    }
+
+    /** 配方：9 格逐格 + 产出数量（两条消费路径）。 */
+    private void cirnoRecipe(CommandSender sender) {
+        SlimefunItem item = com.example.touhou.core.Cirno.find();
+        guideLine(sender, PREFIX + "\u00a7e冰の妖精 · 配方");
+        if (item == null) {
+            guideLine(sender, "\u00a7c  未注册");
+            return;
+        }
+        guideLine(sender, "\u00a78  配方类型 = " + (item.getRecipeType() == null
+                ? "(null)" : item.getRecipeType().getKey().toString())
+                + "   指向的机器 = " + (item.getRecipeType() == null
+                        || item.getRecipeType().getMachine() == null
+                                ? "(无)" : item.getRecipeType().getMachine().getId()));
+        // 路径①：SlimefunItem#getRecipeOutput（指南页产物格 / 自动合成机读它）
+        ItemStack declared = item.getRecipeOutput();
+        int amount = declared == null ? -1 : declared.getAmount();
+        guideLine(sender, "\u00a78  [路径①] SlimefunItem.getRecipeOutput().getAmount() = " + amount
+                + "  期望 1 ⇒ " + (amount == 1 ? "\u00a7a符合（4 参构造器，没有 recipeOutput）" : "\u00a7c不符"));
+        // 路径②：魔法工作台配方表里那条
+        ItemStack tableOutput = null;
+        io.github.thebusybiscuit.slimefun4.core.multiblocks.MultiBlockMachine wb = findMagicWorkbench();
+        if (wb != null) {
+            tableOutput = findRecipeOutput(wb, item.getRecipe());
+        }
+        int tableAmount = tableOutput == null ? -1 : tableOutput.getAmount();
+        guideLine(sender, "\u00a78  [路径②] 魔法工作台配方表里那条 output.getAmount() = " + tableAmount
+                + "  期望 1 ⇒ " + (tableAmount == 1 ? "\u00a7a符合" : "\u00a7c不符"));
+        guideLine(sender, "\u00a78  [模板] AddItems.CIRNO.getAmount() = "
+                + (AddItems.CIRNO == null ? "(null)" : AddItems.CIRNO.getAmount())
+                + "  期望 1 ⇒ " + (AddItems.CIRNO != null && AddItems.CIRNO.getAmount() == 1
+                        ? "\u00a7a符合（没污染模板）" : "\u00a7c不符"));
+
+        // 9 格逐格（材质 + 粘液 id）
+        guideLine(sender, "\u00a7e  -- 配方 9 格（左上→右下，共 3 行）--");
+        ItemStack[] grid = item.getRecipe();
+        for (int i = 0; i < (grid == null ? 0 : grid.length); i++) {
+            ItemStack cell = grid[i];
+            guideLine(sender, "\u00a78    [" + i + "]=" + (cell == null ? "(空)"
+                    : cell.getType() + " x" + cell.getAmount()
+                            + "  粘液id=" + idOf(cell)
+                            + "  名=" + com.example.touhou.core.RecipePages.labelOf(cell)));
+        }
+        guideLine(sender, "\u00a78  Slimefun 多方块机器配方表里能产出它的 = "
+                + countMachineRecipesFor(item) + " 条（应为 1）");
+        guideLine(sender, "\u00a78  Bukkit 配方表里能产出它的 = " + countRecipesFor(item)
+                + " 条（应为 0 —— 走粘液多方块）");
+        log("[TOUHOU] cirno recipe declaredOutput=" + amount
+                + " machineRecipeTable=" + tableAmount
+                + " templateAmount=" + (AddItems.CIRNO == null ? -1 : AddItems.CIRNO.getAmount())
+                + " machineRecipes=" + countMachineRecipesFor(item)
+                + " bukkitRecipes=" + countRecipesFor(item));
+    }
+
+    /**
+     * <b>效果内核实机验证</b>：真造一片水与几个实体 → 跑 {@code Cirno.freeze} →
+     * 逐格回读"水是否变成冰"、逐实体回读"有没有缓慢 9 / 持续多少 tick" → 清场。
+     *
+     * <p>★★ 这条命令<b>不假装是玩家右键</b>：它直接调效果内核
+     * （{@code Cirno.freeze}，与右键处理器调的是<b>同一个</b>方法），
+     * 绕过的是"谁触发"这一步 —— 权限判据与冷却拦截、以及那句聊天栏文案都不会被执行。
+     * 无头服没有真玩家，这三步留给作者亲测（{@code modules/07} §9.6 的口径）。
+     */
+    private void cirnoEffect(CommandSender sender, String[] args) {
+        Location loc = resolveAny(sender, args);
+        if (loc == null) {
+            return;
+        }
+        World world = loc.getWorld();
+        int bx = loc.getBlockX();
+        int baseY = loc.getBlockY();
+        int bz = loc.getBlockZ();
+
+        guideLine(sender, PREFIX + "\u00a7e冰の妖精 · 效果内核验证 @ " + xyz(loc)
+                + "（范围 = 以该点为中心的 9×9×9）");
+        guideLine(sender, "\u00a78  ★ 这条验的是【效果内核】（Cirno.freeze），"
+                + "不是玩家右键那一步 —— 无头服没有真玩家");
+
+        // ---- 收集要恢复的路径（之后逐格还原）
+        List<Block> path = cirnoCube(world, bx, baseY, bz);
+        int[] original = new int[path.size()];
+        for (int i = 0; i < path.size(); i++) {
+            original[i] = cirnoMaterialId(path.get(i).getType());
+        }
+        // 记录在场实体（清场时只删我们自己造的）
+        Set<java.util.UUID> before = new HashSet<>();
+        for (Entity e : world.getEntities()) {
+            before.add(e.getUniqueId());
+        }
+
+        com.example.touhou.core.Cirno.FreezeReport report = null;
+        int frozenByKernel = -1;
+        List<String> lines = new ArrayList<>();
+        // ★ 这两个数组声明在 try 之外：收尾那行日志要读它们的长度 ——
+        //   放在 try 里的话日志那一句就编译不过（"找不到符号"）。
+        //   本用例是"半径内所有水都冻"，所以只放水、不放别的方块，
+        //   冰的总数就等于冻的格数 —— 这个恒等式本身就是一条断言。
+        int[][] sources = {{-2, 0, 0}, {-1, 0, 0}, {1, 0, 0}, {2, 0, 0}};
+        int[][] flows = {{0, 0, -3}, {0, 0, -2}, {0, 0, 2}, {0, 0, 3}};
+        try {
+            // ---- ① 造水：水源 + 水流（都在半径内）
+            for (int[] p : sources) {
+                world.getBlockAt(bx + p[0], baseY + p[1], bz + p[2]).setType(Material.WATER, false);
+            }
+            for (int[] p : flows) {
+                org.bukkit.block.data.BlockData data = Material.WATER.createBlockData();
+                if (data instanceof org.bukkit.block.data.Levelled levelled) {
+                    levelled.setLevel(levelled.getMinimumLevel() + 2);
+                }
+                world.getBlockAt(bx + p[0], baseY + p[1], bz + p[2]).setBlockData(data, false);
+            }
+            guideLine(sender, "\u00a7e  -- ① 造水（水源 " + sources.length + " 格 + 水流 "
+                    + flows.length + " 格）--");
+            for (int[] p : sources) {
+                Block b = world.getBlockAt(bx + p[0], baseY + p[1], bz + p[2]);
+                guideLine(sender, "\u00a78    水源 @ " + b.getX() + "," + b.getY() + "," + b.getZ()
+                        + "  实际 = " + cirnoDescribeWater(b));
+            }
+            for (int[] p : flows) {
+                Block b = world.getBlockAt(bx + p[0], baseY + p[1], bz + p[2]);
+                guideLine(sender, "\u00a78    水流 @ " + b.getX() + "," + b.getY() + "," + b.getZ()
+                        + "  实际 = " + cirnoDescribeWater(b));
+            }
+            // ---- ② 反例：不该被动的东西
+            Block cauldron = world.getBlockAt(bx + 3, baseY, bz + 2);
+            cauldron.setType(Material.WATER_CAULDRON, false);
+            //   ★★ 实测（本次实机，三轮）才发现真正的问题：本 API 版本的
+            //      {@code Material.KELP} / {@code Material.SEAGRASS} 的 BlockData
+            //      <b>都不实现</b> {@code Waterlogged}（KELP 是 CraftKelp，SEAGRASS 拿回来是
+            //      CraftBlockData）—— 也就是说<b>没有一条"设得进、读得出"的含水植物样本</b>，
+            //      拿它们当反例只会打印出 Waterlogged=null 这种看起来像失败的读数。
+            //      ⇒ 正确的对照组是{@link #cirnoWaterloggedProbe}用的
+            //        <b>含水的台阶/栅栏门</b>（它们确实实现 {@code Waterlogged}），
+            //        见本命令 ②b 段。
+            Block seagrass = world.getBlockAt(bx - 3, baseY, bz + 2);
+            seagrass.setType(Material.SEAGRASS, false);
+            Block lava = world.getBlockAt(bx + 3, baseY, bz - 3);
+            lava.setType(Material.LAVA, false);
+            guideLine(sender, "\u00a7e  -- ② 反例（不该被动）--");
+            guideLine(sender, "\u00a78    炼药锅 @ " + cauldron.getX() + "," + cauldron.getY()
+                    + "," + cauldron.getZ() + "  冻前 = " + cauldron.getType());
+            // 逐格回读要用"冻前快照"，不能当场现读
+            Material cauldronBefore = cauldron.getType();
+            Material seagrassBefore = seagrass.getType();
+            Material lavaBefore = lava.getType();
+            guideLine(sender, "\u00a78    海草   @ " + seagrass.getX() + "," + seagrass.getY() + ","
+                    + seagrass.getZ() + "  冻前 = " + seagrassBefore + "（含水植物样本）");
+            guideLine(sender, "\u00a78    岩浆   @ " + lava.getX() + "," + lava.getY() + ","
+                    + lava.getZ() + "  冻前 = " + lavaBefore);
+
+            // ---- ②b 含水方块的显式对照：含水的台阶（Waterlogged=true）位于水面上方，
+            //   "水"与"含水方块"挨在一起 —— 这正是"冻水时会不会顺手把含水方块也冻了"的场景。
+            Block logAt = world.getBlockAt(bx - 4, baseY + 4, bz);
+            Block logBelow = logAt.getRelative(org.bukkit.block.BlockFace.DOWN);
+            logBelow.setType(Material.OAK_PLANKS, false);
+            logAt.setType(Material.WATER, false);          // 先铺水
+            Block wlSlab = world.getBlockAt(bx + 4, baseY + 4, bz);
+            Block slabBelow = wlSlab.getRelative(org.bukkit.block.BlockFace.DOWN);
+            slabBelow.setType(Material.OAK_PLANKS, false);
+            wlSlab.setType(Material.WATER, false);
+            org.bukkit.block.data.BlockData slabData = Material.OAK_SLAB.createBlockData();
+            if (slabData instanceof org.bukkit.block.data.Waterlogged w) {
+                w.setWaterlogged(true);
+            }
+            wlSlab.setBlockData(slabData, true);           // ★ true：让它真的把水"吃"进去
+            Boolean slabWaterBefore = cirnoWaterlogged(wlSlab);
+            Material slabBefore = wlSlab.getType();
+            guideLine(sender, "\u00a7e  -- ②b 含水方块对照（Waterlogged 台阶）--");
+            guideLine(sender, "\u00a78    含水台阶 @ " + wlSlab.getX() + "," + wlSlab.getY() + ","
+                    + wlSlab.getZ() + "  冻前 = " + slabBefore + "  Waterlogged=" + slabWaterBefore);
+
+            // ---- ③ 实体：僵尸 + 盔甲架（都落在半径内）
+            Location zombieAt = new Location(world, bx + 1.5D, baseY, bz + 1.5D);
+            Location standAt = new Location(world, bx - 2.5D, baseY, bz + 2.5D);
+            Entity zombie = world.spawnEntity(zombieAt, org.bukkit.entity.EntityType.ZOMBIE);
+            Entity stand = world.spawnEntity(standAt, org.bukkit.entity.EntityType.ARMOR_STAND);
+            // 范围外的对照实体：证明"只有范围里的实体被挂药水"
+            Location outsideAt = new Location(world, bx + 20.5D, baseY, bz + 20.5D);
+            Entity outside = world.spawnEntity(outsideAt, org.bukkit.entity.EntityType.ZOMBIE);
+            guideLine(sender, "\u00a7e  -- ③ 实体 --");
+            guideLine(sender, "\u00a78    僵尸     @ " + cirnoEntityXyz(zombie) + "  inRange="
+                    + com.example.touhou.core.Cirno.inRange(loc, zombie.getLocation()));
+            guideLine(sender, "\u00a78    盔甲架   @ " + cirnoEntityXyz(stand) + "  inRange="
+                    + com.example.touhou.core.Cirno.inRange(loc, stand.getLocation()));
+            guideLine(sender, "\u00a78    范围外僵尸 @ " + cirnoEntityXyz(outside) + "  inRange="
+                    + com.example.touhou.core.Cirno.inRange(loc, outside.getLocation())
+                    + "（期望 false，作为范围外对照）");
+
+            // ---- ④ 跑效果内核（与右键处理器调的是同一个方法）
+            guideLine(sender, "\u00a7e  -- ④ 触发效果内核 Cirno.freeze(中心, \"console-verify\") --");
+            report = com.example.touhou.core.Cirno.freeze(world.getBlockAt(bx, baseY, bz),
+                    "console-verify");
+            frozenByKernel = report.frozenCount();
+            // 记下这台"机器"的位置：/touhou cirno cooldown 要拿它做冷却计时验证
+            cirnoLastBlock = world.getBlockAt(bx, baseY, bz);
+
+            // ---- ⑤ 逐格回读："水是否变成冰"
+            guideLine(sender, "\u00a7e  -- ⑤ 逐格回读（水 → 冰？）--");
+            for (int[] p : sources) {
+                Block b = world.getBlockAt(bx + p[0], baseY + p[1], bz + p[2]);
+                lines.add("水源 " + local(b, bx, baseY, bz) + " 现在=" + b.getType()
+                        + (b.getType() == Material.ICE ? "  [ICE-OK]" : "  [FAIL]"));
+            }
+            for (int[] p : flows) {
+                Block b = world.getBlockAt(bx + p[0], baseY + p[1], bz + p[2]);
+                lines.add("水流 " + local(b, bx, baseY, bz) + " 现在=" + b.getType()
+                        + (b.getType() == Material.ICE ? "  [ICE-OK]" : "  [FAIL]"));
+            }
+            for (String line : lines) {
+                guideLine(sender, "\u00a78    " + line);
+            }
+            // 反例回读（与"冻前快照"逐项比对）
+            guideLine(sender, "\u00a7e  -- ⑤b 反例回读（必须原样不动）--");
+            guideLine(sender, "\u00a78    炼药锅 冻前 " + cauldronBefore + " → 现在 " + cauldron.getType()
+                    + (cauldron.getType() == cauldronBefore ? "  \u00a7a[KEPT-OK]" : "  \u00a7c[CHANGED]"));
+            Boolean kelpWaterAfter = cirnoWaterlogged(seagrass);
+            boolean kelpKept = seagrass.getType() == seagrassBefore;
+            guideLine(sender, "\u00a78    海草   冻前 " + seagrassBefore
+                    + " → 现在 " + seagrass.getType()
+                    + "（Waterlogged 探针读回 " + kelpWaterAfter + "）"
+                    + (kelpKept ? "  \u00a7a[KEPT-OK]" : "  \u00a7c[CHANGED]"));
+            Boolean slabWaterAfter = cirnoWaterlogged(wlSlab);
+            boolean slabKept = wlSlab.getType() == slabBefore
+                    && java.util.Objects.equals(slabWaterBefore, slabWaterAfter);
+            guideLine(sender, "\u00a78    含水台阶 冻前 " + slabBefore + " Waterlogged=" + slabWaterBefore
+                    + " → 现在 " + wlSlab.getType() + " Waterlogged=" + slabWaterAfter
+                    + (slabKept ? "  \u00a7a[KEPT-OK：含水方块没被冻]"
+                            : "  \u00a7c[CHANGED]"));
+            guideLine(sender, "\u00a78    岩浆   冻前 " + lavaBefore + " → 现在 " + lava.getType()
+                    + (lava.getType() == lavaBefore ? "  \u00a7a[KEPT-OK]" : "  \u00a7c[CHANGED]"));
+            // 整块立方体里冰/水的总数：冰数应当恰好等于内核自报的冻结格数
+            int iceTotal = 0;
+            int waterTotal = 0;
+            int slabWaterTotal = 0;
+            for (Block b : path) {
+                if (b.getType() == Material.ICE) {
+                    iceTotal++;
+                } else if (b.getType() == Material.WATER) {
+                    waterTotal++;
+                }
+                // ★ 含水方块计数（含水台阶 / 含水的木板…）——
+                //   它必须与"水格数"分开统计：如果把含水方块也算成"还没冻的水"，
+                //   就会得到"有剩余水没冻"的假结论（真实踩点：第一版正是这么误判的）。
+                Boolean wl = cirnoWaterlogged(b);
+                if (Boolean.TRUE.equals(wl)) {
+                    slabWaterTotal++;
+                }
+            }
+            guideLine(sender, "\u00a78    立方体内冰总数 = " + iceTotal + "，裸水格数 = " + waterTotal
+                    + "，含水的方块数 = " + slabWaterTotal + "（单独统计）"
+                    + "，内核自报冻结 = " + frozenByKernel
+                    + (iceTotal == frozenByKernel && waterTotal == 0
+                            ? "  \u00a7a[COUNT-OK：放进去的水全冻光了]" : "  \u00a7c[COUNT-MISMATCH]"));
+
+            // ---- ⑥ 逐实体回读："有没有缓慢 9 / 持续多少 tick"
+            guideLine(sender, "\u00a7e  -- ⑥ 逐实体回读（缓慢 9 / 100 tick？）--");
+            for (String s : report.stunnedDetails()) {
+                guideLine(sender, "\u00a78    内核自报 " + s);
+            }
+            guideLine(sender, "\u00a78    ---- 现场回读（getPotionEffect）----");
+            for (Entity e : new Entity[]{zombie, stand, outside}) {
+                String label = e == zombie ? "范围内核" : e == stand ? "范围盔甲架" : "范围外对照";
+                if (!(e instanceof org.bukkit.entity.LivingEntity living)) {
+                    guideLine(sender, "\u00a7c    " + label + " 不是 LivingEntity");
+                    continue;
+                }
+                org.bukkit.potion.PotionEffect eff =
+                        living.getPotionEffect(org.bukkit.potion.PotionEffectType.SLOW);
+                guideLine(sender, "\u00a78    " + label + " " + e.getType() + " @ "
+                        + cirnoEntityXyz(e) + " ⇒ " + (eff == null
+                                ? "(没有缓慢)" + (e == outside ? "  \u00a7a[对照正确]" : "  \u00a7c[FAIL]")
+                                : eff.getAmplifier() + " 级 / " + eff.getDuration() + " tick"
+                                        + (eff.getAmplifier() == com.example.touhou.core.Cirno.SLOW_AMPLIFIER
+                                                ? "  \u00a7a[AMPLIFIER-OK]"
+                                                : "  \u00a7c[AMPLIFIER-FAIL]")));
+                if (e != outside) {
+                    lines.add(label + " slow=" + (eff == null ? "none"
+                            : eff.getAmplifier() + "/" + eff.getDuration()));
+                }
+            }
+            // 内核自报的实体数（应当 = 范围内的 LivingEntity 数；对照那只不算）
+            guideLine(sender, "\u00a78    内核自报被挂缓慢的实体数 = " + report.stunnedCount()
+                    + "（期望 2：僵尸 + 盔甲架；范围外那只不算）");
+        } finally {
+            // ---- ⑦ 清场：删除本次生成的实体 + 逐格还原方块
+            int removed = 0;
+            for (Entity e : world.getEntities()) {
+                if (!before.contains(e.getUniqueId())) {
+                    e.remove();
+                    removed++;
+                }
+            }
+            for (int i = 0; i < path.size(); i++) {
+                Block b = path.get(i);
+                if (b.getType() == Material.AIR) {
+                    continue;               // 本来就没动过
+                }
+                cirnoRestore(b, original[i]);
+            }
+            guideLine(sender, "\u00a78  已清场：删除本次生成的实体 " + removed
+                    + " 个，还原 " + path.size() + " 格（逐格回到原样）");
+        }
+        log("[TOUHOU] cirno effect @ " + xyz(loc)
+                + " frozen=" + frozenByKernel
+                + " stunned=" + (report == null ? -1 : report.stunnedCount())
+                + " waterBefore=" + (sources.length + flows.length));
+    }
+
+    /**
+     * 冷却计时内核验证（{@code /touhou cirno cooldown [clear|wait]}）。
+     *
+     * <p>复刻右键处理器里的<b>那两行</b>：先 {@code cooldownLeft} 问"能不能用"，
+     * 通过才 {@code markUsed} 记账 —— 于是"第 2 次必须被拦"这件事在无头环境里可读。
+     *
+     * <p>{@code wait} 会真的睡满冷却（默认配置 8000 ms，这里睡 8500 ms）再读一次，
+     * 证明"冷却结束后能再次生效"。它阻塞服务端主线程 —— 只在无头测试时敲，
+     * 不要在正常游玩的服务端上用（提示里也写了这句）。
+     */
+    private void cirnoCooldown(CommandSender sender, String[] args) {
+        String sub = args.length >= 1 ? args[0].toLowerCase(Locale.ROOT) : "info";
+        Block block = cirnoLastBlock;
+        if (block == null) {
+            guideLine(sender, "\u00a7c  还没有已知的机器坐标 —— 先跑一次 "
+                    + "/touhou cirno effect <x> <y> <z>（或者用 cooldown clear 只清表）");
+            if (!sub.equals("clear")) {
+                return;
+            }
+        }
+        long cfg = AddonConfig.get().cirnoCooldownMillis;
+        guideLine(sender, PREFIX + "\u00a7e冰の妖精 · 冷却计时内核（配置 " + cfg + " ms）");
+        if (sub.equals("clear")) {
+            int n = com.example.touhou.core.Cirno.clearCooldowns();
+            guideLine(sender, "\u00a78  已清空冷却表（原 " + n + " 条）");
+            log("[TOUHOU] cirno cooldown clear -> " + n);
+            return;
+        }
+        if (block == null) {
+            return;
+        }
+        String at = xyz(block.getLocation());
+        // 第一次：必须先放行
+        long first = com.example.touhou.core.Cirno.cooldownLeft(block);
+        guideLine(sender, "\u00a78  ① 第 1 次 cooldownLeft(" + at + ") = " + first
+                + " ms ⇒ " + (first == 0 ? "\u00a7a放行" : "\u00a7c被拦（不该发生）"));
+        com.example.touhou.core.Cirno.markUsed(block);
+        // 第二次：必须被拦，并打印剩余毫秒
+        long second = com.example.touhou.core.Cirno.cooldownLeft(block);
+        guideLine(sender, "\u00a78  ② markUsed 之后立刻再问 = " + second + " ms ⇒ "
+                + (cfg <= 0 ? "\u00a77放行（冷却被配置为 0 = 关闭）"
+                        : (second > 0 ? "\u00a7a被拦（正确，剩余 " + second + " ms）"
+                                : "\u00a7c放行（不该发生 —— 冷却没生效）")));
+        guideLine(sender, "\u00a78  ③ 冷却中的方块数 = "
+                + com.example.touhou.core.Cirno.coolingCount());
+        long waited = -1;
+        if (sub.equals("wait")) {
+            long sleep = Math.max(0L, cfg) + 500L;
+            guideLine(sender, "\u00a78  ④ wait：阻塞主线程 " + sleep + " ms 等冷却走完"
+                    + "（★ 只在无头测试时用，别在正常游玩的服务端上敲）");
+            try {
+                Thread.sleep(sleep);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                guideLine(sender, "\u00a7c    等待被中断");
+                return;
+            }
+            waited = com.example.touhou.core.Cirno.cooldownLeft(block);
+            guideLine(sender, "\u00a78  ⑤ 等满 " + sleep + " ms 后再问 = " + waited
+                    + " ms ⇒ " + (waited == 0 ? "\u00a7a放行（冷却已结束，能再次生效）"
+                            : "\u00a7c仍被拦（不该发生）"));
+        }
+        log("[TOUHOU] cirno cooldown @" + at
+                + " first=" + first + " second=" + second
+                + " waited=" + waited + " cfg=" + cfg);
+    }
+
+    /** 上一次 {@code cirno effect} 用过的中心方块（冷却验证需要它）。 */
+    private static volatile Block cirnoLastBlock = null;
+
+    // ---------------------------------------------------------------- cirno 小工具
+
+    /** 以 {@code (bx, baseY, bz)} 为中心收集 9×9×9 的方块（清场与统计用）。 */
+    private static List<Block> cirnoCube(World world, int bx, int baseY, int bz) {
+        List<Block> out = new ArrayList<>();
+        for (int dx = -4; dx <= 4; dx++) {
+            for (int dy = -4; dy <= 4; dy++) {
+                for (int dz = -4; dz <= 4; dz++) {
+                    out.add(world.getBlockAt(bx + dx, baseY + dy, bz + dz));
+                }
+            }
+        }
+        return out;
+    }
+
+    /** 相对中心的偏移（读起来比绝对坐标清楚）。 */
+    private static String local(Block b, int bx, int baseY, int bz) {
+        return "(" + (b.getX() - bx) + "," + (b.getY() - baseY) + "," + (b.getZ() - bz) + ")";
+    }
+
+    /** 方块的可读水位描述（水源 / 水流几级）。 */
+    private static String cirnoDescribeWater(Block b) {
+        if (b.getType() != Material.WATER) {
+            return String.valueOf(b.getType());
+        }
+        org.bukkit.block.data.BlockData data = b.getBlockData();
+        if (data instanceof org.bukkit.block.data.Levelled levelled) {
+            return "WATER level=" + levelled.getLevel()
+                    + (levelled.getLevel() == levelled.getMinimumLevel() ? "（水源）" : "（水流）");
+        }
+        return "WATER";
+    }
+
+    /**
+     * 方块是不是含水的（{@code Waterlogged}）。
+     *
+     * <p>★ 返回三态：{@code TRUE} / {@code FALSE} / {@code null}（这个方块的 BlockData
+     * <b>不实现</b> {@code Waterlogged}）。三态是必须的 —— 实测本 API 版本的
+     * {@code Material.KELP} 就是 {@code Ageable} 而不实现 {@code Waterlogged}，
+     * 把它压成 boolean 会把"不是含水方块"与"含水=false"混为一谈。
+     */
+    private static Boolean cirnoWaterlogged(Block b) {
+        org.bukkit.block.data.BlockData data = b.getBlockData();
+        return data instanceof org.bukkit.block.data.Waterlogged w ? w.isWaterlogged() : null;
+    }
+
+    private static String cirnoEntityXyz(Entity e) {
+        return e.getLocation().getBlockX() + "," + e.getLocation().getBlockY()
+                + "," + e.getLocation().getBlockZ();
+    }
+
+    /**
+     * 方块的"材质 id"快照。
+     *
+     * <p>★ 用 {@code Material#ordinal()} 而不是枚举对象本身：{@link World#getBlockAt}
+     * 回来的是<b>新的</b> {@code Block} 对象，枚举常量的 {@code ==} 也能比，
+     * 但用一个 int 存更省、也更明确"这就是个快照，不是活引用"。
+     */
+    private static int cirnoMaterialId(Material m) {
+        return m == null ? -1 : m.ordinal();
+    }
+
+    /** 按快照还原一格（{@code setType(..., false)}：不引发物理更新，免得把区域搅乱）。 */
+    private static void cirnoRestore(Block b, int materialOrdinal) {
+        if (materialOrdinal < 0) {
+            b.setType(Material.AIR, false);
+            return;
+        }
+        Material[] all = Material.values();
+        b.setType(materialOrdinal < all.length ? all[materialOrdinal] : Material.AIR, false);
     }
 
     // ------------------------------------------------------------------ harvest（丰收之时）
@@ -5573,8 +6198,8 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         if (args.length == 1) {
             return filter(List.of("reactor", "autobuild", "clickinfo", "structure", "saizen", "place",
                     "remove", "edit", "gui", "layout", "groups", "tags", "messages", "reload",
-                    "power", "dreamcatcher", "seal", "lily", "springherald", "harvest", "leaves",
-                    "acquisition", "echo", "proj", "guide"), args[0]);
+                    "power", "dreamcatcher", "seal", "lily", "springherald", "momiji", "cirno",
+                    "harvest", "leaves", "acquisition", "echo", "proj", "guide"), args[0]);
         }
         if (args[0].equalsIgnoreCase("acquisition") && args.length == 2) {
             return filter(List.of("all", "rule"), args[1]);
@@ -5588,6 +6213,13 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         }
         if (args[0].equalsIgnoreCase("momiji") && args.length == 2) {
             return filter(List.of("selfcheck", "name", "recipe", "attr"), args[1]);
+        }
+        if (args[0].equalsIgnoreCase("cirno") && args.length == 2) {
+            return filter(List.of("selfcheck", "recipe", "effect", "cooldown"), args[1]);
+        }
+        if (args[0].equalsIgnoreCase("cirno") && args.length == 3
+                && args[1].equalsIgnoreCase("cooldown")) {
+            return filter(List.of("clear", "wait"), args[2]);
         }
         if (args[0].equalsIgnoreCase("harvest") && args.length == 2) {
             return filter(List.of("selfcheck", "test", "probe", "clear", "cell", "rng", "wake",
@@ -5693,6 +6325,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
     public static List<String> commands() {
         return List.of("reactor", "autobuild", "clickinfo", "structure", "saizen", "place", "remove",
                 "edit", "gui", "layout", "groups", "tags", "messages", "reload", "power",
-                "dreamcatcher", "seal", "lily", "springherald", "momiji", "harvest", "leaves", "proj");
+                "dreamcatcher", "seal", "lily", "springherald", "momiji", "cirno", "harvest",
+                "leaves", "proj");
     }
 }

@@ -308,6 +308,47 @@ public final class AddonConfig {
      */
     public int harvestCooldownMillis = 5000;
 
+    // ---- 冰の妖精（「冰の妖精」的右键范围效果）----
+
+    /**
+     * 「冰の妖精」—— 自己的消息前缀（{@code config.yml} 的 {@code cirno.message-prefix}）。
+     *
+     * <p>★ 与 {@link #echoPrefix} / {@link #harvestPrefix} 同理：一台机器的提示不该蹭
+     * 别的机器或反应堆的前缀（赛钱箱踩过的老路，见 {@link Notify#saizen()}）。
+     *
+     * <p>★ 本机器只发 warning（冷却中 / 没权限），而 warning 不受档位影响、永远输出
+     * ⇒ 这里同样<b>没有</b>配套的 {@code messages.level}。
+     * ★ 那句成功提示 {@code Bakabakabakabaka} <b>不走前缀</b>（用户要求整行蓝色原文），
+     * 理由见 {@code Cirno#getItemHandler} 的注释。
+     */
+    public String cirnoPrefix = "&8[&b冰の妖精&8] &r";
+
+    /**
+     * 「冰の妖精」右键效果的<b>每方块冷却</b>（毫秒，{@code cirno.cooldown-millis}）。
+     *
+     * <p>★★ <b>8000 ms（8 秒）是用户口径</b>（2026-09-22 明确指定"冷却固定为 8000 ms"），
+     * 不是本实现的判断 —— 与 {@code harvestCooldownMillis} 那种"我选的 5 秒"不同。
+     *
+     * <p>一次右键会扫 9×9×9 = 729 格、把其中的水换成冰、还要给范围内每个实体挂药水效果。
+     * 8 秒既是"玩家能明确感觉到这是一次有代价的操作"的档位，也保证"冻住一整片水池"
+     * 这件事不会因为连点而被反复触发。
+     *
+     * <p>★ 键是<b>方块坐标</b>（不是玩家）：同一台机器被谁点都一样要等，
+     * 而不同水池里的两台机器互不影响。理由与 {@code Cirno} 的类注释同一套：
+     * ① 冷却是"机器自己"的属性；② 按玩家记的话，轮着点两台机器就能绕过。
+     * 配 0 = 关闭冷却。
+     */
+    public int cirnoCooldownMillis = 8000;
+
+    /**
+     * 冷却的上限（钳制用）—— 60 秒。
+     *
+     * <p>★ 为什么要有个上限：冷却写错单位（本意 8 秒却写成 80000）会变成"永远冷却中"，
+     * 在游戏里表现为<b>右键完全没反应</b>，很难联想到是配置问题。
+     * 钳住 + 控制台 warning 能把这类错误变成一个说得清的读数。
+     */
+    public static final int MAX_CIRNO_COOLDOWN_MILLIS = 60000;
+
     // ---- 落叶（「落叶」的获取机制：玩家手动破坏树叶按概率掉落）----
 
     /**
@@ -589,6 +630,9 @@ public final class AddonConfig {
         // 落叶那一段（获取机制：概率 / 数量上下限 / 总开关）。
         loadLeaves(c, cfg);
 
+        // 冰の妖精那一段（机器行为参数：每方块冷却 + 自己的消息前缀）。
+        loadCirno(c, cfg);
+
         c.consoleInfo = cfg.getBoolean("logging.console-info", c.consoleInfo);
         c.supplyEnabled = cfg.getBoolean("supply.enabled", c.supplyEnabled);
 
@@ -828,6 +872,25 @@ public final class AddonConfig {
     }
 
     /**
+     * 读 {@code cirno:} 段 —— 「冰の妖精」的机器参数。
+     *
+     * <p>与 {@code echo:} / {@code harvest:} / {@code leaves:} 同一类：这些是"机器行为参数"，
+     * 不是物品属性，所以落在 {@code config.yml}（本文件）而不是 {@code Items.yml}。
+     *
+     * <p>★ 读不到段时保持内置默认值（8000 ms）—— 别在这里抛异常：
+     * 老 {@code config.yml} 不会自动补新段（{@code saveDefaultConfig()} 只在文件不存在时生成），
+     * 用户升级插件后手里多半就是"没有 cirno: 段"的那份配置。
+     */
+    private static void loadCirno(AddonConfig c, FileConfiguration cfg) {
+        ConfigurationSection s = cfg.getConfigurationSection("cirno");
+        if (s == null) {
+            return;
+        }
+        c.cirnoPrefix = s.getString("message-prefix", c.cirnoPrefix);
+        c.cirnoCooldownMillis = s.getInt("cooldown-millis", c.cirnoCooldownMillis);
+    }
+
+    /**
      * 把明显不合法的配置挡下来并改成安全值。
      *
      * <p>真实踩点：`MachineFuel` 的进程 tick 必须 > 0（`FuelOperation` 构造器里有
@@ -953,6 +1016,17 @@ public final class AddonConfig {
                     "harvest.cooldown-millis < 0，回退为 0（关闭冷却）");
             c.harvestCooldownMillis = 0;
         }
+        // 冰の妖精的每方块冷却：同样允许 0（=关闭）。
+        //   ★ 上限钳到 MAX_CIRNO_COOLDOWN_MILLIS（60 秒）：写错的单位（例如想写 8 秒却写了
+        //     "8000 秒"那种手滑）会让机器实际上变成"永远冷却中"，而那在游戏里
+        //     表现成"右键完全没反应"，极难排查 —— 所以给它一个显式上界并在控制台留一行 warning。
+        if (c.cirnoCooldownMillis < 0 || c.cirnoCooldownMillis > MAX_CIRNO_COOLDOWN_MILLIS) {
+            Touhou.getInstance().getLogger().warning(
+                    "cirno.cooldown-millis (" + c.cirnoCooldownMillis + ") 越界，钳制为 0.."
+                            + MAX_CIRNO_COOLDOWN_MILLIS + " ms");
+            c.cirnoCooldownMillis = Math.max(0,
+                    Math.min(MAX_CIRNO_COOLDOWN_MILLIS, c.cirnoCooldownMillis));
+        }
         // 落叶概率：口径固定为 0~1 的小数，越界就钳住
         //   ★ 上限必须钳到 1.0：写成 20（"以为是 20%"）时若不钳，`random.nextDouble() >= 20`
         //     永远为假 ⇒ 变成"每次必掉"，正是最容易误判的那种静默行为。
@@ -1050,6 +1124,8 @@ public final class AddonConfig {
                         + "  前缀「" + harvestPrefix + "」",
                 "leaves            = 落叶 " + (fallenLeavesEnabled ? "开" : "关")
                         + "  破坏树叶 " + String.format(java.util.Locale.ROOT, "%.1f", fallenLeavesDropChance * 100.0D)
-                        + "% 掉落 " + fallenLeavesMinAmount + "~" + fallenLeavesMaxAmount + " 个");
+                        + "% 掉落 " + fallenLeavesMinAmount + "~" + fallenLeavesMaxAmount + " 个",
+                "cirno             = 冰の妖精 每方块冷却 " + cirnoCooldownMillis + " ms"
+                        + "（用户口径 8000）  前缀「" + cirnoPrefix + "」");
     }
 }

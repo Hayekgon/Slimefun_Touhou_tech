@@ -233,6 +233,9 @@ public final class Acquisition {
                         Material.OAK_LEAVES));
         SOURCE_BY_ID.put("TOUHOU_MATERIAL_MOMIJI_TENGU",
                 Source.recipe("魔法工作台", () -> SlimefunItems.MAGIC_WORKBENCH));
+        // 冰の妖精：魔法工作台合成（用户指定配方类型 MAGIC_WORKBENCH）。
+        SOURCE_BY_ID.put("TOUHOU_MATERIAL_CIRNO",
+                Source.recipe("魔法工作台", () -> SlimefunItems.MAGIC_WORKBENCH));
 
         // ---- 单方块机器 ------------------------------------------------------
         SOURCE_BY_ID.put("TOUHOU_SIMPLE_MACHINE_HARVEST_TIME",

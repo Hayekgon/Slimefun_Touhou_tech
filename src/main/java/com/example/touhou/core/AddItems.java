@@ -46,6 +46,19 @@ public final class AddItems {
             + "ODhjZTg3NDVhMzU4ZjMwNzVmODAyNWRjYWQ2YWVlYjY2ZjVlMTYxMGU2YTVlMTFkNDZlNzIyNGY1ZDE4MGQxMSJ9fX0=";
 
     /**
+     * 「冰の妖精」的头颅 Value —— 用户给定的那串 base64（<b>原样照抄、不做任何加工</b>）。
+     *
+     * <p>★ 判据同报春の妖精 / 红叶飞散の天狗那两串：这串以 {@code "ey"} 开头 ⇒
+     * {@code SlimefunItemStack} 的 {@code getTexture} 会把它<b>原样</b>当 base64 用
+     * （只有"64 位十六进制"那种才会被自动包成 base64），所以这里不需要任何加工。
+     * 调试命令 {@code /touhou cirno selfcheck} 也读这个常量做<b>逐字符比对</b>
+     * （两串都打出来），于是"用户给的那串"与"物品实际带着的那串"只有一个出处。
+     */
+    public static final String CIRNO_TEXTURE =
+            "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUv"
+            + "NWJmMzk2ODllYzI2MzA0YzRlYTk5ZGFjMWE1NjEyZDE3NWViMDJjZjhiYThjODI1OGM1ZmY5MzYxZDUzOGJhYiJ9fX0=";
+
+    /**
      * 渐变配色表。
      *
      * <p>★ 起止色随配色走，而不是把"粉白"那组写死在 {@link #gradientName} 里 ——
@@ -80,7 +93,16 @@ public final class AddItems {
          * 金取 {@code #FFD700}（标准 gold）。
          * ★ 注意方向：这套是<b>橙在前、金在后</b>（{@link #GOLD_ORANGE} 正好相反）。
          */
-        ORANGE_GOLD(0xFF8C00, 0xFFD700);
+        ORANGE_GOLD(0xFF8C00, 0xFFD700),
+        /**
+         * 冰の妖精：<b>浅蓝 → 白</b>（用户要求"浅蓝 → 白 逐字符渐变"）。
+         *
+         * <p>★ 起止色是本实现的判断（用户只给了颜色名，并明确说"若你觉得浅蓝该更深/更浅，
+         * 改那一个常量即可"）：
+         * 浅蓝取 {@code #87CEEB}（skyblue，标准"天蓝/浅蓝"），白取 {@code #FFFFFF}（纯白）。
+         * 想更深换成 {@code #4FC3F7}、想更浅换成 {@code #B3E5FC} —— <b>只动这一行</b>。
+         */
+        ICE_FAIRY_BLUE_WHITE(0x87CEEB, 0xFFFFFF);
 
         private final int start;
         private final int end;
@@ -220,6 +242,38 @@ public final class AddItems {
      * （名称"金色至棕色"、描述"金色至橙色"）—— 看起来像不统一，但按原文照做。
      */
     public static SlimefunItemStack FALLEN_LEAVES;
+
+    /**
+     * 冰の妖精 —— 琪露诺（东方 Project 的「チルノ」，英文 Cirno）。
+     *
+     * <p>id 按本项目铁律 {@code TOUHOU_"物品组"_"英文名"}：归属 1 级组
+     * {@link AddGroups#MATERIAL}（MATERIAL 物品组，用户指定），英文名取
+     * <b>Cirno</b> ⇒ {@code TOUHOU_MATERIAL_CIRNO}。
+     *
+     * <p>★ 材质是<b>头颅 Value</b>（用户给定的 base64，见 {@link #CIRNO_TEXTURE}），
+     * 与报春の妖精 / 红叶飞散の天狗同一条构造器路径
+     * （{@code SlimefunItemStack(id, texture, name, lore...)} —— 本机运算，不发网络请求）。
+     *
+     * <p>★ 名字与三行描述用<b>浅蓝 → 白</b>逐字符渐变
+     * （{@link Gradient#ICE_FAIRY_BLUE_WHITE}）。
+     * ★★ <b>每一行各自从浅蓝渐变到白</b>（不是三行当成一整段）——
+     * 用户没有说清是哪种，本实现选"每行各自渐变"，理由是：
+     * <ol>
+     *   <li>与项目既有做法一致：{@code FALLEN_LEAVES} 就是"名称一套、三行描述每行各走一遍同一套渐变"；</li>
+     *   <li>每一行都完整地呈现一次"浅蓝 → 白"，玩家在任何一行上都能看出这是同一套配色；</li>
+     *   <li>"三行拼成一整段"会让第一行几乎全是浅蓝、最后一行几乎全是白，看起来像两种不同的物品文字。</li>
+     * </ol>
+     * <b>这是我的判断，不是用户口径</b>（用户原话只给了起止色）。
+     *
+     * <p>★ 描述里原文的 {@code (endl)} 是<b>换行标记</b>，不是字面文字 ⇒
+     * 拆成三行（{@code SlimefunItemStack} 的 lore 变参每一项就是一行）；
+     * 描述三行<b>逐字照抄</b>，其中 {@code ⑨} 是 U+2468（不是数字 9）。
+     *
+     * <p>★ <b>本模板的数量必须保持 1</b>：本物品单次产出 1 个，
+     * 注册时用 <b>4 参构造器</b>、<b>不传</b> {@code recipeOutput}
+     * （与报春の妖精相反 —— 那件是 2 个，见 {@link AddSlimefunItems#SPRING_HERALD_OUTPUT_AMOUNT}）。
+     */
+    public static SlimefunItemStack CIRNO;
 
     // ------------------------------------------------------------------ INFO 组：信息类纸张
     // 全部使用 PAPER 材质，纯信息展示，无配方、无功能。
@@ -488,6 +542,22 @@ public final class AddItems {
                 gradientName("萧瑟的秋风，带来了这份来自秋天的问候，", Gradient.GOLD_ORANGE),
                 gradientName("\"秋天来临之际，冬天也不远了呢\"", Gradient.GOLD_ORANGE),
                 gradientName("似曾相识的获取方式呢", Gradient.GOLD_ORANGE));
+
+        // 冰の妖精（琪露诺 / Cirno）。
+        // ★ 材质：用户给定的【头颅 Value】（base64，CIRNO_TEXTURE）—— 判据同上面那两件头贴物品：
+        //   这串以 "ey" 开头 ⇒ SlimefunItemStack 的 getTexture 原样当 base64 用，
+        //   不需要任何加工；运行期用 CIRNO.getSkullTexture() 读回来核对（/touhou cirno selfcheck）。
+        // ★ 名字与描述【每一行各自】做「浅蓝 → 白」逐字符渐变（同上，见字段注释里那三条理由）。
+        // ★ 描述原文里的 (endl) 是【换行标记】不是字面文字 ⇒ 拆成三行逐字照抄
+        //   （⑨ = U+2468，不是数字 9；下面每行末尾都没有逗号漏字）。
+        CIRNO = new SlimefunItemStack(
+                "TOUHOU_MATERIAL_CIRNO",
+                CIRNO_TEXTURE,
+                gradientNameIceFairy("冰の妖精"),
+                "",
+                gradientNameIceFairy("冰之小妖精，Cirno，"),
+                gradientNameIceFairy("⑨⑨⑨⑨⑨⑨⑨⑨⑨⑨⑨⑨⑨⑨⑨⑨，"),
+                gradientNameIceFairy("惹到她恐怕会被当成青蛙冻起来吧"));
 
 INFO_MODESHIFT = new SlimefunItemStack(
                 "TOUHOU_INFO_MODESHIFT",
@@ -819,6 +889,17 @@ INFO_MODESHIFT = new SlimefunItemStack(
         }
         applyMomijiAttributes();
 
+        // 冰の妖精：附魔光效（同一套"挂无用附魔 + HIDE_ENCHANTS"）。
+        //   ★ 它没有"要看附魔行"的要求，所以照光效惯例把附魔行藏掉，只留光晕。
+        //   ★ 必须在这里、也就是 register() 之前 —— 注册后模板被 lock()，再改 ItemMeta 会抛
+        //     WrongItemStackException 并让整个插件启用失败（见 applyMomijiAttributes 的注释）。
+        CIRNO.addUnsafeEnchantment(Enchantment.ARROW_INFINITE, 1);
+        ItemMeta cirnoMeta = CIRNO.getItemMeta();
+        if (cirnoMeta != null) {
+            cirnoMeta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
+            CIRNO.setItemMeta(cirnoMeta);
+        }
+
         // ------------------------------------------------------------------ POWER（1 级组）
         // 头贴图直接引用原生物品的贴图常量（HeadTexture 是公开枚举）。
         POWER_INTEGRATED_CORE = new SlimefunItemStack(
@@ -1124,6 +1205,22 @@ INFO_MODESHIFT = new SlimefunItemStack(
      */
     public static String gradientNameOrangeGold(String text) {
         return gradientName(text, Gradient.ORANGE_GOLD);
+    }
+
+    /**
+     * 把一段文字逐字符染成<b>浅蓝 → 白</b>的左到右渐变（「冰の妖精」用的配色）。
+     *
+     * <p>★ 起止色是本实现的判断（用户只给了颜色名）：浅蓝 {@code #87CEEB}、白 {@code #FFFFFF}。
+     * 觉得浅蓝该更深/更浅就改 {@link Gradient#ICE_FAIRY_BLUE_WHITE} 那一行，本方法不用动。
+     *
+     * <p>★ 「冰の妖精」的名字与三行描述<b>每一行各自调用一次本方法</b>
+     * （= 每行都从浅蓝重新渐变到白），理由见 {@link #CIRNO} 的字段注释。
+     *
+     * @param text 要染的文字（纯文本，不要带 {@code §}/{@code &} 颜色代码）
+     * @return 每字符都带 {@code §x§R§R§G§G§B§B} 前缀的字符串
+     */
+    public static String gradientNameIceFairy(String text) {
+        return gradientName(text, Gradient.ICE_FAIRY_BLUE_WHITE);
     }
 
     /**

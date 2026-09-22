@@ -101,6 +101,23 @@ public final class AddSlimefunItems {
      */
     public static SlimefunItem FALLEN_LEAVES;
     /**
+     * 冰の妖精（琪露诺 / Cirno）—— <b>右键生效的范围冰冻机器</b>（不需要 GUI）。
+     *
+     * <p>★ 归属 1 级组 {@link AddGroups#MATERIAL}（用户指定"物品组 MATERIAL"）。
+     * 它虽然是一件"放下之后有功能"的东西，但用户明确把物品组定成了 MATERIAL，
+     * 所以<b>不</b>挪到 {@code SIMPLE_MACHINE} —— 物品组归属是用户口径，不是本实现的判断。
+     * （顺带一提：{@code MATERIAL} 是普通 {@code SubItemGroup}，装物品没有任何限制；
+     * 只有容器组 {@code MACHINE} 才不能装，见 {@link AddGroups#SIMPLE_MACHINE}。）
+     *
+     * <p>★ 配方类型 {@code RecipeType.MAGIC_WORKBENCH}（用户指定），
+     * 9 格图案见 {@link #cirnoRecipe()}。产出 <b>1 个</b> ⇒ 用 <b>4 参构造器</b>、
+     * <b>不传</b> {@code recipeOutput}（与报春の妖精刻意相反，别顺手抄成 2）。
+     *
+     * <p>★ 右键行为全在 {@link Cirno#getItemHandler}（{@code SimpleSlimefunItem} 的钩子），
+     * 这里只负责注册与配方。
+     */
+    public static Cirno CIRNO;
+    /**
      * 另一个世界的回响（材料；玩家穿过维度之门时由能量水晶转化而来）。
      *
      * <p>它<b>不是</b>合成品：配方数组是 {@link #noRecipe()}，配方类型是
@@ -254,6 +271,15 @@ public final class AddSlimefunItems {
                 AddItems.FALLEN_LEAVES,
                 RecipeType.NULL,
                 noRecipe()), plugin);
+
+        // 冰の妖精：魔法工作台合成，【产出 1 个】⇒ 4 参构造器（不传 recipeOutput）。
+        // ★ 它的右键行为（9×9×9 冰冻 + 缓慢 9 + 那句 Bakabaka）全在 Cirno#getItemHandler，
+        //   这里只负责注册与配方 —— 与「丰收之时」同一路数（SimpleSlimefunItem 的钩子）。
+        CIRNO = register(new Cirno(
+                AddGroups.MATERIAL,
+                AddItems.CIRNO,
+                RecipeType.MAGIC_WORKBENCH,
+                cirnoRecipe()), plugin);
 
         // GUI 模式玻璃板：必须真实注册，否则它的粘液 id 不存在。
         // 归属 INFO（1 级）—— 它是 GUI 内部功能件，不是可制造的材料。
@@ -534,6 +560,42 @@ public final class AddSlimefunItems {
         };
     }
 
+    /**
+     * 冰の妖精的合成配方（<b>魔法工作台</b>，用户指定 3×3 图案）。
+     *
+     * <pre>
+     *   水桶            春泥              冰
+     *   春泥            报春の妖精        春泥
+     *   浮冰            春泥              蓝冰
+     * </pre>
+     *
+     * <p>逐格对应（数组下标 0..8 是"左上 → 右下"的阅读顺序）：
+     * <ol>
+     *   <li>{@code [0]} 水桶 = 原版 {@code Material.WATER_BUCKET}（合成后照常消耗掉那个桶，
+     *       不做"返还空桶"处理 —— 与报春の妖精的配方一致，本体也不做）；</li>
+     *   <li>{@code [1] [3] [5] [7]} 春泥 = 本项目自己的物品
+     *       {@link AddItems#SPRING_MUD}（id {@code TOUHOU_MATERIAL_SPRING_MUD}）——
+     *       配方匹配是拿<b>粘液 id</b> 比的（{@code SlimefunUtils.isItemSimilar}），
+     *       所以必须给模板本身，给"看起来一样"的苔藓块是匹配不上的；</li>
+     *   <li>{@code [2]} 冰 / {@code [6]} 浮冰 / {@code [8]} 蓝冰 =
+     *       原版 {@code Material.ICE} / {@code PACKED_ICE} / {@code BLUE_ICE}；</li>
+     *   <li>{@code [4]} 报春の妖精 = {@link AddItems#SPRING_HERALD}
+     *       （用户点名"刚改过名的那件"）。★ 它的旧字段 {@code LILY_WHITE} / 旧 id
+     *       {@code TOUHOU_MATERIAL_LILY_WHITE} 已经<b>不存在</b>了，
+     *       所以这里只能引用改名后的 {@code SPRING_HERALD}。</li>
+     * </ol>
+     *
+     * <p>★ 单次产出 <b>1</b> 个：本方法只给 9 格图案，注册处用的是 4 参构造器
+     * （没有 {@code recipeOutput}），所以产出就是模板自己的数量 1。
+     */
+    private static ItemStack[] cirnoRecipe() {
+        return new ItemStack[] {
+                new ItemStack(Material.WATER_BUCKET), AddItems.SPRING_MUD, new ItemStack(Material.ICE),
+                AddItems.SPRING_MUD, AddItems.SPRING_HERALD, AddItems.SPRING_MUD,
+                new ItemStack(Material.PACKED_ICE), AddItems.SPRING_MUD, new ItemStack(Material.BLUE_ICE)
+        };
+    }
+
     private static ItemStack[] goheiRecipe() {
         return new ItemStack[] {
                 null, AddItems.BLAZING_ASH, null,
@@ -618,6 +680,8 @@ public final class AddSlimefunItems {
                         : "丰收之时=OK(" + HARVEST_TIME.getId() + ",产出1)")
                 + " / " + (FALLEN_LEAVES == null ? "落叶=未注册"
                         : "落叶=OK(" + FALLEN_LEAVES.getId() + ",破坏树叶掉落)")
+                + " / " + (CIRNO == null ? "冰の妖精=未注册"
+                        : "冰の妖精=OK(" + CIRNO.getId() + ",产出1,右键9x9x9冰冻)")
                 + " / " + (ECHO_OF_ANOTHER_WORLD == null ? "另一个世界的回响=未注册"
                         : "另一个世界的回响=OK(" + ECHO_OF_ANOTHER_WORLD.getId() + ")")
                 + " / " + (INFO_MODESHIFT == null ? "模式玻璃板=未注册" : "模式玻璃板=OK")

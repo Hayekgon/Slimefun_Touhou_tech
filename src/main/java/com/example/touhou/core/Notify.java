@@ -226,6 +226,26 @@ public final class Notify {
     }
 
     /**
+     * 「冰の妖精」作用域 —— 前缀独立（{@code config.yml} 的 {@code cirno:} 段）。
+     *
+     * <p>★ 与 {@link #seal()} / {@link #lily()} / {@link #echo()} / {@link #harvest()} 同理：
+     * 一台机器的提示不该顶着别的机器或反应堆的前缀出现（赛钱箱踩过的老路）。
+     *
+     * <p>档位那一格<b>刻意留空</b>（{@code null} = 回落到反应堆的 {@code messages.level}）：
+     * 本机器只发 {@link #warn}（冷却中 / 没权限 —— 都是"玩家主动做了但没成功"），
+     * 而 warn 永远输出、不受档位影响，所以配一个没有调用点的档位只会让人以为"调了没用"。
+     *
+     * <p>★ 唯一<b>不</b>走这里的是那句成功提示 {@code Bakabakabakabaka}：
+     * 用户要求它是一整行蓝色文字、<b>不带任何前缀</b>，而本类的每条消息都会拼前缀
+     * ⇒ 那一处由 {@code Cirno} 直接用 {@code player.sendMessage} 发，
+     * 破例理由写在 {@code Cirno#getItemHandler} 的注释里。
+     */
+    public static Scope cirno() {
+        AddonConfig cfg = AddonConfig.get();
+        return new Scope(cfg.cirnoPrefix, null);
+    }
+
+    /**
      * 指定作用域的 warning / error —— <b>永远输出</b>。
      *
      * <p>判据：玩家主动做了一件事但没成功。这类必须说，否则玩家只看到"点了没反应"。
