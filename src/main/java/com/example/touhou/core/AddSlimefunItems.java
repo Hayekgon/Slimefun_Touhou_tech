@@ -374,6 +374,12 @@ public final class AddSlimefunItems {
         POWER_SUPPLY_UNIT = register(new PowerSupplyUnit(
                 AddGroups.POWER, AddItems.POWER_SUPPLY_UNIT,
                 RecipeType.NULL, noRecipe()), plugin);
+
+        // ------------------------------------------------------------------ 获取方式门面
+        // ★ 必须在【所有物品都注册完之后】才能跑：它要遍历 Slimefun 注册表
+        //   （Slimefun.getRegistry().getAllSlimefunItems()），没注册的看不见。
+        //   它同时顺手做"漏登记获取方式"的核查并在控制台 warn —— 见 Acquisition 的类注释。
+        Acquisition.applyFacades();
     }
 
     /** 梦想封印 集的配方：竖着一条，模仿钓鱼竿的形状（与改名前一致，没有动）。 */

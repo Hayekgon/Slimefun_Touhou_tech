@@ -97,6 +97,8 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
                     harvest(sender, Arrays.copyOfRange(args, 1, args.length));
             case "leaves", "fallenleaves", "fallen_leaves" ->
                     leaves(sender, Arrays.copyOfRange(args, 1, args.length));
+            case "acquisition", "acquire", "obtain", "huoqu" ->
+                    acquisition(sender, Arrays.copyOfRange(args, 1, args.length));
             case "autobuild" -> autobuild(sender, Arrays.copyOfRange(args, 1, args.length));
             case "reactor" -> reactor(sender, Arrays.copyOfRange(args, 1, args.length));
             case "clickinfo" -> clickInfo(sender, Arrays.copyOfRange(args, 1, args.length));
@@ -185,6 +187,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         s.sendMessage("\u00a77/touhou echo selfcheck | rule | container <x> <y> <z> | convert [玩家] | probe <玩家> [世界] | shuttle <玩家> <from> <to> [--force] | cooldown [clear]   「维度穿梭」无头验证");
         s.sendMessage("\u00a77/touhou lilywhite [selfcheck|name|recipe]   莉莉白：头贴图 / 粉白渐变（JSON 证据）/ 配方产出 2 个");
         s.sendMessage("\u00a77/touhou harvest [selfcheck | test <x> <y> <z> | probe <x> <y> <z> | clear <x> <y> <z> | cell <x> <y> <z> [面] | rng <x> <y> <z> | wake <x> <y> <z> [crops|empty] | cooldown [clear]]   丰收之时：范围催熟 / 骨粉行为 / 提示语验证");
+        s.sendMessage("\u00a77/touhou acquisition [all|rule|<物品id>]   获取方式标注核查（所有物品统一，含 null 配方）");
         s.sendMessage("\u00a77/touhou leaves [selfcheck | tools | drop [n] | watch [n|off] | field <x> <y> <z> [n] | check <x> <y> <z> | clear <x> <y> <z>]   落叶：掉率/数量分布/工具判据/非树叶对照；watch=实机追踪（走 Log.always）");
         s.sendMessage("\u00a77/touhou guide [reactor|saizen|echo]   粘液书自定义配方页的内容自检（展示列表 + 可合成性核查）");
         s.sendMessage("\u00a77/touhou place <x> <y> <z> <sfId> [world] [--force]");
@@ -1637,6 +1640,82 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         return n;
     }
 
+    // ------------------------------------------------------------------ acquisition（获取方式）
+
+    /**
+     * ★ 统一的「获取方式」核查 —— {@code /touhou acquisition}。
+     *
+     * <pre>
+     *   /touhou acquisition            全部物品的获取方式标注情况（唯一出处 = Acquisition 总表）
+     *   /touhou acquisition &lt;物品id&gt;    只看一件
+     *   /touhou acquisition rule       规则本身（给以后加物品时照抄）
+     * </pre>
+     *
+     * <p>判读：{@code [OK]} = 标注齐（lore 有那一行、需要门面的也挂了门面）；
+     * {@code [LORE?]} = 本表有方法但物品 lore 里没找到那一行（模板表漏登记）；
+     * {@code [MISS]} = 本表没登记、也无法从配方类型推断 ⇒ <b>必须补一行</b>。
+     */
+    private void acquisition(CommandSender sender, String[] args) {
+        String sub = args.length >= 1 ? args[0].toLowerCase(Locale.ROOT) : "all";
+        if (sub.equals("rule") || sub.equals("rules") || sub.equals("describe")) {
+            sender.sendMessage(PREFIX + "\u00a7e获取方式标注规则");
+            for (String line : com.example.touhou.core.Acquisition.describe()) {
+                sender.sendMessage("\u00a78  " + line);
+            }
+            log("[TOUHOU] acquisition rule");
+            return;
+        }
+        if (sub.equals("all") || sub.equals("check") || sub.equals("list")) {
+            List<String> report = com.example.touhou.core.Acquisition.verify();
+            sender.sendMessage(PREFIX + "\u00a7e获取方式标注核查（" + report.size() + " 行）");
+            for (String line : report) {
+                sender.sendMessage("\u00a78  " + line);
+            }
+            int miss = 0;
+            int loreMiss = 0;
+            for (String line : report) {
+                if (line.startsWith("[MISS]")) {
+                    miss++;
+                } else if (line.startsWith("[LORE?]")) {
+                    loreMiss++;
+                }
+            }
+            sender.sendMessage(PREFIX + (miss == 0 && loreMiss == 0
+                    ? "\u00a7a全部已标注（无 [MISS] / [LORE?]）"
+                    : "\u00a7c有 " + miss + " 件未标注获取方式、"
+                            + loreMiss + " 件 lore 缺那一行"));
+            for (String line : com.example.touhou.core.Acquisition.undecorated()) {
+                sender.sendMessage("\u00a78  · 未挂门面（有配方 / 已有专人门面 / 待补）：" + line);
+            }
+            log("[TOUHOU] acquisition miss=" + miss + " loreMiss=" + loreMiss
+                    + " table=" + com.example.touhou.core.Acquisition.size());
+            return;
+        }
+        if (!sub.equals("one") && !sub.startsWith("touhou_")) {
+            sender.sendMessage(PREFIX + "\u00a77用法: /touhou acquisition [all|rule|<物品id>]");
+            return;
+        }
+        String id = (sub.equals("one") && args.length >= 2 ? args[1] : args[0])
+                .toUpperCase(Locale.ROOT);
+        io.github.thebusybiscuit.slimefun4.api.items.SlimefunItem item =
+                io.github.thebusybiscuit.slimefun4.api.items.SlimefunItem.getById(id);
+        if (item == null) {
+            sender.sendMessage(PREFIX + "\u00a7c注册表里没有这个 id：" + id);
+            log("[TOUHOU] acquisition id=" + id + " notFound");
+            return;
+        }
+        String method = com.example.touhou.core.Acquisition.resolve(item);
+        sender.sendMessage(PREFIX + "\u00a7e" + id);
+        sender.sendMessage("\u00a78  获取方式 = " + (method == null
+                ? "\u00a7c★未标注（请到 Acquisition.METHOD_BY_ID 补一行）" : method));
+        sender.sendMessage("\u00a78  lore 里有那一行 = "
+                + com.example.touhou.core.Acquisition.hasLore(item)
+                + "   配方类型 = " + com.example.touhou.core.Acquisition.recipeTypeKey(item)
+                + "   门面 = " + com.example.touhou.core.Acquisition.isDecorated(item));
+        log("[TOUHOU] acquisition id=" + id + " method=" + method
+                + " lore=" + com.example.touhou.core.Acquisition.hasLore(item));
+    }
+
     // ------------------------------------------------------------------ leaves（落叶）
 
     /**
@@ -1784,9 +1863,9 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
                 + "（应为 KELP）");
         guideLine(sender, "\u00a78  物品组 = " + (item.getItemGroup() == null
                 ? "(null)" : item.getItemGroup().getKey().toString()));
-        guideLine(sender, "\u00a78  配方类型 = " + (item.getRecipeType() == null
-                ? "(null)" : item.getRecipeType().getKey().toString())
-                + "（NULL ⇒ 不是合成品，指南页槽 10 显示空气）");
+        guideLine(sender, "\u00a78  配方类型 = "
+                + com.example.touhou.core.Acquisition.describeRecipeType(item)
+                + "\u00a78（门面 ⇒ 不是合成品，槽 10 显示物品图标 + 获取方式；无门面且 NULL ⇒ 槽 10 空气）");
         ItemStack[] grid = item.getRecipe();
         int filled = 0;
         if (grid != null) {
@@ -1799,6 +1878,9 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         guideLine(sender, "\u00a78  配方非空格数 = " + filled + "（应为 0）");
         guideLine(sender, "\u00a78  Bukkit/Slimefun 配方表里能产出它的 = "
                 + countRecipesFor(item) + " / " + countMachineRecipesFor(item) + "（都应为 0）");
+        guideLine(sender, "\u00a78  ★ 获取方式标注 = "
+                + (com.example.touhou.core.Acquisition.hasLore(item) ? "\u00a7a有" : "\u00a7c缺")
+                + "\u00a78（" + com.example.touhou.core.Acquisition.method(item.getId()) + "）");
 
         ItemMeta meta = icon == null ? null : icon.getItemMeta();
         if (meta != null) {
@@ -2156,8 +2238,8 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
                     }
                 }
             }
-            guideLine(sender, "\u00a78    配方类型 = " + (fallen.getRecipeType() == null
-                    ? "(null)" : fallen.getRecipeType().getKey().toString())
+            guideLine(sender, "\u00a78    配方类型 = "
+                    + com.example.touhou.core.Acquisition.describeRecipeType(fallen)
                     + "   非空格数 = " + filled);
             guideLine(sender, "\u00a78    Bukkit 配方表里以落叶为【产物】的配方 = " + countRecipesFor(fallen));
             guideLine(sender, "\u00a78    Slimefun 多方块配方表里以落叶为产物的 = "
@@ -5086,7 +5168,10 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
             return filter(List.of("reactor", "autobuild", "clickinfo", "structure", "saizen", "place",
                     "remove", "edit", "gui", "layout", "groups", "tags", "messages", "reload",
                     "power", "dreamcatcher", "seal", "lily", "lilywhite", "harvest", "leaves",
-                    "echo", "proj", "guide"), args[0]);
+                    "acquisition", "echo", "proj", "guide"), args[0]);
+        }
+        if (args[0].equalsIgnoreCase("acquisition") && args.length == 2) {
+            return filter(List.of("all", "rule"), args[1]);
         }
         if (args[0].equalsIgnoreCase("leaves") && args.length == 2) {
             return filter(List.of("selfcheck", "tools", "drop", "watch", "field", "check", "proof",
