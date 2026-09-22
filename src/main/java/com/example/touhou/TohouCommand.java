@@ -185,7 +185,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         s.sendMessage("\u00a77/touhou echo selfcheck | rule | container <x> <y> <z> | convert [玩家] | probe <玩家> [世界] | shuttle <玩家> <from> <to> [--force] | cooldown [clear]   「维度穿梭」无头验证");
         s.sendMessage("\u00a77/touhou lilywhite [selfcheck|name|recipe]   莉莉白：头贴图 / 粉白渐变（JSON 证据）/ 配方产出 2 个");
         s.sendMessage("\u00a77/touhou harvest [selfcheck | test <x> <y> <z> | probe <x> <y> <z> | clear <x> <y> <z> | cell <x> <y> <z> [面] | rng <x> <y> <z> | wake <x> <y> <z> [crops|empty] | cooldown [clear]]   丰收之时：范围催熟 / 骨粉行为 / 提示语验证");
-        s.sendMessage("\u00a77/touhou leaves [selfcheck | tools | drop [n] | field <x> <y> <z> [n] | check <x> <y> <z> | clear <x> <y> <z>]   落叶：掉率/数量分布/工具判据/非树叶对照");
+        s.sendMessage("\u00a77/touhou leaves [selfcheck | tools | drop [n] | watch [n|off] | field <x> <y> <z> [n] | check <x> <y> <z> | clear <x> <y> <z>]   落叶：掉率/数量分布/工具判据/非树叶对照；watch=实机追踪（走 Log.always）");
         s.sendMessage("\u00a77/touhou guide [reactor|saizen|echo]   粘液书自定义配方页的内容自检（展示列表 + 可合成性核查）");
         s.sendMessage("\u00a77/touhou place <x> <y> <z> <sfId> [world] [--force]");
         s.sendMessage("\u00a77/touhou remove <x> <y> <z>            删除方块 + Slimefun 方块数据（setblock 清不掉）");
@@ -1691,6 +1691,9 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
             }
             leavesProof(sender, loc);
         }
+        if (sub.equals("watch") || sub.equals("trace") || sub.equals("diag")) {
+            leavesWatch(sender, args);
+        }
         if (sub.equals("clear") || sub.equals("clean")) {
             Location loc = resolveAny(sender, Arrays.copyOfRange(args, 1, args.length));
             if (loc == null) {
@@ -1701,13 +1704,69 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         }
         if (sub.equals("selfcheck") || sub.equals("all") || sub.equals("tools")
                 || sub.equals("tool") || sub.equals("drop") || sub.equals("rate")
+                || sub.equals("watch") || sub.equals("trace") || sub.equals("diag")
                 || sub.equals("field") || sub.equals("place") || sub.equals("check")
                 || sub.equals("proof") || sub.equals("clear") || sub.equals("clean")) {
             return;
         }
         sender.sendMessage(PREFIX + "\u00a7c用法: /touhou leaves [selfcheck | tools |"
-                + " drop [n] | field <x> <y> <z> [n] | check <x> <y> <z> |"
+                + " drop [n] | watch [n|off] | field <x> <y> <z> [n] | check <x> <y> <z> |"
                 + " proof <x> <y> <z> | clear <x> <y> <z>]");
+    }
+
+    /**
+     * ★ 诊断追踪：{@code /touhou leaves watch [n|off]}。
+     *
+     * <h2>为什么需要它（真实踩点）</h2>
+     * 玩家实测"用锄头挖树叶挖了几十个都不掉"，而控制台里<b>一行痕迹都没有</b>：
+     * {@code logging.console-info} 默认为 {@code false}，<b>成功行也被静默了</b>，
+     * 于是"机制没触发"与"触发成功但看不见"完全无法区分 —— 排查绕了一大圈。
+     *
+     * <p>本命令打开一个窗口：接下来 n 次"破坏树叶"会被逐条追踪打印，
+     * 并且走 {@code Log.always}（<b>不受 info 总开关影响</b>）。窗口内能直接读出：
+     * <ul>
+     *   <li>{@code [BREAK]} 行 —— 判定与掉落的入口，破坏<b>一定</b>触发它；
+     *       行尾就是这次到底掉没掉（命中 xN / 未命中 / 被排除）；</li>
+     *   <li>{@code [DROP]} 行 —— 原版为这个方块生成了掉落物时才有。
+     *       <b>有它</b> = 原版掉落非空；<b>没有它</b> = 原版掉落为空。</li>
+     * </ul>
+     * ★ 历史教训：第一版把判定挂在 {@code BlockDropItemEvent} 上，
+     * 而锄头挖树叶时原版掉落常常为空、那个事件不触发，于是"挖了几十个一个都不掉"。
+     * 这两行日志就是用来一眼分清"事件没触发"与"判据挡下了"的。
+     *
+     * <p>顺带把"玩家当前主手工具是否被判据排除"打出来 —— 剪刀 / 精准采集
+     * 会被排除，这一条用眼睛看比猜快。
+     */
+    private void leavesWatch(CommandSender sender, String[] args) {
+        String a = args.length >= 2 ? args[1].toLowerCase(Locale.ROOT) : "";
+        if (a.equals("off") || a.equals("stop") || a.equals("0")) {
+            com.example.touhou.core.FallenLeaves.stopWatch();
+            guideLine(sender, PREFIX + "\u00a7a落叶诊断追踪已关闭");
+            log("[TOUHOU] leaves watch off");
+            return;
+        }
+        int n = args.length >= 2 ? parseIntOr(args[1], 40) : 40;
+        n = Math.max(1, Math.min(n, 10000));
+        com.example.touhou.core.FallenLeaves.startWatch(n);
+        guideLine(sender, PREFIX + "\u00a7e落叶诊断追踪已开启：接下来 " + n
+                + " 次破坏树叶会逐条打印到控制台");
+        guideLine(sender, "\u00a77  ★ 这些行走 Log.always，【不受】logging.console-info 影响");
+        guideLine(sender, "\u00a77  判读：[BREAK] 行 = 判定入口（行尾直接写着掉没掉 / 掉几个）；"
+                + "[DROP] 行 = 这一次原版掉落非空");
+        guideLine(sender, "\u00a77  只有 [BREAK] 没有 [DROP] 是正常的（锄头挖树叶原版常不掉东西）"
+                + " —— 判定挂在 [BREAK] 上，不受影响");
+        // 当前主手工具现读 —— 剪刀/精准采集会被排除，直接给结论
+        if (sender instanceof org.bukkit.entity.Player p) {
+            ItemStack hand = p.getInventory().getItemInMainHand();
+            boolean excluded = com.example.touhou.core.FallenLeaves.isExcludedTool(hand);
+            guideLine(sender, "\u00a78  你当前主手 = "
+                    + (hand == null || hand.getType().isAir() ? "空手" : hand.getType())
+                    + "  被排除 = " + excluded
+                    + (excluded ? "\u00a7c  ⇒ 这个工具破坏树叶【不掉】落叶" : "\u00a7a  ⇒ 这个工具可以掉落叶"));
+            log("[TOUHOU] leaves watch on=" + n + " hand=" + hand.getType() + " excluded=" + excluded);
+        } else {
+            log("[TOUHOU] leaves watch on=" + n);
+        }
     }
 
     /** 物品 / 渐变 / 配方 / 监听器自检。 */
@@ -1790,12 +1849,31 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         if (!registered) {
             guideLine(sender, "\u00a7c  BlockDropItemEvent 上没找到 FallenLeavesListener（监听器没注册？）");
         }
+        // ★ 破坏事件上的诊断处理器（只打印、不掉落）—— 同样要证明它真的挂上了
+        boolean watchRegistered = false;
+        for (org.bukkit.plugin.RegisteredListener rl
+                : org.bukkit.event.block.BlockBreakEvent.getHandlerList().getRegisteredListeners()) {
+            if (rl.getPlugin() instanceof com.example.touhou.Touhou
+                    && rl.getListener() instanceof com.example.touhou.core.FallenLeavesListener) {
+                watchRegistered = true;
+                guideLine(sender, "\u00a78  BlockBreakEvent ← 已注册 FallenLeavesListener（诊断用，只打印）"
+                        + "  优先级=" + rl.getPriority());
+            }
+        }
+        if (!watchRegistered) {
+            guideLine(sender, "\u00a7c  BlockBreakEvent 上没找到诊断处理器");
+        }
+        guideLine(sender, "\u00a78  诊断追踪窗口剩余 = "
+                + com.example.touhou.core.FallenLeaves.watchRemaining()
+                + "（>0 表示 watch 打开着；用 /touhou leaves watch [n|off] 控制）");
         for (String line : com.example.touhou.core.FallenLeavesListener.describe()) {
             guideLine(sender, "\u00a78    " + line);
         }
         log("[TOUHOU] leaves selfcheck id=" + item.getId()
                 + " material=" + (icon == null ? "null" : icon.getType())
                 + " recipeFilled=" + filled + " listener=" + registered
+                + " breakListener=" + watchRegistered
+                + " watch=" + com.example.touhou.core.FallenLeaves.watchRemaining()
                 + " chance=" + cfg.fallenLeavesDropChance
                 + " amount=" + cfg.fallenLeavesMinAmount + "-" + cfg.fallenLeavesMaxAmount);
     }
@@ -5011,7 +5089,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
                     "echo", "proj", "guide"), args[0]);
         }
         if (args[0].equalsIgnoreCase("leaves") && args.length == 2) {
-            return filter(List.of("selfcheck", "tools", "drop", "field", "check", "proof",
+            return filter(List.of("selfcheck", "tools", "drop", "watch", "field", "check", "proof",
                     "clear"), args[1]);
         }
         if (args[0].equalsIgnoreCase("lilywhite") && args.length == 2) {

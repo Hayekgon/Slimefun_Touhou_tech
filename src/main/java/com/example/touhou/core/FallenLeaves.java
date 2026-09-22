@@ -42,6 +42,47 @@ public final class FallenLeaves {
     public static final String ID = "TOUHOU_MATERIAL_FALLEN_LEAVES";
 
     /**
+     * 诊断追踪剩余次数（{@code /touhou leaves watch [n]} 设置）。
+     *
+     * <h2>★ 为什么必须有这个东西（真实踩点）</h2>
+     * 玩家实测"用锄头挖树叶挖了几十个都不掉"，而控制台里<b>一行痕迹都没有</b>。
+     * 原因之一是 {@code logging.console-info} 默认为 {@code false}，
+     * 成功行被静默了 —— 于是"没触发"与"触发了但没打印"完全无法区分。
+     *
+     * <p>这里给一个显式的、<b>不受任何开关压制</b>的追踪窗口：窗口打开时
+     * 每一次"玩家破坏树叶"都打印一条，并且能明确回答最关键的那个问题 ——
+     * <b>{@code BlockDropItemEvent} 到底有没有对这个方块触发</b>。
+     * （见 {@link #markBreak} / {@link #noteDropSeen} 的用法。）
+     */
+    private static final java.util.concurrent.atomic.AtomicInteger WATCH =
+            new java.util.concurrent.atomic.AtomicInteger();
+
+    /** 打开诊断追踪窗口：接下来 {@code n} 次"玩家破坏树叶"会被逐次打印。 */
+    public static void startWatch(int n) {
+        WATCH.set(Math.max(1, n));
+    }
+
+    /** 关闭诊断追踪窗口。 */
+    public static void stopWatch() {
+        WATCH.set(0);
+    }
+
+    /** 当前追踪窗口剩余次数。 */
+    public static int watchRemaining() {
+        return WATCH.get();
+    }
+
+    /**
+     * 追踪窗口是否打开着。
+     *
+     * <p>给那些"每次都打印会刷屏"的判定细节用（命中/未命中、被排除的原因）——
+     * 它们默认静默，只有玩家主动用 {@code /touhou leaves watch} 要线索时才输出。
+     */
+    public static boolean isWatching() {
+        return WATCH.get() > 0;
+    }
+
+    /**
      * 这次破坏"要不要掉落叶"——掉落数量的上限（防配置写炸）。
      *
      * <p>★ 为什么要钳：{@link #rollLeaves} 用 {@code nextInt(max-min+1)}，

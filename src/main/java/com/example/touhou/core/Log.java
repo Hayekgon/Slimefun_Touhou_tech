@@ -67,6 +67,23 @@ public final class Log {
     }
 
     /**
+     * 诊断追踪 —— <b>不受 info 总开关影响</b>，永远输出。
+     *
+     * <p>★ 为什么需要它（真实踩点）：{@code logging.console-info} 默认是
+     * {@code false}，于是 {@code [LEAVES] ...} 这类"机制真的跑了"的追踪行被静默。
+     * 玩家反馈"破坏树叶没有掉落"时，控制台里<b>既没有成功行也没有失败行</b> ——
+     * 于是分不清"机制没触发"还是"触发成功但没看见"。
+     * 那一次排查因此走了一整圈弯路（先怀疑事件没触发、又怀疑配置没读到）。
+     *
+     * <p>所以这类<b>只在诊断开关打开时才调用</b>的追踪行必须绕过总开关：
+     * 开关（例如 {@code /touhou leaves watch}）本身就是"我现在就要看线索"的意思，
+     * 再被 info 开关吃掉就自相矛盾了。与 {@link #command} 是同一类豁免。
+     */
+    public static void always(String msg) {
+        Touhou.getInstance().getLogger().info(msg);
+    }
+
+    /**
      * 惰性版本：只有真的要输出时才拼字符串。
      *
      * <p>用于那些"拼接本身有成本"的行（例如遍历层图生成摘要）——
