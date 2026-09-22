@@ -124,7 +124,7 @@ public class Cirno extends SimpleSlimefunItem<BlockUseHandler> {
      * {@code AddSlimefunItems.CIRNO}（见 {@link #find()}）：这样命令的输出顺带证明了
      * "它真的以那个 id 注册进 Slimefun 了"，而不是只在静态字段里有个对象。
      */
-    public static final String ID = "TOUHOU_MATERIAL_CIRNO";
+    public static final String ID = "TOUHOU_CHARACTER_CIRNO";
 
     /** 范围半径：三轴都是 ±4 ⇒ 9×9×9 立方体（中心那一格也在范围内）。 */
     public static final int RADIUS = 4;
@@ -137,8 +137,38 @@ public class Cirno extends SimpleSlimefunItem<BlockUseHandler> {
      */
     public static final int SLOW_DURATION_TICKS = 100;
 
-    /** 缓慢的<b>等级（amplifier）</b>：9 ⇒ 游戏内显示"缓慢 X"（amplifier 是 0 基的）。 */
-    public static final int SLOW_AMPLIFIER = 9;
+    /**
+     * 缓慢的<b>放大器（amplifier）</b>：<b>8</b> ⇒ 游戏内显示「缓慢 IX」。
+     *
+     * <h2>★★ 换算写死在这里，以后不要再数错</h2>
+     * <pre>
+     *   显示等级（罗马数字） = amplifier + 1
+     *   amplifier = 8  ⇒  缓慢 IX（9 级）
+     *   amplifier = 9  ⇒  缓慢 X （10 级）   ← 这是改之前的值，用户实机截图看到的正是「缓慢 X」
+     * </pre>
+     * 用户要的是 <b>IX（9 级）</b>，所以 amplifier 必须是 <b>8</b>。
+     *
+     * <p>★ 注意 {@code PotionEffect} 与 {@code getAmplifier()} 全都用这个 <b>0 基</b>的口径：
+     * 读回来 {@code getAmplifier() == 8} 就是对的，别拿它当"等级"看
+     * （{@code /touhou cirno selfcheck} 会同时打印 amplifier 与 level，便于对照）。
+     */
+    public static final int SLOW_AMPLIFIER = 8;
+
+    /**
+     * 缓慢的显示等级（罗马数字用的数字）—— {@code SLOW_AMPLIFIER + 1}。
+     *
+     * <p>只用于诊断输出与文案；真正施加效果时传的是 {@link #SLOW_AMPLIFIER}。
+     */
+    public static int slowLevel() {
+        return SLOW_AMPLIFIER + 1;
+    }
+
+    /** 把等级数字转成罗马数字（诊断输出用；只覆盖本插件用得到的 1~20）。 */
+    public static String romanOf(int level) {
+        String[] romans = {"I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X",
+                "XI", "XII", "XIII", "XIV", "XV", "XVI", "XVII", "XVIII", "XIX", "XX"};
+        return level >= 1 && level <= romans.length ? romans[level - 1] : String.valueOf(level);
+    }
 
     /** 触发者会看到的那一句话（用户给定原文，<b>逐字不改</b>）。 */
     public static final String MESSAGE = "Bakabakabakabakabakabakabakabaka";

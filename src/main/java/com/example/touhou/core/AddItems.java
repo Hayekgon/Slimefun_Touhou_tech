@@ -152,11 +152,11 @@ public final class AddItems {
      *
      * <p>id 按本项目铁律 {@code TOUHOU_"物品组"_"英文名"}：它归属 1 级组
      * {@link AddGroups#MATERIAL}，英文名取 <b>Spring Herald</b>（报春的使者）
-     * ⇒ {@code TOUHOU_MATERIAL_SPRING_HERALD}。
+     * ⇒ {@code TOUHOU_CHARACTER_SPRING_HERALD}。
      *
      * <p>★ <b>2026-09-22 改名 + 改 id</b>：原来是「莉莉白」/ {@code TOUHOU_MATERIAL_LILY_WHITE}，
      * 现在是「报春の妖精」（★ 日文笔形，是 {@code の} 不是中文的 {@code 的}，用户逐字指定）/
-     * {@code TOUHOU_MATERIAL_SPRING_HERALD}。
+     * {@code TOUHOU_CHARACTER_SPRING_HERALD}。
      * ⚠ <b>改 id 的代价（作者已知情并接受）</b>：存档里那些旧 id 的物品会变成"未知物品"
      * （Slimefun 靠 PDC 里的 id 反查本体），本次<b>不做任何迁移</b>——
      * 不扫背包、不动 playerdata、也不保留旧 id 的兼容分支。
@@ -185,7 +185,7 @@ public final class AddItems {
      *
      * <p>id 按本项目铁律 {@code TOUHOU_"物品组"_"英文名"}：归属 1 级组
      * {@link AddGroups#MATERIAL}，英文名取 <b>Momiji Tengu</b>
-     * （Momiji = 椛，Tengu = 天狗）⇒ {@code TOUHOU_MATERIAL_MOMIJI_TENGU}。
+     * （Momiji = 椛，Tengu = 天狗）⇒ {@code TOUHOU_CHARACTER_MOMIJI_TENGU}。
      *
      * <p>★ 材质是<b>头颅 Value</b>（用户给定的 base64，见 {@link #MOMIJI_TENGU_TEXTURE}），
      * 与报春の妖精（原「莉莉白」）同一条构造器路径。
@@ -248,7 +248,7 @@ public final class AddItems {
      *
      * <p>id 按本项目铁律 {@code TOUHOU_"物品组"_"英文名"}：归属 1 级组
      * {@link AddGroups#MATERIAL}（MATERIAL 物品组，用户指定），英文名取
-     * <b>Cirno</b> ⇒ {@code TOUHOU_MATERIAL_CIRNO}。
+     * <b>Cirno</b> ⇒ {@code TOUHOU_CHARACTER_CIRNO}。
      *
      * <p>★ 材质是<b>头颅 Value</b>（用户给定的 base64，见 {@link #CIRNO_TEXTURE}），
      * 与报春の妖精 / 红叶飞散の天狗同一条构造器路径
@@ -487,7 +487,7 @@ public final class AddItems {
         //
         // ★ 描述按用户原文：[第一行渐变] / (endl)换行 / [第二行灰色]。中间的 "" 就是换行。
         SPRING_HERALD = new SlimefunItemStack(
-                "TOUHOU_MATERIAL_SPRING_HERALD",
+                "TOUHOU_CHARACTER_SPRING_HERALD",
                 SPRING_HERALD_TEXTURE,
                 gradientName("报春の妖精"),
                 "",
@@ -503,7 +503,7 @@ public final class AddItems {
         // ★ 第 3 行（Ayayaya…）用户明确要求【整行灰色】，不参与渐变 ⇒ 直接用 "&7" 写法
         //    （构造器会把 &7 翻成 §7；这一行没有任何 §x 序列，所以不会被构造器的翻译弄坏）。
         MOMIJI_TENGU = new SlimefunItemStack(
-                "TOUHOU_MATERIAL_MOMIJI_TENGU",
+                "TOUHOU_CHARACTER_MOMIJI_TENGU",
                 MOMIJI_TENGU_TEXTURE,
                 gradientNameOrangeGold("红叶飞散の天狗"),
                 "",
@@ -551,7 +551,7 @@ public final class AddItems {
         // ★ 描述原文里的 (endl) 是【换行标记】不是字面文字 ⇒ 拆成三行逐字照抄
         //   （⑨ = U+2468，不是数字 9；下面每行末尾都没有逗号漏字）。
         CIRNO = new SlimefunItemStack(
-                "TOUHOU_MATERIAL_CIRNO",
+                "TOUHOU_CHARACTER_CIRNO",
                 CIRNO_TEXTURE,
                 gradientNameIceFairy("冰の妖精"),
                 "",
@@ -1034,7 +1034,7 @@ INFO_MODESHIFT = new SlimefunItemStack(
      *   [ERROR]: Error occurred while enabling Touhou v1.0.0 (Is it up to date?)
      *   io.github.thebusybiscuit.slimefun4.api.exceptions.WrongItemStackException:
      *     You probably wanted to alter a different ItemStack:
-     *     TOUHOU_MATERIAL_MOMIJI_TENGU is not mutable.
+     *     TOUHOU_CHARACTER_MOMIJI_TENGU is not mutable.
      *       at SlimefunItemStack.validate(SlimefunItemStack.java:274)
      *       at SlimefunItemStack.setItemMeta(SlimefunItemStack.java:254)
      *       at com.example.touhou.core.AddSlimefunItems.momijiTenguAttributes(AddSlimefunItems.java:571)

@@ -226,15 +226,15 @@ public final class Acquisition {
                         Material.CRYING_OBSIDIAN));
         SOURCE_BY_ID.put("TOUHOU_MATERIAL_SPRING_MUD",
                 Source.recipe("增强型工作台", () -> SlimefunItems.ENHANCED_CRAFTING_TABLE));
-        SOURCE_BY_ID.put("TOUHOU_MATERIAL_SPRING_HERALD",
+        SOURCE_BY_ID.put("TOUHOU_CHARACTER_SPRING_HERALD",
                 Source.recipe("魔法工作台", () -> SlimefunItems.MAGIC_WORKBENCH));
         SOURCE_BY_ID.put("TOUHOU_MATERIAL_FALLEN_LEAVES",
                 Source.of("用手或普通工具破坏树叶时 20% 掉落 2~7 个（剪刀与精准采集不掉）",
                         Material.OAK_LEAVES));
-        SOURCE_BY_ID.put("TOUHOU_MATERIAL_MOMIJI_TENGU",
+        SOURCE_BY_ID.put("TOUHOU_CHARACTER_MOMIJI_TENGU",
                 Source.recipe("魔法工作台", () -> SlimefunItems.MAGIC_WORKBENCH));
         // 冰の妖精：魔法工作台合成（用户指定配方类型 MAGIC_WORKBENCH）。
-        SOURCE_BY_ID.put("TOUHOU_MATERIAL_CIRNO",
+        SOURCE_BY_ID.put("TOUHOU_CHARACTER_CIRNO",
                 Source.recipe("魔法工作台", () -> SlimefunItems.MAGIC_WORKBENCH));
 
         // ---- 单方块机器 ------------------------------------------------------

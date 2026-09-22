@@ -136,6 +136,33 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
                 for (String line : AddGroups.mainMenuPreview()) {
                     sender.sendMessage("\u00a7b  " + line);
                 }
+                // ★ ASCII 读数（机器可读）：把"组 key → 显示名"逐条打到日志。
+                //   ★★ 关键字用 <ASCII> 形式（去掉颜色码、并给出每字的 Unicode 码点），
+                //      于是这行**不依赖日志编码**也能核对：
+                //      GBK 解码下汉字会糊，但码点是不会骗人的。
+                log("[TOUHOU] groups charKey=" + AddGroups.keyOfPublic(AddGroups.CHARACTER)
+                        + " charName=" + AddGroups.nameOf(AddGroups.CHARACTER)
+                        + " charNameAscii=" + AddGroups.asciiOf(AddGroups.nameOf(AddGroups.CHARACTER))
+                        + " machineKey=" + AddGroups.keyOfPublic(AddGroups.MACHINE)
+                        + " machineName=" + AddGroups.nameOf(AddGroups.MACHINE)
+                        + " machineNameAscii=" + AddGroups.asciiOf(AddGroups.nameOf(AddGroups.MACHINE))
+                        + " materialKey=" + AddGroups.keyOfPublic(AddGroups.MATERIAL)
+                        + " materialName=" + AddGroups.nameOf(AddGroups.MATERIAL)
+                        + " materialNameAscii=" + AddGroups.asciiOf(AddGroups.nameOf(AddGroups.MATERIAL)));
+                // ★ 三件角色的归属 + 新旧 id 可查性（一行为一条，便于 grep）
+                for (String id : new String[]{"TOUHOU_CHARACTER_SPRING_HERALD",
+                        "TOUHOU_CHARACTER_CIRNO", "TOUHOU_CHARACTER_MOMIJI_TENGU"}) {
+                    SlimefunItem it = SlimefunItem.getById(id);
+                    log("[TOUHOU] groups id=" + id
+                            + " found=" + (it != null)
+                            + " group=" + (it == null || it.getItemGroup() == null
+                                    ? "(无)" : it.getItemGroup().getKey().toString()));
+                }
+                for (String oldId : new String[]{"TOUHOU_MATERIAL_SPRING_HERALD",
+                        "TOUHOU_MATERIAL_CIRNO", "TOUHOU_MATERIAL_MOMIJI_TENGU"}) {
+                    log("[TOUHOU] groups oldId=" + oldId
+                            + " found=" + (SlimefunItem.getById(oldId) != null));
+                }
             }
             case "reload" -> {
                 Touhou.getInstance().reloadConfig();
@@ -977,10 +1004,10 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
 
     /** 物品自检：id / 材质 / 头贴图（逐字符比对）/ 附魔光效。 */
     private void momijiSelfCheck(CommandSender sender) {
-        SlimefunItem item = SlimefunItem.getById("TOUHOU_MATERIAL_MOMIJI_TENGU");
+        SlimefunItem item = SlimefunItem.getById("TOUHOU_CHARACTER_MOMIJI_TENGU");
         guideLine(sender, PREFIX + "\u00a7e红叶飞散の天狗 · 物品自检");
         if (item == null) {
-            guideLine(sender, "\u00a7c  未注册（Slimefun 注册表里查不到 TOUHOU_MATERIAL_MOMIJI_TENGU）");
+            guideLine(sender, "\u00a7c  未注册（Slimefun 注册表里查不到 TOUHOU_CHARACTER_MOMIJI_TENGU）");
             return;
         }
         ItemStack icon = item.getItem();
@@ -1019,7 +1046,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
 
     /** 显示名与三行描述的颜色/样式读数。 */
     private void momijiName(CommandSender sender) {
-        SlimefunItem item = SlimefunItem.getById("TOUHOU_MATERIAL_MOMIJI_TENGU");
+        SlimefunItem item = SlimefunItem.getById("TOUHOU_CHARACTER_MOMIJI_TENGU");
         guideLine(sender, PREFIX + "\u00a7e红叶飞散の天狗 · 名称与描述");
         if (item == null || item.getItem() == null) {
             guideLine(sender, "\u00a7c  未注册");
@@ -1075,7 +1102,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
 
     /** 配方：9 格逐格 + 产出数量（两条消费路径）。 */
     private void momijiRecipe(CommandSender sender) {
-        SlimefunItem item = SlimefunItem.getById("TOUHOU_MATERIAL_MOMIJI_TENGU");
+        SlimefunItem item = SlimefunItem.getById("TOUHOU_CHARACTER_MOMIJI_TENGU");
         guideLine(sender, PREFIX + "\u00a7e红叶飞散の天狗 · 配方");
         if (item == null) {
             guideLine(sender, "\u00a7c  未注册");
@@ -1140,7 +1167,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
      * </ol>
      */
     private void momijiAttr(CommandSender sender) {
-        SlimefunItem item = SlimefunItem.getById("TOUHOU_MATERIAL_MOMIJI_TENGU");
+        SlimefunItem item = SlimefunItem.getById("TOUHOU_CHARACTER_MOMIJI_TENGU");
         guideLine(sender, PREFIX + "\u00a7e红叶飞散の天狗 · 属性加成");
         if (item == null || item.getItem() == null) {
             guideLine(sender, "\u00a7c  未注册");
@@ -1436,10 +1463,13 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         guideLine(sender, "\u00a7e  -- 效果参数 --");
         guideLine(sender, "\u00a78  范围半径 = ±" + com.example.touhou.core.Cirno.RADIUS
                 + "（三轴都是 ⇒ 9*9*9 = 729 格）");
-        guideLine(sender, "\u00a78  缓慢 = " + com.example.touhou.core.Cirno.SLOW_AMPLIFIER
-                + " 级（amplifier，游戏内显示「缓慢 X」） / "
-                + com.example.touhou.core.Cirno.SLOW_DURATION_TICKS + " tick（= "
-                + (com.example.touhou.core.Cirno.SLOW_DURATION_TICKS / 20)
+        guideLine(sender, "\u00a78  缓慢 amplifier = " + com.example.touhou.core.Cirno.SLOW_AMPLIFIER
+                + "   level = " + com.example.touhou.core.Cirno.slowLevel()
+                + "（= 「缓慢 " + com.example.touhou.core.Cirno.romanOf(
+                        com.example.touhou.core.Cirno.slowLevel()) + "」）"
+                + "   ★ 换算：level = amplifier + 1，所以 8 ⇒ 缓慢 IX");
+        guideLine(sender, "\u00a78  缓慢 持续 = " + com.example.touhou.core.Cirno.SLOW_DURATION_TICKS
+                + " tick（= " + (com.example.touhou.core.Cirno.SLOW_DURATION_TICKS / 20)
                 + " 秒，原版 tick 口径）");
         guideLine(sender, "\u00a78  药水常量 = PotionEffectType.SLOW（javap 核实；本版本没有 SLOWNESS）");
         guideLine(sender, "\u00a78  触发消息 = \u00a7f" + com.example.touhou.core.Cirno.MESSAGE
@@ -1451,7 +1481,12 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
                 + " material=" + (icon == null ? "null" : icon.getType())
                 + " skullMatch=" + same
                 + " templateAmount=" + (AddItems.CIRNO == null ? -1 : AddItems.CIRNO.getAmount())
-                + " cooldownMillis=" + cd);
+                + " cooldownMillis=" + cd
+                + " slowAmplifier=" + com.example.touhou.core.Cirno.SLOW_AMPLIFIER
+                + " slowLevel=" + com.example.touhou.core.Cirno.slowLevel()
+                + " slowRoman=" + com.example.touhou.core.Cirno.romanOf(
+                        com.example.touhou.core.Cirno.slowLevel())
+                + " slowTicks=" + com.example.touhou.core.Cirno.SLOW_DURATION_TICKS);
     }
 
     /** 名称与三行描述的逐字符颜色读数（副标题 + lore）。 */
@@ -1779,7 +1814,11 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
                 guideLine(sender, "\u00a78    " + label + " " + e.getType() + " @ "
                         + cirnoEntityXyz(e) + " ⇒ " + (eff == null
                                 ? "(没有缓慢)" + (e == outside ? "  \u00a7a[对照正确]" : "  \u00a7c[FAIL]")
-                                : eff.getAmplifier() + " 级 / " + eff.getDuration() + " tick"
+                                : "amplifier=" + eff.getAmplifier()
+                                        + " level=" + (eff.getAmplifier() + 1)
+                                        + "（「缓慢 " + com.example.touhou.core.Cirno.romanOf(
+                                                eff.getAmplifier() + 1) + "」）"
+                                        + " / " + eff.getDuration() + " tick"
                                         + (eff.getAmplifier() == com.example.touhou.core.Cirno.SLOW_AMPLIFIER
                                                 ? "  \u00a7a[AMPLIFIER-OK]"
                                                 : "  \u00a7c[AMPLIFIER-FAIL]")));

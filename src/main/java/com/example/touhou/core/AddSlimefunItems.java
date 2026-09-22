@@ -229,7 +229,7 @@ public final class AddSlimefunItems {
         // ★ "产出 2 个"只在最后一个参数里出现一次（单一出处），
         //   模板 AddItems.SPRING_HERALD 保持 1 个 —— 判据见本字段的注释。
         SPRING_HERALD = register(new SlimefunItem(
-                AddGroups.MATERIAL,
+                AddGroups.CHARACTER,
                 AddItems.SPRING_HERALD,
                 RecipeType.MAGIC_WORKBENCH,
                 springHeraldRecipe(),
@@ -243,11 +243,11 @@ public final class AddSlimefunItems {
         //        stack && isItemStackImmutable()) stack.lock()），
         //      锁定之后再改 ItemMeta 会抛：
         //        WrongItemStackException: You probably wanted to alter a different ItemStack:
-        //        TOUHOU_MATERIAL_MOMIJI_TENGU is not mutable.
+        //        TOUHOU_CHARACTER_MOMIJI_TENGU is not mutable.
         //        at SlimefunItemStack.validate(SlimefunItemStack.java:274)
         //      ⇒ 整个插件启用失败。所以属性修饰符必须在**模板刚建好、还没注册**时写进 ItemMeta。
         MOMIJI_TENGU = register(new SlimefunItem(
-                AddGroups.MATERIAL,
+                AddGroups.CHARACTER,
                 AddItems.MOMIJI_TENGU,
                 RecipeType.MAGIC_WORKBENCH,
                 momijiTenguRecipe()), plugin);
@@ -276,7 +276,7 @@ public final class AddSlimefunItems {
         // ★ 它的右键行为（9×9×9 冰冻 + 缓慢 9 + 那句 Bakabaka）全在 Cirno#getItemHandler，
         //   这里只负责注册与配方 —— 与「丰收之时」同一路数（SimpleSlimefunItem 的钩子）。
         CIRNO = register(new Cirno(
-                AddGroups.MATERIAL,
+                AddGroups.CHARACTER,
                 AddItems.CIRNO,
                 RecipeType.MAGIC_WORKBENCH,
                 cirnoRecipe()), plugin);
@@ -528,7 +528,7 @@ public final class AddSlimefunItems {
     //        stack && isItemStackImmutable()) stack.lock()），
     //      锁定之后再改 ItemMeta 会抛：
     //        WrongItemStackException: You probably wanted to alter a different ItemStack:
-    //        TOUHOU_MATERIAL_MOMIJI_TENGU is not mutable.
+    //        TOUHOU_CHARACTER_MOMIJI_TENGU is not mutable.
     //        at SlimefunItemStack.validate(SlimefunItemStack.java:274)
     //        at SlimefunItemStack.setItemMeta(SlimefunItemStack.java:254)
     //      ⇒ 整个插件启用失败（"Error occurred while enabling Touhou"）。
