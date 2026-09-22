@@ -91,8 +91,10 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
             case "lily", "murderouslily" -> lily(sender, Arrays.copyOfRange(args, 1, args.length));
             case "echo", "shuttle", "dimensionshuttle" ->
                     echo(sender, Arrays.copyOfRange(args, 1, args.length));
-            case "lilywhite", "lw", "lily_white" ->
-                    lilyWhite(sender, Arrays.copyOfRange(args, 1, args.length));
+            case "springherald", "lw", "lily_white" ->
+                    springHerald(sender, Arrays.copyOfRange(args, 1, args.length));
+            case "momiji", "momijitengu", "momiji_tengu" ->
+                    momiji(sender, Arrays.copyOfRange(args, 1, args.length));
             case "harvest", "harvesttime" ->
                     harvest(sender, Arrays.copyOfRange(args, 1, args.length));
             case "leaves", "fallenleaves", "fallen_leaves" ->
@@ -185,7 +187,8 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         s.sendMessage("\u00a77/touhou lily tracers <x> <y> <z> [玩家]       衍生箭实弹测试（命中范围伤害 + 2 tick 消失）");
         s.sendMessage("\u00a77/touhou lily cleanup               把两张追踪表收干净并打印条目数");
         s.sendMessage("\u00a77/touhou echo selfcheck | rule | container <x> <y> <z> | convert [玩家] | probe <玩家> [世界] | shuttle <玩家> <from> <to> [--force] | cooldown [clear]   「维度穿梭」无头验证");
-        s.sendMessage("\u00a77/touhou lilywhite [selfcheck|name|recipe]   莉莉白：头贴图 / 粉白渐变（JSON 证据）/ 配方产出 2 个");
+        s.sendMessage("\u00a77/touhou springherald [selfcheck|name|recipe]   报春の妖精：头贴图 / 粉白渐变（JSON 证据）/ 配方产出 2 个");
+        s.sendMessage("\u00a77/touhou momiji [selfcheck|name|recipe|attr]   红叶飞散の天狗：头贴图 / 橙金渐变+灰删除线 / 配方产出 1 / 属性加成读数");
         s.sendMessage("\u00a77/touhou harvest [selfcheck | test <x> <y> <z> | probe <x> <y> <z> | clear <x> <y> <z> | cell <x> <y> <z> [面] | rng <x> <y> <z> | wake <x> <y> <z> [crops|empty] | cooldown [clear]]   丰收之时：范围催熟 / 骨粉行为 / 提示语验证");
         s.sendMessage("\u00a77/touhou acquisition [all|rule|<物品id>]   获取方式标注核查（所有物品统一，含 null 配方）");
         s.sendMessage("\u00a77/touhou leaves [selfcheck | tools | drop [n] | watch [n|off] | field <x> <y> <z> [n] | check <x> <y> <z> | clear <x> <y> <z>]   落叶：掉率/数量分布/工具判据/非树叶对照；watch=实机追踪（走 Log.always）");
@@ -371,7 +374,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
      * "machineRecipes 为空"的那条构造器（{@code AbstractCraftingTable} 传的就是空数组），
      * 展示表里一条都没有；真正的配方表是 {@code addRecipe} 一条条攒出来的
      * （见 {@code RecipeType#register} → {@code MultiBlockMachine#addRecipe}）。
-     * 实测症状：莉莉白的配方明明登记成功
+     * 实测症状：报春の妖精的配方明明登记成功
      * （{@code recipes[148]=输入, recipes[149]=产出}），这个计数却报 0
      * —— 那是计数口径错，不是配方没落上。
      *
@@ -443,7 +446,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
             return "配方对象 = " + recipe.getClass().getSimpleName()
                     + "   产物 = " + result.getType() + " x" + result.getAmount()
                     + "  粘液id=" + idOf(result)
-                    + "  ⇒ " + (result.getAmount() == AddSlimefunItems.LILY_WHITE_OUTPUT_AMOUNT
+                    + "  ⇒ " + (result.getAmount() == AddSlimefunItems.SPRING_HERALD_OUTPUT_AMOUNT
                             ? "\u00a7a会吐 " + result.getAmount() + " 个" : "\u00a7c数量不符");
         } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
             return "(自动合成机路径读取失败: " + e + ")";
@@ -553,16 +556,16 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
                         loc, com.example.touhou.power.DreamCatcher.KEY_PRODUCED, 0L));
     }
 
-    // ------------------------------------------------------------------ lilywhite（莉莉白）
+    // ------------------------------------------------------------------ springherald（报春の妖精）
 
     /**
-     * 「莉莉白」的无头验证入口。
+     * 「报春の妖精」的无头验证入口。
      *
      * <pre>
-     *   /touhou lilywhite            全部打印（默认）
-     *   /touhou lilywhite selfcheck  只看物品本身：id / 材质 / 头贴图 / 名·描述
-     *   /touhou lilywhite name       只看显示名与描述第一行的【渐变】证据
-     *   /touhou lilywhite recipe     只看配方：类型 key / 产出数量 / 9 格内容 / 可合成性核查
+     *   /touhou springherald            全部打印（默认）
+     *   /touhou springherald selfcheck  只看物品本身：id / 材质 / 头贴图 / 名·描述
+     *   /touhou springherald name       只看显示名与描述第一行的【渐变】证据
+     *   /touhou springherald recipe     只看配方：类型 key / 产出数量 / 9 格内容 / 可合成性核查
      * </pre>
      *
      * <p>★ 这个命令要证明三件事，每一件都有<b>两个独立读数</b>互相印证：
@@ -584,10 +587,10 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
      * <p>输出走 {@link Log#command}（不受 {@code logging.console-info} 影响），
      * 于是"跑一次服务端 + 从 stdin 敲一条命令"就能拿到全部证据。
      */
-    private void lilyWhite(CommandSender sender, String[] args) {
-        SlimefunItem item = AddSlimefunItems.LILY_WHITE;
+    private void springHerald(CommandSender sender, String[] args) {
+        SlimefunItem item = AddSlimefunItems.SPRING_HERALD;
         if (item == null) {
-            sender.sendMessage(PREFIX + "\u00a7c莉莉白未注册（物品注册失败？看控制台）");
+            sender.sendMessage(PREFIX + "\u00a7c报春の妖精未注册（物品注册失败？看控制台）");
             return;
         }
         String sub = args.length >= 1 ? args[0].toLowerCase() : "all";
@@ -597,21 +600,21 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         boolean recipe = all || sub.equals("recipe") || sub.equals("craft");
         if (!selfcheck && !name && !recipe) {
             sender.sendMessage(PREFIX
-                    + "\u00a7c用法: /touhou lilywhite [selfcheck|name|recipe]");
+                    + "\u00a7c用法: /touhou springherald [selfcheck|name|recipe]");
             return;
         }
 
         if (selfcheck) {
-            guideLine(sender, PREFIX + "\u00a7e莉莉白 · 物品自检");
+            guideLine(sender, PREFIX + "\u00a7e报春の妖精 · 物品自检");
             guideLine(sender, "\u00a78  id = " + item.getId());
             ItemStack icon = item.getItem();
             guideLine(sender, "\u00a78  材质 = " + (icon == null ? "(null)" : String.valueOf(icon.getType()))
                     + "（应为 PLAYER_HEAD）");
             // 头贴图：从物品模板读回来的那串，与用户给定值逐字符比对
-            String expect = AddItems.LILY_WHITE_TEXTURE;
+            String expect = AddItems.SPRING_HERALD_TEXTURE;
             String actual = null;
-            if (AddItems.LILY_WHITE != null) {
-                actual = AddItems.LILY_WHITE.getSkullTexture().orElse(null);
+            if (AddItems.SPRING_HERALD != null) {
+                actual = AddItems.SPRING_HERALD.getSkullTexture().orElse(null);
             }
             guideLine(sender, "\u00a78  getSkullTexture() = "
                     + (actual == null ? "\u00a7c(null —— 这个材质不是头颅，或贴图没写进去）" : actual));
@@ -625,18 +628,18 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
                             ? "\u00a7a能" : "\u00a7c查不到"));
             // 模板数量必须还是 1：这是"没污染模板"的直接读数
             guideLine(sender, "\u00a78  模板 getAmount() = "
-                    + (AddItems.LILY_WHITE == null ? "(null)" : AddItems.LILY_WHITE.getAmount())
+                    + (AddItems.SPRING_HERALD == null ? "(null)" : AddItems.SPRING_HERALD.getAmount())
                     + "（应为 1 —— 改了它会连累 /sf give 与指南页图标）");
-            log("[TOUHOU] lilywhite selfcheck id=" + item.getId()
+            log("[TOUHOU] springherald selfcheck id=" + item.getId()
                     + " material=" + (icon == null ? "null" : icon.getType())
                     + " skullMatch=" + expect.equals(actual)
                     + " templateAmount="
-                    + (AddItems.LILY_WHITE == null ? -1 : AddItems.LILY_WHITE.getAmount()));
+                    + (AddItems.SPRING_HERALD == null ? -1 : AddItems.SPRING_HERALD.getAmount()));
         }
 
         if (name) {
             ItemMeta meta = item.getItem() == null ? null : item.getItem().getItemMeta();
-            guideLine(sender, PREFIX + "\u00a7e莉莉白 · 显示名 / 描述（渐变证据）");
+            guideLine(sender, PREFIX + "\u00a7e报春の妖精 · 显示名 / 描述（渐变证据）");
             if (meta == null) {
                 guideLine(sender, "\u00a7c  拿不到 ItemMeta");
             } else {
@@ -663,29 +666,29 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
             //   上面 guideLine 已经把完整 JSON 打出来了，日志里同一份长串出现两次
             //   只会让 grep 更难读。这一行只留"有没有名字 + 几段渐变色"这种短读数，
             //   要完整 JSON 就往上翻那一行。
-            log("[TOUHOU] lilywhite name hasDisplayName="
+            log("[TOUHOU] springherald name hasDisplayName="
                     + (meta != null && meta.hasDisplayName())
                     + " gradientHexCount="
                     + (meta == null ? 0 : hexSequenceCount(meta.getDisplayName())));
         }
 
         if (recipe) {
-            guideLine(sender, PREFIX + "\u00a7e莉莉白 · 配方（魔法工作台，产出 2 个）");
+            guideLine(sender, PREFIX + "\u00a7e报春の妖精 · 配方（魔法工作台，产出 2 个）");
             guideLine(sender, "\u00a78  配方类型 = " + (item.getRecipeType() == null
                     ? "(null)" : item.getRecipeType().getKey().toString())
                     + "   指向的机器 = " + (item.getRecipeType() == null
                             || item.getRecipeType().getMachine() == null
                                     ? "(无)" : item.getRecipeType().getMachine().getId()));
             guideLine(sender, "\u00a78  期望产出数量（需求）= "
-                    + AddSlimefunItems.LILY_WHITE_OUTPUT_AMOUNT);
+                    + AddSlimefunItems.SPRING_HERALD_OUTPUT_AMOUNT);
 
             // ---- ① SlimefunItem#getRecipeOutput()：指南页产物格 / 自动合成机读的就是它
             ItemStack declared = item.getRecipeOutput();
             int declaredAmount = declared == null ? -1 : declared.getAmount();
             guideLine(sender, "\u00a78  [路径①] SlimefunItem.getRecipeOutput().getAmount() = "
                     + declaredAmount + "  期望 "
-                    + AddSlimefunItems.LILY_WHITE_OUTPUT_AMOUNT + " ⇒ "
-                    + (declaredAmount == AddSlimefunItems.LILY_WHITE_OUTPUT_AMOUNT
+                    + AddSlimefunItems.SPRING_HERALD_OUTPUT_AMOUNT + " ⇒ "
+                    + (declaredAmount == AddSlimefunItems.SPRING_HERALD_OUTPUT_AMOUNT
                             ? "\u00a7a符合" : "\u00a7c不符")
                     + "\u00a78（指南页产物格 / 自动合成机读这一条）");
 
@@ -697,16 +700,16 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
             int tableAmount = tableOutput == null ? -1 : tableOutput.getAmount();
             guideLine(sender, "\u00a78  [路径②] 魔法工作台配方表里那条 output.getAmount() = "
                     + tableAmount + "  期望 "
-                    + AddSlimefunItems.LILY_WHITE_OUTPUT_AMOUNT + " ⇒ "
-                    + (tableAmount == AddSlimefunItems.LILY_WHITE_OUTPUT_AMOUNT
+                    + AddSlimefunItems.SPRING_HERALD_OUTPUT_AMOUNT + " ⇒ "
+                    + (tableAmount == AddSlimefunItems.SPRING_HERALD_OUTPUT_AMOUNT
                             ? "\u00a7a符合" : "\u00a7c不符")
                     + "\u00a78（合成表实际执行这一条）");
             guideLine(sender, "\u00a78  魔法工作台配方总数（含本体自带）= "
                     + (workbench == null ? "(找不到魔法工作台)" : workbench.getRecipes().size() / 2 + " 条"));
 
             // ---- ③ 模板数量：必须还是 1
-            int templateAmount = AddItems.LILY_WHITE == null ? -1 : AddItems.LILY_WHITE.getAmount();
-            guideLine(sender, "\u00a78  [模板] AddItems.LILY_WHITE.getAmount() = "
+            int templateAmount = AddItems.SPRING_HERALD == null ? -1 : AddItems.SPRING_HERALD.getAmount();
+            guideLine(sender, "\u00a78  [模板] AddItems.SPRING_HERALD.getAmount() = "
                     + templateAmount + "  期望 1 ⇒ "
                     + (templateAmount == 1 ? "\u00a7a符合（没污染模板）" : "\u00a7c不符"));
 
@@ -728,14 +731,14 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
                     + " 条（原版工作台口径，本物品走粘液多方块、应为 0）");
             guideLine(sender, "\u00a78    Slimefun 多方块机器配方表里能产出它的 = " + countMachineRecipesFor(item)
                     + " 条（增强工作台 / 魔法工作台口径，应为 1）");
-            log("[TOUHOU] lilywhite recipe type="
+            log("[TOUHOU] springherald recipe type="
                     + (item.getRecipeType() == null ? "null" : item.getRecipeType().getKey())
                     + " declaredOutput=" + declaredAmount
                     + " machineRecipeTable=" + tableAmount
                     + " templateAmount=" + templateAmount
                     + " machineRecipes=" + countMachineRecipesFor(item));
 
-            // ---- 诊断：把魔法工作台配方表里所有"输出是莉莉白"的条目原样打出来。
+            // ---- 诊断：把魔法工作台配方表里所有"输出是报春の妖精"的条目原样打出来。
             //      ★ 必须扫 getRecipes()（真表），不能扫 getDisplayRecipes()：
             //      运行期的 MagicWorkbench 走 4 参数构造器（machineRecipes 为空），
             //      本体的展示表里一条都没有；真正的配方表是 addRecipe 一条条攒出来的。
@@ -751,14 +754,14 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
                             && item.isItem(holder[0])) {
                         guideLine(sender, "\u00a78    recipes[" + i + "] = " + holder[0].getType()
                                 + " x" + holder[0].getAmount() + "  粘液id=" + idOf(holder[0])
-                                + "  \u21d0 是莉莉白（" + (i % 2 == 1 ? "奇数下标＝产物位" : "偶数下标＝输入位") + "）");
+                                + "  \u21d0 是报春の妖精（" + (i % 2 == 1 ? "奇数下标＝产物位" : "偶数下标＝输入位") + "）");
                         foundRaw++;
                     }
                 }
-                guideLine(sender, "\u00a78    recipes 里莉莉白条目数 = " + foundRaw);
+                guideLine(sender, "\u00a78    recipes 里报春の妖精条目数 = " + foundRaw);
                 // 再直说一句：isItem 判据本身有没有问题（排除"数不出来"是判据的锅）
                 guideLine(sender, "\u00a78    isItem(模板自己) = "
-                        + item.isItem(AddItems.LILY_WHITE)
+                        + item.isItem(AddItems.SPRING_HERALD)
                         + "   isItem(getRecipeOutput()) = "
                         + (declared == null ? "(null)" : String.valueOf(item.isItem(declared))));
             }
@@ -925,6 +928,409 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         }
         ItemStack[] holders = recipes.get(index + 1);
         return holders != null && holders.length > 0 ? holders[0] : null;
+    }
+
+    // ------------------------------------------------------------------ momiji（红叶飞散の天狗）
+
+    /**
+     * 「红叶飞散の天狗」的无头验证入口。
+     *
+     * <pre>
+     *   /touhou momiji                 全部打印（默认）
+     *   /touhou momiji selfcheck       物品：id / 材质 / 头贴图逐字符比对 / 配方产出 1
+     *   /touhou momiji name            显示名 + 三行描述的颜色与样式读数
+     *   /touhou momiji recipe          配方 9 格逐格 + 两条消费路径的产出数量
+     *   /touhou momiji attr            属性修饰符清单 + 实际数值读数
+     * </pre>
+     *
+     * <p>★ 属性那一节必须区分「模板上的修饰符」与「装备后的实际数值」：
+     * 前者无头可读，后者需要真实玩家 —— 见 {@link #momijiAttr} 的说明。
+     */
+    private void momiji(CommandSender sender, String[] args) {
+        String sub = args.length >= 1 ? args[0].toLowerCase(Locale.ROOT) : "all";
+        boolean all = sub.equals("all") || sub.equals("check");
+        boolean selfcheck = all || sub.equals("selfcheck");
+        boolean name = all || sub.equals("name");
+        boolean recipe = all || sub.equals("recipe");
+        boolean attr = all || sub.equals("attr");
+        if (!selfcheck && !name && !recipe && !attr) {
+            sender.sendMessage(PREFIX + "\u00a7c用法: /touhou momiji [selfcheck|name|recipe|attr]");
+            return;
+        }
+        if (selfcheck) {
+            momijiSelfCheck(sender);
+        }
+        if (name) {
+            momijiName(sender);
+        }
+        if (recipe) {
+            momijiRecipe(sender);
+        }
+        if (attr) {
+            momijiAttr(sender);
+        }
+    }
+
+    /** 物品自检：id / 材质 / 头贴图（逐字符比对）/ 附魔光效。 */
+    private void momijiSelfCheck(CommandSender sender) {
+        SlimefunItem item = SlimefunItem.getById("TOUHOU_MATERIAL_MOMIJI_TENGU");
+        guideLine(sender, PREFIX + "\u00a7e红叶飞散の天狗 · 物品自检");
+        if (item == null) {
+            guideLine(sender, "\u00a7c  未注册（Slimefun 注册表里查不到 TOUHOU_MATERIAL_MOMIJI_TENGU）");
+            return;
+        }
+        ItemStack icon = item.getItem();
+        guideLine(sender, "\u00a78  id = " + item.getId()
+                + "   类 = " + item.getClass().getSimpleName());
+        guideLine(sender, "\u00a78  材质 = " + (icon == null ? "(null)" : String.valueOf(icon.getType()))
+                + "（应为 PLAYER_HEAD）");
+        guideLine(sender, "\u00a78  物品组 = " + (item.getItemGroup() == null
+                ? "(null)" : item.getItemGroup().getKey().toString()));
+
+        // 头贴图：逐字符比对（两串都打出来，不只写"相等"）
+        String expect = AddItems.MOMIJI_TENGU_TEXTURE;
+        String actual = AddItems.MOMIJI_TENGU == null
+                ? null : AddItems.MOMIJI_TENGU.getSkullTexture().orElse(null);
+        guideLine(sender, "\u00a78  ---- 头贴图比对 ----");
+        guideLine(sender, "\u00a78  模板常量 MOMIJI_TENGU_TEXTURE = " + expect);
+        guideLine(sender, "\u00a78  getSkullTexture() 读回      = " + actual);
+        boolean same = expect.equals(actual);
+        guideLine(sender, "\u00a78  逐字符相等 = " + same
+                + (same ? "  \u00a7a[SKULL-MATCH]" : "  \u00a7c[SKULL-MISMATCH]"));
+        guideLine(sender, "\u00a78  模板 getAmount() = "
+                + (AddItems.MOMIJI_TENGU == null ? "(null)" : AddItems.MOMIJI_TENGU.getAmount())
+                + "（应为 1）");
+
+        ItemMeta meta = icon == null ? null : icon.getItemMeta();
+        if (meta != null) {
+            guideLine(sender, "\u00a78  附魔光效 = 附魔数 " + meta.getEnchants().size()
+                    + "，HIDE_ENCHANTS=" + meta.hasItemFlag(org.bukkit.inventory.ItemFlag.HIDE_ENCHANTS));
+        }
+        log("[TOUHOU] momiji selfcheck id=" + item.getId()
+                + " material=" + (icon == null ? "null" : icon.getType())
+                + " skullMatch=" + same
+                + " templateAmount="
+                + (AddItems.MOMIJI_TENGU == null ? -1 : AddItems.MOMIJI_TENGU.getAmount()));
+    }
+
+    /** 显示名与三行描述的颜色/样式读数。 */
+    private void momijiName(CommandSender sender) {
+        SlimefunItem item = SlimefunItem.getById("TOUHOU_MATERIAL_MOMIJI_TENGU");
+        guideLine(sender, PREFIX + "\u00a7e红叶飞散の天狗 · 名称与描述");
+        if (item == null || item.getItem() == null) {
+            guideLine(sender, "\u00a7c  未注册");
+            return;
+        }
+        ItemMeta meta = item.getItem().getItemMeta();
+        if (meta == null) {
+            guideLine(sender, "\u00a7c  拿不到 ItemMeta");
+            return;
+        }
+        printDisplayNameEvidence(sender, "显示名（应为 橙→金 渐变）", meta);
+        List<String> lore = meta.getLore();
+        if (lore == null) {
+            guideLine(sender, "\u00a7c  (没有 lore)");
+            return;
+        }
+        for (int i = 0; i < lore.size(); i++) {
+            String line = lore.get(i);
+            guideLine(sender, "\u00a77  lore[" + i + "] 原样 = "
+                    + (line == null ? "" : line.replace("\u00a7", "\\u00a7")));
+            // 逐字符颜色/样式读数（空行跳过）
+            if (line != null && !line.isEmpty()) {
+                for (String cl : colorPerChar(line)) {
+                    guideLine(sender, "\u00a78    " + cl);
+                }
+            }
+        }
+        // 额外把"删除线出现了几次""灰色片段有几段"做成机器可读的汇总
+        int strikeCount = 0;
+        int grayCount = 0;
+        for (String line : lore) {
+            if (line == null) {
+                continue;
+            }
+            for (int i = 0; i + 1 < line.length(); i++) {
+                if (line.charAt(i) == '\u00a7') {
+                    char c = line.charAt(i + 1);
+                    if (c == 'm' || c == 'M') {
+                        strikeCount++;
+                    }
+                    if (c == '7') {
+                        grayCount++;
+                    }
+                }
+            }
+        }
+        guideLine(sender, "\u00a78  ---- 汇总 ----");
+        guideLine(sender, "\u00a78  §m（删除线）出现次数 = " + strikeCount + "（两个括号片段 ⇒ 期望 2）");
+        guideLine(sender, "\u00a78  §7（灰色）出现次数 = " + grayCount);
+        log("[TOUHOU] momiji name strike=" + strikeCount + " gray=" + grayCount
+                + " loreLines=" + lore.size());
+    }
+
+    /** 配方：9 格逐格 + 产出数量（两条消费路径）。 */
+    private void momijiRecipe(CommandSender sender) {
+        SlimefunItem item = SlimefunItem.getById("TOUHOU_MATERIAL_MOMIJI_TENGU");
+        guideLine(sender, PREFIX + "\u00a7e红叶飞散の天狗 · 配方");
+        if (item == null) {
+            guideLine(sender, "\u00a7c  未注册");
+            return;
+        }
+        guideLine(sender, "\u00a78  配方类型 = " + (item.getRecipeType() == null
+                ? "(null)" : item.getRecipeType().getKey().toString())
+                + "   指向的机器 = " + (item.getRecipeType() == null
+                        || item.getRecipeType().getMachine() == null
+                                ? "(无)" : item.getRecipeType().getMachine().getId()));
+        // 路径①：SlimefunItem#getRecipeOutput（指南页产物格 / 自动合成机读它）
+        ItemStack declared = item.getRecipeOutput();
+        int amount = declared == null ? -1 : declared.getAmount();
+        guideLine(sender, "\u00a78  [路径①] getRecipeOutput().getAmount() = " + amount
+                + "  期望 1 ⇒ " + (amount == 1 ? "\u00a7a符合" : "\u00a7c不符"));
+        // 路径②：魔法工作台配方表里那条
+        ItemStack tableOutput = null;
+        io.github.thebusybiscuit.slimefun4.core.multiblocks.MultiBlockMachine wb = findMagicWorkbench();
+        if (wb != null) {
+            tableOutput = findRecipeOutput(wb, item.getRecipe());
+        }
+        int tableAmount = tableOutput == null ? -1 : tableOutput.getAmount();
+        guideLine(sender, "\u00a78  [路径②] 魔法工作台配方表里那条 output.getAmount() = " + tableAmount
+                + "  期望 1 ⇒ " + (tableAmount == 1 ? "\u00a7a符合" : "\u00a7c不符"));
+        // 9 格逐格
+        guideLine(sender, "\u00a7e  -- 配方 9 格（左上→右下，共 3 行）--");
+        ItemStack[] grid = item.getRecipe();
+        for (int i = 0; i < (grid == null ? 0 : grid.length); i++) {
+            ItemStack cell = grid[i];
+            guideLine(sender, "\u00a78    [" + i + "]=" + (cell == null ? "(空)"
+                    : cell.getType() + " x" + cell.getAmount()
+                            + "  id=" + idOf(cell)
+                            + "  名=" + com.example.touhou.core.RecipePages.labelOf(cell)));
+        }
+        guideLine(sender, "\u00a78  Slimefun 多方块配方表里能产出它的 = "
+                + countMachineRecipesFor(item) + " 条（应为 1）");
+        guideLine(sender, "\u00a78  Bukkit 配方表里能产出它的 = " + countRecipesFor(item)
+                + " 条（应为 0 —— 走粘液多方块）");
+        log("[TOUHOU] momiji recipe declaredOutput=" + amount
+                + " machineRecipeTable=" + tableAmount
+                + " machineRecipes=" + countMachineRecipesFor(item));
+    }
+
+    /**
+     * 属性：模板上的 4 个 {@code AttributeModifier} 清单 + 实际数值读数。
+     *
+     * <h2>★ 必须分清两件事（这也是本命令诚实性的关键）</h2>
+     * <ol>
+     *   <li><b>模板上的修饰符</b>：无头可读 —— 直接读物品 {@code ItemMeta} 的
+     *       {@code getAttributeModifiers()}，能证明"4 项都挂上了、数值/运算/槽位都对"。</li>
+     *   <li><b>装备后的实际数值</b>：需要<b>真实玩家</b>戴到头部槽才读得到
+     *       （{@code Player#getAttribute(...).getValue()}）。
+     *       无头测试服<b>没有玩家</b>，所以本节：
+     *       <ul>
+     *         <li>若在线玩家存在 ⇒ 真实走一遍「装备前 / 装备后 / 卸下后」三个读数；</li>
+     *         <li>否则 ⇒ 用一只<b>临时生成的僵尸</b>证明
+     *             {@code Attributable#getAttribute().getValue()} 这条读数链路本身可用
+     *             （僵尸也能戴头盔、也有 {@code GENERIC_MOVEMENT_SPEED}），
+     *             并<b>明确标注</b>"真人戴上头盔后的那一眼要你在游戏里看"。</li>
+     *       </ul>
+     *   </li>
+     * </ol>
+     */
+    private void momijiAttr(CommandSender sender) {
+        SlimefunItem item = SlimefunItem.getById("TOUHOU_MATERIAL_MOMIJI_TENGU");
+        guideLine(sender, PREFIX + "\u00a7e红叶飞散の天狗 · 属性加成");
+        if (item == null || item.getItem() == null) {
+            guideLine(sender, "\u00a7c  未注册");
+            return;
+        }
+        // ---- ① 模板上的修饰符清单
+        ItemMeta meta = item.getItem().getItemMeta();
+        guideLine(sender, "\u00a7e  -- ① 模板上的 AttributeModifier 清单 --");
+        if (meta == null) {
+            guideLine(sender, "\u00a7c  拿不到 ItemMeta");
+            return;
+        }
+        com.google.common.collect.Multimap<org.bukkit.attribute.Attribute,
+                org.bukkit.attribute.AttributeModifier> mods = meta.getAttributeModifiers();
+        int n = 0;
+        if (mods != null) {
+            for (java.util.Map.Entry<org.bukkit.attribute.Attribute,
+                    org.bukkit.attribute.AttributeModifier> e : mods.entries()) {
+                org.bukkit.attribute.AttributeModifier m = e.getValue();
+                guideLine(sender, "\u00a78    " + e.getKey().getKey()
+                        + "  数值=" + m.getAmount()
+                        + "  运算=" + m.getOperation()
+                        + "  槽位=" + m.getSlot()
+                        + "  名=" + m.getName());
+                n++;
+            }
+        }
+        guideLine(sender, "\u00a78  共 " + n + " 项（期望 4）");
+        guideLine(sender, "\u00a78  速度是 ADD_NUMBER 而非 ADD_SCALAR："
+                + "基础 0.1 + 0.06 = 0.16（= 相对基础 +60%）");
+        // 期望值逐项核对
+        String[] expectAttr = {"generic.movement_speed", "generic.max_health",
+                "generic.armor", "generic.armor_toughness"};
+        double[] expectVal = {com.example.touhou.core.AddItems.MOMIJI_SPEED_BONUS,
+                com.example.touhou.core.AddItems.MOMIJI_HEALTH_BONUS,
+                com.example.touhou.core.AddItems.MOMIJI_ARMOR_BONUS,
+                com.example.touhou.core.AddItems.MOMIJI_TOUGHNESS_BONUS};
+        int hit = 0;
+        for (int i = 0; i < expectAttr.length; i++) {
+            boolean found = false;
+            if (mods != null) {
+                for (java.util.Map.Entry<org.bukkit.attribute.Attribute,
+                        org.bukkit.attribute.AttributeModifier> e : mods.entries()) {
+                    // ★★ 键的比较口径（第一版在这里写错了、导致恒判"缺失"）：
+                    //   Attribute#getKey() 返回的是**带命名空间的完整键**
+                    //   （实测形如 minecraft:generic.movement_speed），
+                    //   而这里期望表里写的是短名（generic.movement_speed）。
+                    //   所以比较时要把命名空间前缀去掉再比 —— 不能拿短名直接 equals。
+                    String key = e.getKey().getKey().toString();
+                    String shortKey = key.contains(":")
+                            ? key.substring(key.indexOf(':') + 1) : key;
+                    if (shortKey.equals(expectAttr[i])
+                            && Math.abs(e.getValue().getAmount() - expectVal[i]) < 1.0E-9D
+                            && e.getValue().getSlot() == org.bukkit.inventory.EquipmentSlot.HEAD
+                            && e.getValue().getOperation()
+                                    == org.bukkit.attribute.AttributeModifier.Operation.ADD_NUMBER) {
+                        found = true;
+                        break;
+                    }
+                }
+            }
+            if (found) {
+                hit++;
+            }
+            guideLine(sender, "\u00a78    期望 " + expectAttr[i] + " = " + expectVal[i]
+                    + " (ADD_NUMBER, HEAD) ⇒ " + (found ? "\u00a7a命中" : "\u00a7c缺失"));
+        }
+        guideLine(sender, "\u00a78  命中 " + hit + " / 4"
+                + (hit == 4 ? "  \u00a7a[ATTR-DECL-OK]" : "  \u00a7c[ATTR-DECL-MISS]"));
+
+        // ---- ② 实际数值读数
+        guideLine(sender, "\u00a7e  -- ② 实际数值读数（AttributeInstance#getValue）--");
+        org.bukkit.entity.Player online = pickPlayer(null);
+        if (online != null && online.isOnline()) {
+            // 真实玩家：装备前 / 装备后 / 卸下后
+            org.bukkit.inventory.ItemStack helmet = online.getInventory().getHelmet();
+            ItemStack probeItem = item.getItem().clone();
+            guideLine(sender, "\u00a78  用在线玩家 " + online.getName() + " 实测（真实装备到头部）");
+            guideLine(sender, "\u00a78  [装备前] " + attributeLine(online));
+            online.getInventory().setHelmet(probeItem);
+            guideLine(sender, "\u00a78  [装备后] " + attributeLine(online));
+            online.getInventory().setHelmet(helmet);
+            guideLine(sender, "\u00a78  [卸下后] " + attributeLine(online));
+            log("[TOUHOU] momiji attr player=" + online.getName()
+                    + " after=" + attributeLine(online));
+        } else {
+            // 无头：没有 Player 可用
+            guideLine(sender, "\u00a78  ★ 无头测试服没有在线玩家 ⇒ "
+                    + "「真人把头盔戴到头部槽」这一眼无法在这里出现（这条要你在游戏里看）");
+            guideLine(sender, "\u00a78  这里能验的两件事：");
+            guideLine(sender, "\u00a78    ① 模板上确实挂着 4 个 ADD_NUMBER / HEAD 的修饰符（见上）；");
+            guideLine(sender, "\u00a78    ② 这四个数在真实 AttributeInstance 上算出来的结果（见下 ③）。");
+            guideLine(sender, "\u00a78  ⚠ 试过用临时僵尸代替玩家，但【装备槽】那条路在无头环境里推不动：");
+            guideLine(sender, "\u00a78     给僵尸 setHelmet(本物品) 后，下一 tick 读它的属性仍然一个都没变"
+                    + "（速度恒为 0.23、生命 20、盔甲 2、韧性 0）——");
+            guideLine(sender, "\u00a78     那说明 mob 的装备属性重算在这里没被触发，"
+                    + "所以【不拿它当证据】。");
+        }
+        // ---- ③ 数值口径的直接实测（与装备槽无关，验的是"数与运算"）
+        momijiAttrDirect(sender, item);
+    }
+
+    /** 把一个 {@code Attributable} 的 4 项属性读数拼成一行（供装备前/后对照）。 */
+    private static String attributeLine(org.bukkit.attribute.Attributable holder) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(attrOf(holder, org.bukkit.attribute.Attribute.GENERIC_MOVEMENT_SPEED, "速度"));
+        sb.append("  ").append(attrOf(holder, org.bukkit.attribute.Attribute.GENERIC_MAX_HEALTH, "生命"));
+        sb.append("  ").append(attrOf(holder, org.bukkit.attribute.Attribute.GENERIC_ARMOR, "盔甲"));
+        sb.append("  ").append(attrOf(holder,
+                org.bukkit.attribute.Attribute.GENERIC_ARMOR_TOUGHNESS, "韧性"));
+        return sb.toString();
+    }
+
+    /** 单个属性的 {@code getValue()}（拿不到实例时如实写 n/a）。 */
+    private static String attrOf(org.bukkit.attribute.Attributable holder,
+                                 org.bukkit.attribute.Attribute attribute, String label) {
+        org.bukkit.attribute.AttributeInstance inst = holder.getAttribute(attribute);
+        if (inst == null) {
+            return label + "=n/a";
+        }
+        return label + "=" + String.format(Locale.ROOT, "%.4f", inst.getValue());
+    }
+
+    /**
+     * <b>数值口径的直接实测</b>：把物品里那 4 个 {@code AttributeModifier} 原样加到
+     * 一个临时实体的 {@code AttributeInstance} 上，读加之前 / 加之后的 {@code getValue()}。
+     *
+     * <p>★ 这一步与"装备槽"无关，验的是<b>修饰符本身算出来的数</b>：
+     * {@code ADD_NUMBER} 的语义就是"现值 = 基础值 + 数值"，
+     * 所以如果实测满足 `after = base + amount`，就说明四项数值口径是对的
+     * （尤其速度那一项：0.06 带来的是"+0.06 绝对值"，在玩家基础 0.1 上就是 0.16 = +60%）。
+     *
+     * <p>★ 它<b>不能</b>替代"真人戴上头盔"：装备路径与直接加修饰符是两条路。
+     * 后者证明的是"数与运算对"，前者要真人进游戏看（本命令会如实标注）。
+     */
+    private void momijiAttrDirect(CommandSender sender, SlimefunItem item) {
+        guideLine(sender, "\u00a7e  -- ③ 数值口径直接实测（把 4 个修饰符直接加到临时实体上）--");
+        org.bukkit.World w = firstWorld(org.bukkit.World.Environment.NORMAL);
+        if (w == null) {
+            guideLine(sender, "\u00a7c  找不到主世界，跳过");
+            return;
+        }
+        org.bukkit.entity.Zombie z = null;
+        try {
+            z = w.spawn(w.getSpawnLocation(), org.bukkit.entity.Zombie.class);
+            Object[][] plan = {
+                    {org.bukkit.attribute.Attribute.GENERIC_MOVEMENT_SPEED, "速度",
+                            com.example.touhou.core.AddItems.MOMIJI_SPEED_BONUS},
+                    {org.bukkit.attribute.Attribute.GENERIC_MAX_HEALTH, "生命",
+                            com.example.touhou.core.AddItems.MOMIJI_HEALTH_BONUS},
+                    {org.bukkit.attribute.Attribute.GENERIC_ARMOR, "盔甲",
+                            com.example.touhou.core.AddItems.MOMIJI_ARMOR_BONUS},
+                    {org.bukkit.attribute.Attribute.GENERIC_ARMOR_TOUGHNESS, "韧性",
+                            com.example.touhou.core.AddItems.MOMIJI_TOUGHNESS_BONUS},
+            };
+            for (Object[] row : plan) {
+                org.bukkit.attribute.Attribute attr = (org.bukkit.attribute.Attribute) row[0];
+                String label = (String) row[1];
+                double amount = (Double) row[2];
+                org.bukkit.attribute.AttributeInstance inst = z.getAttribute(attr);
+                if (inst == null) {
+                    guideLine(sender, "\u00a78    " + label + "：该实体没有这个属性，跳过");
+                    continue;
+                }
+                double before = inst.getValue();
+                // UUID 用"属性名"派生，保证每个属性一个、且不会与实体原有修饰符撞
+                java.util.UUID u = java.util.UUID.nameUUIDFromBytes(
+                        ("touhou:attr_probe:" + attr.getKey()).getBytes(
+                                java.nio.charset.StandardCharsets.UTF_8));
+                inst.addModifier(new org.bukkit.attribute.AttributeModifier(u, "probe", amount,
+                        org.bukkit.attribute.AttributeModifier.Operation.ADD_NUMBER,
+                        org.bukkit.inventory.EquipmentSlot.HEAD));
+                double after = inst.getValue();
+                boolean ok = Math.abs(after - (before + amount)) < 1.0E-6D;
+                guideLine(sender, "\u00a78    " + label + "：加之前 " + String.format(Locale.ROOT, "%.4f", before)
+                        + " → 加之后 " + String.format(Locale.ROOT, "%.4f", after)
+                        + "（+ " + amount + "） ⇒ " + (ok ? "\u00a7a符合 ADD_NUMBER 语义（差值 = 数值）"
+                                : "\u00a7c不符合（差值 " + String.format(Locale.ROOT, "%.4f", after - before) + "）"));
+                inst.removeModifier(u);
+            }
+            guideLine(sender, "\u00a78    僵尸速度基础值 = "
+                    + String.format(Locale.ROOT, "%.4f",
+                            z.getAttribute(org.bukkit.attribute.Attribute.GENERIC_MOVEMENT_SPEED)
+                                    .getBaseValue())
+                    + "（★ 注意：僵尸不是玩家，玩家基础是 0.1 ⇒ 玩家戴上后应为 0.16）");
+            log("[TOUHOU] momiji attr direct probe done");
+        } catch (RuntimeException ex) {
+            guideLine(sender, "\u00a7c  直接实测失败：" + ex);
+            log("[TOUHOU] momiji attr direct probe failed: " + ex);
+        } finally {
+            if (z != null) {
+                z.remove();
+            }
+        }
     }
 
     // ------------------------------------------------------------------ harvest（丰收之时）
@@ -5167,7 +5573,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         if (args.length == 1) {
             return filter(List.of("reactor", "autobuild", "clickinfo", "structure", "saizen", "place",
                     "remove", "edit", "gui", "layout", "groups", "tags", "messages", "reload",
-                    "power", "dreamcatcher", "seal", "lily", "lilywhite", "harvest", "leaves",
+                    "power", "dreamcatcher", "seal", "lily", "springherald", "harvest", "leaves",
                     "acquisition", "echo", "proj", "guide"), args[0]);
         }
         if (args[0].equalsIgnoreCase("acquisition") && args.length == 2) {
@@ -5177,8 +5583,11 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
             return filter(List.of("selfcheck", "tools", "drop", "watch", "field", "check", "proof",
                     "clear"), args[1]);
         }
-        if (args[0].equalsIgnoreCase("lilywhite") && args.length == 2) {
+        if (args[0].equalsIgnoreCase("springherald") && args.length == 2) {
             return filter(List.of("selfcheck", "name", "recipe"), args[1]);
+        }
+        if (args[0].equalsIgnoreCase("momiji") && args.length == 2) {
+            return filter(List.of("selfcheck", "name", "recipe", "attr"), args[1]);
         }
         if (args[0].equalsIgnoreCase("harvest") && args.length == 2) {
             return filter(List.of("selfcheck", "test", "probe", "clear", "cell", "rng", "wake",
@@ -5284,6 +5693,6 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
     public static List<String> commands() {
         return List.of("reactor", "autobuild", "clickinfo", "structure", "saizen", "place", "remove",
                 "edit", "gui", "layout", "groups", "tags", "messages", "reload", "power",
-                "dreamcatcher", "seal", "lily", "lilywhite", "harvest", "leaves", "proj");
+                "dreamcatcher", "seal", "lily", "springherald", "momiji", "harvest", "leaves", "proj");
     }
 }

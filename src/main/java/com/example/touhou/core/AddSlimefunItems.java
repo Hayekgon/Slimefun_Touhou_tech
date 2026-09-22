@@ -13,6 +13,8 @@ import io.github.thebusybiscuit.slimefun4.implementation.SlimefunItems;
 import org.bukkit.Material;
 import org.bukkit.inventory.ItemStack;
 
+import java.util.UUID;
+
 /**
  * TOUHOU 侧物品与配方的注册。
  *
@@ -25,14 +27,14 @@ public final class AddSlimefunItems {
     }
 
     /**
-     * 「莉莉白」每次合成的产出数量 —— <b>2</b>。
+     * 「报春の妖精」每次合成的产出数量 —— <b>2</b>。
      *
      * <p>抽成常量是为了让"需求说 2 个"只有一个出处：注册处（第 5 个参数
-     * {@code new SlimefunItemStack(AddItems.LILY_WHITE, LILY_WHITE_OUTPUT_AMOUNT)}）
-     * 与验证命令 {@code /touhou lilywhite} 都读它，
+     * {@code new SlimefunItemStack(AddItems.SPRING_HERALD, SPRING_HERALD_OUTPUT_AMOUNT)}）
+     * 与验证命令 {@code /touhou springherald} 都读它，
      * 于是命令打印的"期望产出"与真正写进合成表的数量不可能对不上。
      */
-    public static final int LILY_WHITE_OUTPUT_AMOUNT = 2;
+    public static final int SPRING_HERALD_OUTPUT_AMOUNT = 2;
 
     /** 反应堆核心（多方块核心 + 发电机）。 */
     public static UtsuhoReactorCore UTSUHO_REACTOR_CORE;
@@ -41,7 +43,7 @@ public final class AddSlimefunItems {
     /** 春泥（妖精之力素材）。 */
     public static SlimefunItem SPRING_MUD;
     /**
-     * 莉莉白（报春的妖精；<b>魔法工作台</b>合成，一次产出 <b>2</b> 个）。
+     * 报春の妖精（报春的妖精；<b>魔法工作台</b>合成，一次产出 <b>2</b> 个）。
      *
      * <p>★ "产出 2 个"用的是<b>粘液本体的机制</b>：{@code SlimefunItem} 那条吃第 5 个参数
      * {@code recipeOutput} 的构造器，传 {@code new SlimefunItemStack(模板, 2)}。
@@ -55,26 +57,36 @@ public final class AddSlimefunItems {
      * 与<b>自动合成机</b>（{@code SlimefunItemRecipe} 的 {@code item.getRecipeOutput()}）
      * 读的正是后者 ⇒ 那两处会少一半。用本家机制则天然全对。
      *
-     * <p>⚠ {@link AddItems#LILY_WHITE} 模板本身的数量必须保持 <b>1</b>：
+     * <p>⚠ {@link AddItems#SPRING_HERALD} 模板本身的数量必须保持 <b>1</b>：
      * 改模板会连累 {@code /sf give} 与指南页物品图标，而且会踩上面那条告警。
      */
-    public static SlimefunItem LILY_WHITE;
+    public static SlimefunItem SPRING_HERALD;
+    /**
+     * 红叶飞散の天狗 —— 魔法工作台合成的<b>头部装备</b>，戴上后给 4 项属性加成。
+     *
+     * <p>★ 归属 1 级组 {@link AddGroups#MATERIAL}：与报春の妖精 / 落叶同为"素材/角色道具"，
+     * 但它是唯一一件<b>带属性修饰符</b>的（见 {@link #momijiTenguAttributes()}）。
+     *
+     * <p>★ <b>产出 1 个</b> ⇒ 4 参构造器，<b>不传</b> {@code recipeOutput}
+     * （那是"一次出多个"才用的，见 {@link #SPRING_HERALD} 的反面教材）。
+     */
+    public static SlimefunItem MOMIJI_TENGU;
     /**
      * 丰收之时 —— 范围强制催熟的<b>单方块机器</b>（右键生效，不需要 GUI）。
      *
      * <p>★ 归属 2 级组 {@link AddGroups#SIMPLE_MACHINE}（单方块机器，挂在容器组 MACHINE 下）：
-     * 它是可放置、有实际功能的机器，与"纯素材"的春泥 / 莉莉白不同类；
+     * 它是可放置、有实际功能的机器，与"纯素材"的春泥 / 报春の妖精不同类；
      * 又因为它<b>不是</b>多方块，所以不进 {@code COMPLEX_MACHINE}。
      * （<b>不能</b>直接挂 {@code MACHINE} —— 那是 FlexItemGroup，装物品会抛异常，
      * 判据见 {@link AddGroups#SIMPLE_MACHINE}。）
      *
      * <p>★ 配方类型 {@code RecipeType.MAGIC_WORKBENCH}：<b>用户没有指定</b>，
-     * 这里按上一件物品（莉莉白）的惯例取魔法工作台 —— 理由是配方里有
+     * 这里按上一件物品（报春の妖精）的惯例取魔法工作台 —— 理由是配方里有
      * 「另一个世界的回响」（靠维度穿梭才能拿到），定位偏后期，配魔法工作台合理。
      * <b>这是我的判断，不是用户口径。</b>
      *
      * <p>★ <b>单次产出 1 个</b> ⇒ 用 4 参构造器，<b>不传</b>第 5 参数 {@code recipeOutput}
-     * （与莉莉白刻意相反，别顺手抄成 2）。
+     * （与报春の妖精刻意相反，别顺手抄成 2）。
      */
     public static HarvestTime HARVEST_TIME;
     /**
@@ -85,7 +97,7 @@ public final class AddSlimefunItems {
      * 指南页槽 10 显示空气（NULL 的 {@code getItem(Player)} 返回空气）。
      * 用户没要求做门面类型来说明获取方式，所以本实现没加。
      *
-     * <p>★ 归属 1 级组 {@link AddGroups#MATERIAL}：与春泥 / 莉莉白同为"纯素材"。
+     * <p>★ 归属 1 级组 {@link AddGroups#MATERIAL}：与春泥 / 报春の妖精同为"纯素材"。
      */
     public static SlimefunItem FALLEN_LEAVES;
     /**
@@ -190,7 +202,7 @@ public final class AddSlimefunItems {
                 RecipeType.ENHANCED_CRAFTING_TABLE,
                 springMudRecipe()), plugin);
 
-        // 莉莉白：普通材料，用【魔法工作台】合成，一次产出 2 个。
+        // 报春の妖精：普通材料，用【魔法工作台】合成，一次产出 2 个。
         // ★ 配方类型就用本体 RecipeType.MAGIC_WORKBENCH —— 它的 machine 是 "MAGIC_WORKBENCH"
         //   （SlimefunItems 里的 id），属于 MultiBlockMachine 子孙，走的是
         //   RecipeType#register 的第 2 条路（mbm.addRecipe），而传进去的 result 已经是
@@ -198,17 +210,34 @@ public final class AddSlimefunItems {
         //   指南页槽 10 显示的也是魔法工作台图标（本体类型的图标就是那台机器），
         //   不需要再自造门面类型。
         // ★ "产出 2 个"只在最后一个参数里出现一次（单一出处），
-        //   模板 AddItems.LILY_WHITE 保持 1 个 —— 判据见本字段的注释。
-        LILY_WHITE = register(new SlimefunItem(
+        //   模板 AddItems.SPRING_HERALD 保持 1 个 —— 判据见本字段的注释。
+        SPRING_HERALD = register(new SlimefunItem(
                 AddGroups.MATERIAL,
-                AddItems.LILY_WHITE,
+                AddItems.SPRING_HERALD,
                 RecipeType.MAGIC_WORKBENCH,
-                lilyWhiteRecipe(),
-                new SlimefunItemStack(AddItems.LILY_WHITE, LILY_WHITE_OUTPUT_AMOUNT)), plugin);
+                springHeraldRecipe(),
+                new SlimefunItemStack(AddItems.SPRING_HERALD, SPRING_HERALD_OUTPUT_AMOUNT)), plugin);
+
+        // 红叶飞散の天狗：魔法工作台合成，【产出 1 个】⇒ 4 参构造器（不传 recipeOutput）。
+        // ★★ 它的 4 项属性加成【不在这里挂】—— 在 AddItems.setup() 里、注册【之前】就挂好了。
+        //    踩坑记录（本次实机第一版就是这么炸的）：
+        //      SlimefunItem#register → onEnable 末尾会调 itemStackTemplate.lock()
+        //      （判据见 SlimefunItem 的 onEnable：if (itemStackTemplate instanceof SlimefunItemStack
+        //        stack && isItemStackImmutable()) stack.lock()），
+        //      锁定之后再改 ItemMeta 会抛：
+        //        WrongItemStackException: You probably wanted to alter a different ItemStack:
+        //        TOUHOU_MATERIAL_MOMIJI_TENGU is not mutable.
+        //        at SlimefunItemStack.validate(SlimefunItemStack.java:274)
+        //      ⇒ 整个插件启用失败。所以属性修饰符必须在**模板刚建好、还没注册**时写进 ItemMeta。
+        MOMIJI_TENGU = register(new SlimefunItem(
+                AddGroups.MATERIAL,
+                AddItems.MOMIJI_TENGU,
+                RecipeType.MAGIC_WORKBENCH,
+                momijiTenguRecipe()), plugin);
 
         // 丰收之时：范围强制催熟的单方块机器。
         // ★ 4 参构造器（单次产出 1 个）—— 刻意【不】传第 5 参数 recipeOutput，
-        //   与莉莉白相反（那件是 2 个）。模板数量保持 1。
+        //   与报春の妖精相反（那件是 2 个）。模板数量保持 1。
         // ★ 它的右键行为全在 HarvestTime#getItemHandler（SimpleSlimefunItem 的钩子），
         //   这里只负责注册与配方。
         HARVEST_TIME = register(new HarvestTime(
@@ -405,7 +434,7 @@ public final class AddSlimefunItems {
     }
 
     /**
-     * 莉莉白的合成配方（<b>魔法工作台</b>）：八格春泥围边，正中间一个水桶。
+     * 报春の妖精的合成配方（<b>魔法工作台</b>）：八格春泥围边，正中间一个水桶。
      *
      * <pre>
      *   春泥   春泥   春泥
@@ -423,15 +452,62 @@ public final class AddSlimefunItems {
      *
      * <p>★ 产出数量 <b>2</b> 不在这里写 —— 本方法只管 9 格图案，
      * 数量由注册处那个第 5 参数 {@code new SlimefunItemStack(模板, 2)} 统一决定
-     * （判据见 {@link #LILY_WHITE}）。
+     * （判据见 {@link #SPRING_HERALD}）。
      */
-    private static ItemStack[] lilyWhiteRecipe() {
+    private static ItemStack[] springHeraldRecipe() {
         return new ItemStack[] {
                 AddItems.SPRING_MUD, AddItems.SPRING_MUD, AddItems.SPRING_MUD,
                 AddItems.SPRING_MUD, new ItemStack(Material.WATER_BUCKET), AddItems.SPRING_MUD,
                 AddItems.SPRING_MUD, AddItems.SPRING_MUD, AddItems.SPRING_MUD
         };
     }
+
+    /**
+     * 红叶飞散の天狗的合成配方（<b>魔法工作台</b>）。
+     *
+     * <pre>
+     *   红色染料     落叶            魔法结晶III
+     *   落叶         另一个世界的回响 落叶
+     *   魔法结晶III  落叶            红色染料
+     * </pre>
+     *
+     * <p>★ 「落叶」与「另一个世界的回响」都是本项目自己的模板
+     * （{@link AddItems#FALLEN_LEAVES} / {@link AddItems#ECHO_OF_ANOTHER_WORLD}）——
+     * 配方匹配拿<b>粘液 id</b> 比，所以必须给模板本身。
+     *
+     * <p>★ 「魔法结晶III」用的是<b>本体常量</b> {@code SlimefunItems.MAGIC_LUMP_3}
+     * （字段名已用 {@code javap} 在运行期 jar 上核实：本体里是
+     * {@code MAGIC_LUMP_1 / MAGIC_LUMP_2 / MAGIC_LUMP_3} 三档，
+     * 没有任何叫 {@code MAGIC_CRYSTAL} 的字段 —— 中文名"魔法结晶"对应的是 {@code MAGIC_LUMP}）。
+     * 用常量而不是硬写 id 字符串，才不会在改名时静默失配。
+     *
+     * <p>★ 产出 <b>1</b> 个：本方法只管 9 格图案；注册处用的是 4 参构造器
+     * （没有 {@code recipeOutput}），所以产出就是模板自己的数量 1。
+     */
+    private static ItemStack[] momijiTenguRecipe() {
+        return new ItemStack[] {
+                new ItemStack(Material.RED_DYE), AddItems.FALLEN_LEAVES, SlimefunItems.MAGIC_LUMP_3,
+                AddItems.FALLEN_LEAVES, AddItems.ECHO_OF_ANOTHER_WORLD, AddItems.FALLEN_LEAVES,
+                SlimefunItems.MAGIC_LUMP_3, AddItems.FALLEN_LEAVES, new ItemStack(Material.RED_DYE)
+        };
+    }
+
+    // ---------------------------------------------------------------- 属性加成
+    //
+    // ★★ 「红叶飞散の天狗」的 4 项属性加成【不在这里挂】，而在
+    //    {@code AddItems.applyMomijiAttributes()}（AddItems.setup() 的末尾、注册之前）。
+    //    踩坑记录（本次实机第一版就是这么炸的）：
+    //      SlimefunItem#register → onEnable 末尾会调 itemStackTemplate.lock()
+    //      （判据见 SlimefunItem 的 onEnable：if (itemStackTemplate instanceof SlimefunItemStack
+    //        stack && isItemStackImmutable()) stack.lock()），
+    //      锁定之后再改 ItemMeta 会抛：
+    //        WrongItemStackException: You probably wanted to alter a different ItemStack:
+    //        TOUHOU_MATERIAL_MOMIJI_TENGU is not mutable.
+    //        at SlimefunItemStack.validate(SlimefunItemStack.java:274)
+    //        at SlimefunItemStack.setItemMeta(SlimefunItemStack.java:254)
+    //      ⇒ 整个插件启用失败（"Error occurred while enabling Touhou"）。
+    //    所以"给物品模板加属性修饰符"这件事必须发生在**注册之前**。
+    //    诊断读数见 {@code /touhou momiji attr}。
 
     /**
      * 丰收之时的合成配方（<b>魔法工作台</b>）。
@@ -533,9 +609,11 @@ public final class AddSlimefunItems {
         return "TOUHOU 注册："
                 + (UTSUHO_REACTOR_CORE == null ? "反应堆核心=未注册" : "反应堆核心=OK")
                 + " / " + (BLAZING_ASH == null ? "炙热的灰烬=未注册" : "炙热的灰烬=OK")
-                + " / " + (LILY_WHITE == null ? "莉莉白=未注册"
-                        : "莉莉白=OK(" + LILY_WHITE.getId()
-                                + ",产出" + LILY_WHITE_OUTPUT_AMOUNT + ")")
+                + " / " + (SPRING_HERALD == null ? "报春の妖精=未注册"
+                        : "报春の妖精=OK(" + SPRING_HERALD.getId()
+                                + ",产出" + SPRING_HERALD_OUTPUT_AMOUNT + ")")
+                + " / " + (MOMIJI_TENGU == null ? "红叶飞散の天狗=未注册"
+                        : "红叶飞散の天狗=OK(" + MOMIJI_TENGU.getId() + ",产出1,属性4项)")
                 + " / " + (HARVEST_TIME == null ? "丰收之时=未注册"
                         : "丰收之时=OK(" + HARVEST_TIME.getId() + ",产出1)")
                 + " / " + (FALLEN_LEAVES == null ? "落叶=未注册"

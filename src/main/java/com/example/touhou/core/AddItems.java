@@ -24,14 +24,26 @@ public final class AddItems {
     }
 
     /**
-     * 「莉莉白」的头颅 Value —— 用户给定的那串 base64（原样照抄，不做任何加工）。
+     * 「报春の妖精」的头颅 Value —— 用户给定的那串 base64（原样照抄，不做任何加工）。
      *
-     * <p>★ 调试命令 {@code /touhou lilywhite} 也读这个常量做比对，
+     * <p>★ 调试命令 {@code /touhou springherald} 也读这个常量做比对，
      * 于是"用户给的那串"与"物品实际带着的那串"是同一份字符串、只有一个出处。
      */
-    public static final String LILY_WHITE_TEXTURE =
+    public static final String SPRING_HERALD_TEXTURE =
             "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUv"
             + "YTAyZTc3YTIyNmFhOGJhZjlkMjkwMTYxMzliMWI2OTJhOTRlYTg4NzkwMWNhMzUzMDI3MzNjNzMxZjgxNDVlYSJ9fX0=";
+
+    /**
+     * 「红叶飞散の天狗」的头颅 Value —— 用户给定的那串 base64（原样照抄，不做任何加工）。
+     *
+     * <p>★ 判据同报春の妖精那串：这串以 {@code "ey"} 开头 ⇒
+     * {@code SlimefunItemStack} 的 {@code getTexture} 会把它<b>原样</b>当 base64 用
+     * （只有"64 位十六进制"那种才会被自动包成 base64，所以这里不需要任何加工）。
+     * 调试命令 {@code /touhou momiji} 也读这个常量做逐字符比对，只有一个出处。
+     */
+    public static final String MOMIJI_TENGU_TEXTURE =
+            "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUv"
+            + "ODhjZTg3NDVhMzU4ZjMwNzVmODAyNWRjYWQ2YWVlYjY2ZjVlMTYxMGU2YTVlMTFkNDZlNzIyNGY1ZDE4MGQxMSJ9fX0=";
 
     /**
      * 渐变配色表。
@@ -41,7 +53,7 @@ public final class AddItems {
      * 也让"哪件物品用哪套渐变"在代码里一眼可查。
      */
     private enum Gradient {
-        /** 莉莉白：粉 → 白。 */
+        /** 报春の妖精：粉 → 白。 */
         PINK_WHITE(0xFFB3D9, 0xFFFFFF),
         /** 丰收之时：橙 → 黄（用户要求"橙色→黄色 左到右渐变"）。 */
         ORANGE_YELLOW(0xFF8C00, 0xFFE24A),
@@ -59,7 +71,16 @@ public final class AddItems {
          * 用户原文对名称和描述各给了一套（名称"金色至棕色"、描述"金色至橙色"）。
          * 本实现<b>照做</b>，没有擅自统一；报告里也提了一句"看起来像不统一"。
          */
-        GOLD_ORANGE(0xFFD700, 0xFF8C00);
+        GOLD_ORANGE(0xFFD700, 0xFF8C00),
+        /**
+         * 红叶飞散の天狗：橙 → 金（用户要求"橙色 → 金色 逐字符渐变"）。
+         *
+         * <p>★ 起止色是本实现的判断（用户只给了颜色名）：
+         * 橙取 {@code #FF8C00}（darkorange，与丰收之时/落叶描述那套同一个橙，保持一致），
+         * 金取 {@code #FFD700}（标准 gold）。
+         * ★ 注意方向：这套是<b>橙在前、金在后</b>（{@link #GOLD_ORANGE} 正好相反）。
+         */
+        ORANGE_GOLD(0xFF8C00, 0xFFD700);
 
         private final int start;
         private final int end;
@@ -105,11 +126,19 @@ public final class AddItems {
     public static SlimefunItemStack SPRING_MUD;
 
     /**
-     * 莉莉白 —— 报春的妖精（东方 Project 的「リリーホワイト」）。
+     * 报春の妖精 —— 报春的妖精（东方 Project 的「リリーホワイト」，即 Lily White）。
      *
      * <p>id 按本项目铁律 {@code TOUHOU_"物品组"_"英文名"}：它归属 1 级组
-     * {@link AddGroups#MATERIAL}，英文名取 <b>Lily White</b>
-     * ⇒ {@code TOUHOU_MATERIAL_LILY_WHITE}。
+     * {@link AddGroups#MATERIAL}，英文名取 <b>Spring Herald</b>（报春的使者）
+     * ⇒ {@code TOUHOU_MATERIAL_SPRING_HERALD}。
+     *
+     * <p>★ <b>2026-09-22 改名 + 改 id</b>：原来是「莉莉白」/ {@code TOUHOU_MATERIAL_LILY_WHITE}，
+     * 现在是「报春の妖精」（★ 日文笔形，是 {@code の} 不是中文的 {@code 的}，用户逐字指定）/
+     * {@code TOUHOU_MATERIAL_SPRING_HERALD}。
+     * ⚠ <b>改 id 的代价（作者已知情并接受）</b>：存档里那些旧 id 的物品会变成"未知物品"
+     * （Slimefun 靠 PDC 里的 id 反查本体），本次<b>不做任何迁移</b>——
+     * 不扫背包、不动 playerdata、也不保留旧 id 的兼容分支。
+     * 与「梦想封印 集」那次改名同一路数（见 {@link #FANTASY_SEAL} 的注释）。
      *
      * <p>★ 为什么物品组选 {@code MATERIAL}：用户没有指定物品组。它没有任何功能
      * （不能右键、不耗电、不参与结构、不接 POWER），只是魔法工作台合成出来的
@@ -122,12 +151,33 @@ public final class AddItems {
      * 选这条构造器的判据见 {@link #gradientName}。
      *
      * <p>★ <b>本模板的数量必须保持 1</b>：合成时"产出 2 个"由配方侧的第 5 参数
-     * {@code recipeOutput} 决定（见 {@link AddSlimefunItems#LILY_WHITE}），
+     * {@code recipeOutput} 决定（见 {@link AddSlimefunItems#SPRING_HERALD}），
      * 不是靠改这里。改了这里会连累 {@code /sf give} 与指南页，
      * 而且会踩 Slimefun 那条 "illegal stack size" 告警
      * （{@code SlimefunItem#onEnable}，原文就写着"多产出请走 recipeOutput 参数"）。
      */
-    public static SlimefunItemStack LILY_WHITE;
+    public static SlimefunItemStack SPRING_HERALD;
+
+    /**
+     * 红叶飞散の天狗 —— 犬走椛（东方 Project 的「犬走 椛」，白狼天狗）。
+     *
+     * <p>id 按本项目铁律 {@code TOUHOU_"物品组"_"英文名"}：归属 1 级组
+     * {@link AddGroups#MATERIAL}，英文名取 <b>Momiji Tengu</b>
+     * （Momiji = 椛，Tengu = 天狗）⇒ {@code TOUHOU_MATERIAL_MOMIJI_TENGU}。
+     *
+     * <p>★ 材质是<b>头颅 Value</b>（用户给定的 base64，见 {@link #MOMIJI_TENGU_TEXTURE}），
+     * 与报春の妖精（原「莉莉白」）同一条构造器路径。
+     *
+     * <p>★ <b>戴在头上时的属性加成</b>（+60% 移动速度 / +12 最大生命 / +3 盔甲 / +1 盔甲韧性）
+     * 不走这里，而是由 {@code AddSlimefunItems.momijiTenguAttributes()} 以
+     * <b>原版属性修饰符</b>的形式挂到物品的 {@code ItemMeta} 上
+     * （{@code AttributeModifier} + {@code EquipmentSlot.HEAD}）——
+     * 判据与"为什么不是 EquipmentSlotGroup"见那个方法的注释。
+     *
+     * <p>⚠ 与莉莉白不同：它<b>不是</b>一次产出多个的物品，所以注册时用
+     * <b>4 参构造器</b>（模板数量保持 1）。
+     */
+    public static SlimefunItemStack MOMIJI_TENGU;
 
     /**
      * 丰收之时 —— 秋姐妹（秋穰子 / 秋静叶）的赠与，信奉丰收之人的宝物。
@@ -366,15 +416,15 @@ public final class AddItems {
                 "&a化作春泥更护花......",
                 "&a散发出微弱的妖精之力");
 
-        // 莉莉白：报春的妖精。
+        // 报春の妖精：报春的妖精。
         // ★ 材质：用户给定的【头颅 Value】（base64）。链路（已核实，见 SlimefunItemStack）：
         //   SlimefunItemStack(id, texture, name, lore...)
         //     → getTexture(id, texture)：texture.startsWith("ey") ⇒ 原样返回（这串正好以 "ey" 开头）
         //     → getSkull(id, texture)：PlayerSkin.fromBase64(...) → PlayerHead.getItemStack(...)
         //   所以这里【直接】把那串 Value 当第二个参数传进去即可，不用自己拼 SkullMeta。
-        //   运行期用 LILY_WHITE.getSkullTexture() 读回来核对（/touhou lilywhite）。
+        //   运行期用 SPRING_HERALD.getSkullTexture() 读回来核对（/touhou springherald）。
         //
-        // ★ 名字「莉莉白」与描述第一行用【粉白左到右渐变】：那串已经翻好的
+        // ★ 名字「报春の妖精」与描述第一行用【粉白左到右渐变】：那串已经翻好的
         //   §x§R§R§G§G§B§B 序列【必须】直接塞进构造器，绝不能写成 "&x&f&f&b&3&d&9..." ——
         //   构造器内部只调 ChatColor.translateAlternateColorCodes('&', name)，
         //   而它【不认】&x 这种十六进制序列（'x' 不是合法颜色字符，会被原样留下）。
@@ -382,13 +432,38 @@ public final class AddItems {
         //   判据与实测证据见本类的 gradientName 与最终报告。
         //
         // ★ 描述按用户原文：[第一行渐变] / (endl)换行 / [第二行灰色]。中间的 "" 就是换行。
-        LILY_WHITE = new SlimefunItemStack(
-                "TOUHOU_MATERIAL_LILY_WHITE",
-                LILY_WHITE_TEXTURE,
-                gradientName("莉莉白"),
+        SPRING_HERALD = new SlimefunItemStack(
+                "TOUHOU_MATERIAL_SPRING_HERALD",
+                SPRING_HERALD_TEXTURE,
+                gradientName("报春の妖精"),
                 "",
                 gradientName("报春的妖精，莉莉白，"),
                 "&7请城管不要无辜殴打无害的莉莉白，她很可爱=v=");
+
+        // ------------------------------------------------------------------ 红叶飞散の天狗
+        // ★ 名字与描述三行用【橙 → 金】逐字符渐变（用户口径）。
+        // ★ 描述原文里的 (endl) 是【换行标记】，不是字面文字 ⇒ 拆成三行（下面的 "" 是名与描述之间的空行）。
+        // ★★ 第 2 行是【混排】：普通文字渐变 + 括号内文字(连括号)"灰色 + 删除线"。
+        //    这种行不能手拼 § 串，必须走 mixedLoreLine(...) 的片段表（见那个方法的注释：
+        //    删除线是"格式"，§r 只清格式不清颜色，所以灰+删除线片段后面要显式 §r§7 收尾）。
+        // ★ 第 3 行（Ayayaya…）用户明确要求【整行灰色】，不参与渐变 ⇒ 直接用 "&7" 写法
+        //    （构造器会把 &7 翻成 §7；这一行没有任何 §x 序列，所以不会被构造器的翻译弄坏）。
+        MOMIJI_TENGU = new SlimefunItemStack(
+                "TOUHOU_MATERIAL_MOMIJI_TENGU",
+                MOMIJI_TENGU_TEXTURE,
+                gradientNameOrangeGold("红叶飞散の天狗"),
+                "",
+                // 第 1 行：整行渐变
+                gradientNameOrangeGold("幻想乡最高速天狗记者，"),
+                // 第 2 行：渐变 + 「(三流)」灰删除线 + 渐变 + 「(捏造新闻の人)」灰删除线 + 渐变尾巴
+                mixedLoreLine(
+                        LoreSegment.gradientOrangeGold("传统的"),
+                        LoreSegment.grayStrikethrough("(三流)"),
+                        LoreSegment.gradientOrangeGold("幻想记者"),
+                        LoreSegment.grayStrikethrough("(捏造新闻の人)"),
+                        LoreSegment.gradientOrangeGold("，")),
+                // 第 3 行：整行灰色（不渐变）
+                "&7Ayayayayayayayayayayaya");
 
         // 丰收之时：秋姐妹的赠与（橙黄渐变的机器）。
         // ★ 名字与描述【都是】橙→黄左到右渐变（用户要求"字体同上"）。
@@ -733,6 +808,17 @@ INFO_MODESHIFT = new SlimefunItemStack(
             FALLEN_LEAVES.setItemMeta(leavesMeta);
         }
 
+        // 红叶飞散の天狗：附魔光效（同一套"挂无用附魔 + HIDE_ENCHANTS"）。
+        //   ★ 光效与那四项属性加成都在【这里】、也就是注册【之前】完成 ——
+        //     原因见下面 applyMomijiAttributes() 的注释（注册后模板会被 lock，改不动了）。
+        MOMIJI_TENGU.addUnsafeEnchantment(Enchantment.ARROW_INFINITE, 1);
+        ItemMeta momijiMeta = MOMIJI_TENGU.getItemMeta();
+        if (momijiMeta != null) {
+            momijiMeta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
+            MOMIJI_TENGU.setItemMeta(momijiMeta);
+        }
+        applyMomijiAttributes();
+
         // ------------------------------------------------------------------ POWER（1 级组）
         // 头贴图直接引用原生物品的贴图常量（HeadTexture 是公开枚举）。
         POWER_INTEGRATED_CORE = new SlimefunItemStack(
@@ -855,6 +941,121 @@ INFO_MODESHIFT = new SlimefunItemStack(
         //   "获取方式"行 —— 物品介绍保持用户原文，一个字都不用加。
     }
 
+    // ---------------------------------------------------------------- 属性加成
+
+    /**
+     * 把「红叶飞散の天狗」的四项属性加成挂到物品模板上（<b>原版属性修饰符</b>）。
+     *
+     * <h2>★★ 调用时机是硬约束：必须早于物品注册</h2>
+     * 本方法由 {@link #setup()} 在<b>建好模板之后、AddSlimefunItems 注册之前</b>调用。
+     * 第一版把它放在注册之后（AddSlimefunItems 里），实机直接炸：
+     * <pre>
+     *   [ERROR]: Error occurred while enabling Touhou v1.0.0 (Is it up to date?)
+     *   io.github.thebusybiscuit.slimefun4.api.exceptions.WrongItemStackException:
+     *     You probably wanted to alter a different ItemStack:
+     *     TOUHOU_MATERIAL_MOMIJI_TENGU is not mutable.
+     *       at SlimefunItemStack.validate(SlimefunItemStack.java:274)
+     *       at SlimefunItemStack.setItemMeta(SlimefunItemStack.java:254)
+     *       at com.example.touhou.core.AddSlimefunItems.momijiTenguAttributes(AddSlimefunItems.java:571)
+     * </pre>
+     * 根因：{@code SlimefunItem#register} → {@code onEnable} 末尾会
+     * {@code itemStackTemplate.lock()}（模板被冻结），此后任何 {@code setItemMeta} 都被拒。
+     *
+     * <h2>★★ 为什么不是 {@code EquipmentSlotGroup}（javap 实测结论）</h2>
+     * 任务给的写法是 {@code ItemMeta#addAttributeModifier(Attribute, AttributeModifier, EquipmentSlotGroup.HEAD)}，
+     * 但<b>这一版 Paper（1.20.4）根本没有 {@code EquipmentSlotGroup}</b>：
+     * <pre>
+     *   $ javap -cp paper-api-1.20.4-R0.1-SNAPSHOT.jar org.bukkit.inventory.EquipmentSlotGroup
+     *   → 找不到类（jar 里 grep 只找到 org/bukkit/attribute/Attributable.class）
+     *   $ javap … org.bukkit.inventory.meta.ItemMeta | grep AttributeModifier
+     *   → public abstract boolean addAttributeModifier(Attribute, AttributeModifier)   // 只有两参
+     * </pre>
+     * {@code EquipmentSlotGroup} 是 1.20.5+ 才有的东西；1.20.4 用<b>单个 {@code EquipmentSlot}</b>。
+     * 所以这里用本版本真实存在的等价路径（同样是"直接调用原版属性修饰"，不是自研机制）：
+     * <pre>
+     *   new AttributeModifier(UUID, name, amount, Operation, EquipmentSlot.HEAD)   // 5 参构造器
+     *   ItemMeta#addAttributeModifier(Attribute, modifier)                        // 2 参
+     * </pre>
+     * ★ <b>必须用带 {@code EquipmentSlot.HEAD} 的那个构造器</b>：本版本还有一条不带槽位的
+     * 3 参构造器（{@code AttributeModifier(String,double,Operation)}），它作用于<b>所有槽位</b>
+     * —— 拿那个会让"放在背包/拿在手上"也加属性，明显不对。
+     *
+     * <h2>★ 数值口径（"+60%" 到底写 0.6 还是 0.06）</h2>
+     * 结论：<b>四项统一 {@code ADD_NUMBER}，速度那一项填 {@code 0.06}</b>。依据：
+     * <ol>
+     *   <li>{@code AttributeModifier.Operation} 本版本三个值（javap 核实）：
+     *       {@code ADD_NUMBER}（直接加绝对数）、{@code ADD_SCALAR}（按"基础值的比例"加）、
+     *       {@code MULTIPLY_SCALAR_1}（在最终值上乘算）。</li>
+     *   <li>任务要求另外三项是 {@code ADD_NUMBER} 直接加数（12/3/1），速度也说用原版属性修饰
+     *       ⇒ 四项统一，不混运算类型。</li>
+     *   <li>{@code GENERIC_MOVEMENT_SPEED} 的<b>基础值</b>是 {@code 0.1}；
+     *       "相对基础 +60%" ⇒ 最终值应为 {@code 0.16} ⇒ 增量 {@code 0.06}。</li>
+     *   <li>★ 若把 {@code 0.6} 填进 {@code ADD_NUMBER}，最终值变 {@code 0.7}（7 倍速），
+     *       那显然不是 +60%。（{@code 0.6} 只有在 {@code ADD_SCALAR} 下才等于 +60%，
+     *       而那条与"另外三项 ADD_NUMBER"的口径不一致。）</li>
+     * </ol>
+     * ⚠ 第 3 条是<b>代码推断</b>；实测读数（装备前/后/卸下后）由 {@code /touhou momiji attr} 给出，
+     * 若实测不是 0.16 ⇒ 说明基础值不是 0.1，以实测为准。
+     *
+     * <p>★ 四个属性用<b>四个不同的 UUID</b>：Bukkit 的 {@code addAttributeModifier} 按 UUID 去重，
+     * 共用同一个 UUID 会让后三项被当成"已存在"而丢弃（这一条在写的时候就静态抓到了）。
+     */
+    private static void applyMomijiAttributes() {
+        if (MOMIJI_TENGU == null) {
+            return;
+        }
+        ItemMeta meta = MOMIJI_TENGU.getItemMeta();
+        if (meta == null) {
+            Log.warn("[MOMIJI] 拿不到 ItemMeta，属性加成未挂载");
+            return;
+        }
+        meta.addAttributeModifier(org.bukkit.attribute.Attribute.GENERIC_MOVEMENT_SPEED,
+                new org.bukkit.attribute.AttributeModifier(MOMIJI_UUID_SPEED, "touhou_momiji_speed",
+                        MOMIJI_SPEED_BONUS, org.bukkit.attribute.AttributeModifier.Operation.ADD_NUMBER,
+                        org.bukkit.inventory.EquipmentSlot.HEAD));
+        meta.addAttributeModifier(org.bukkit.attribute.Attribute.GENERIC_MAX_HEALTH,
+                new org.bukkit.attribute.AttributeModifier(MOMIJI_UUID_HEALTH, "touhou_momiji_health",
+                        MOMIJI_HEALTH_BONUS, org.bukkit.attribute.AttributeModifier.Operation.ADD_NUMBER,
+                        org.bukkit.inventory.EquipmentSlot.HEAD));
+        meta.addAttributeModifier(org.bukkit.attribute.Attribute.GENERIC_ARMOR,
+                new org.bukkit.attribute.AttributeModifier(MOMIJI_UUID_ARMOR, "touhou_momiji_armor",
+                        MOMIJI_ARMOR_BONUS, org.bukkit.attribute.AttributeModifier.Operation.ADD_NUMBER,
+                        org.bukkit.inventory.EquipmentSlot.HEAD));
+        meta.addAttributeModifier(org.bukkit.attribute.Attribute.GENERIC_ARMOR_TOUGHNESS,
+                new org.bukkit.attribute.AttributeModifier(MOMIJI_UUID_TOUGHNESS, "touhou_momiji_toughness",
+                        MOMIJI_TOUGHNESS_BONUS, org.bukkit.attribute.AttributeModifier.Operation.ADD_NUMBER,
+                        org.bukkit.inventory.EquipmentSlot.HEAD));
+        MOMIJI_TENGU.setItemMeta(meta);
+        Log.info("[MOMIJI] 属性加成已挂载（注册前写入模板）：速度 +" + MOMIJI_SPEED_BONUS
+                + " / 生命 +" + MOMIJI_HEALTH_BONUS + " / 盔甲 +" + MOMIJI_ARMOR_BONUS
+                + " / 盔甲韧性 +" + MOMIJI_TOUGHNESS_BONUS + "，全部 ADD_NUMBER、槽位 HEAD");
+    }
+
+    /** 造一个稳定的属性修饰符 UUID（每次启动都一样，便于核对与去重）。 */
+    private static java.util.UUID momijiUuid(String kind) {
+        return java.util.UUID.nameUUIDFromBytes(
+                ("touhou:momiji_tengu:" + kind).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+    /** 四项加成的数值（都是 {@code ADD_NUMBER} 的绝对增量）。 */
+    public static final double MOMIJI_SPEED_BONUS = 0.06D;
+    /** +12 最大生命（2 颗心 × 6）。 */
+    public static final double MOMIJI_HEALTH_BONUS = 12.0D;
+    /** +3 盔甲值。 */
+    public static final double MOMIJI_ARMOR_BONUS = 3.0D;
+    /** +1 盔甲韧性。 */
+    public static final double MOMIJI_TOUGHNESS_BONUS = 1.0D;
+
+    private static final java.util.UUID MOMIJI_UUID_SPEED = momijiUuid("speed");
+    private static final java.util.UUID MOMIJI_UUID_HEALTH = momijiUuid("health");
+    private static final java.util.UUID MOMIJI_UUID_ARMOR = momijiUuid("armor");
+    private static final java.util.UUID MOMIJI_UUID_TOUGHNESS = momijiUuid("toughness");
+
+    /** 供 {@code /touhou momiji attr} 核对：四个属性修饰符的 UUID。 */
+    public static List<java.util.UUID> momijiAttributeUuids() {
+        return List.of(MOMIJI_UUID_SPEED, MOMIJI_UUID_HEALTH, MOMIJI_UUID_ARMOR, MOMIJI_UUID_TOUGHNESS);
+    }
+
     /**
      * 往核心物品的 lore 末尾追加「建造所需材料」清单。
      *
@@ -893,7 +1094,7 @@ INFO_MODESHIFT = new SlimefunItemStack(
     }
 
     /**
-     * 把一段文字逐字符染成<b>粉 → 白</b>的左到右渐变（莉莉白用的那套配色）。
+     * 把一段文字逐字符染成<b>粉 → 白</b>的左到右渐变（报春の妖精用的那套配色）。
      *
      * <p>配色与算法分离：本方法只是 {@link #gradientName(String, Gradient)} 的一个
      * 便捷入口，真正的插值在那边。
@@ -916,6 +1117,91 @@ INFO_MODESHIFT = new SlimefunItemStack(
     }
 
     /**
+     * 把一段文字逐字符染成<b>橙 → 金</b>的左到右渐变（「红叶飞散の天狗」用的配色）。
+     *
+     * @param text 要染的文字（纯文本，不要带 {@code §}/{@code &} 颜色代码）
+     * @return 每字符都带 {@code §x§R§R§G§G§B§B} 前缀的字符串
+     */
+    public static String gradientNameOrangeGold(String text) {
+        return gradientName(text, Gradient.ORANGE_GOLD);
+    }
+
+    /**
+     * 一行 lore 的<b>片段</b> —— 要么是渐变、要么是"灰 + 删除线"。
+     *
+     * <p>引入它是因为出现了一种新需求：<b>同一行里两种样式混排</b>
+     * （「红叶飞散の天狗」的第 2 行：普通文字渐变、括号内文字灰色带删除线）。
+     * 如果直接在 lore 字符串里手拼七个 {@code §}，那一行会变成一串没法维护、也没法核对的乱码；
+     * 写成片段表之后，"哪一段是什么样式"在调用处一眼可读。
+     */
+    public static final class LoreSegment {
+
+        private final String text;
+        private final boolean gradient;
+        /** 渐变片段用哪套配色（非渐变片段忽略）。 */
+        private final Gradient palette;
+
+        private LoreSegment(String text, boolean gradient, Gradient palette) {
+            this.text = text;
+            this.gradient = gradient;
+            this.palette = palette;
+        }
+
+        /** 渐变片段（用给定配色逐字符插值）。 */
+        public static LoreSegment gradient(String text, Gradient palette) {
+            return new LoreSegment(text, true, palette);
+        }
+
+        /** 渐变片段（橙 → 金，本件物品用的那套）。 */
+        public static LoreSegment gradientOrangeGold(String text) {
+            return new LoreSegment(text, true, Gradient.ORANGE_GOLD);
+        }
+
+        /** 灰 + 删除线片段（{@code §7§m}）。 */
+        public static LoreSegment grayStrikethrough(String text) {
+            return new LoreSegment(text, false, null);
+        }
+    }
+
+    /**
+     * 把若干 {@link LoreSegment} 拼成<b>一整行</b> lore。
+     *
+     * <h2>为什么必须显式收尾（这一段是踩过的坑）</h2>
+     * 删除线是<b>格式</b>而不是颜色：{@code §m} 一旦打开，后续字符会一直带删除线，
+     * 而 {@code §r} 只重置<b>格式</b>、<b>不重置颜色</b>。所以"灰+删除线片段"之后
+     * 必须显式写成 {@code §r§7}（先清格式、再回到灰色），否则
+     * ① 删除线会漏到后面的字上；② 颜色会落到"最后设置过的那个渐变色"上，
+     * 表现为"尾巴颜色忽然不对"。
+     *
+     * <p>因此本方法在每个"灰+删除线"片段后面都补一个 {@code §r§7}，
+     * 而渐变片段之间的切换不需要额外处理（每个字符自带 {@code §x} 序列）。
+     *
+     * <p>★ 渐变片段各自携带配色（{@link LoreSegment#gradient(String, Gradient)}），
+     * 所以本方法不是"只给这一件物品用" —— 以后哪一行要混样式，直接列片段即可。
+     *
+     * @param segments 片段（按显示顺序）
+     * @return 可直接交给 {@link SlimefunItemStack} 的一整行
+     */
+    public static String mixedLoreLine(LoreSegment... segments) {
+        if (segments == null || segments.length == 0) {
+            return "";
+        }
+        StringBuilder out = new StringBuilder(segments.length * 24);
+        for (LoreSegment seg : segments) {
+            if (seg == null) {
+                continue;
+            }
+            if (seg.gradient) {
+                out.append(gradientName(seg.text, seg.palette));
+            } else {
+                // 灰色 + 删除线；收尾 §r§7 的理由见方法注释
+                out.append("\u00a77\u00a7m").append(seg.text).append("\u00a7r\u00a77");
+            }
+        }
+        return out.toString();
+    }
+
+    /**
      * 把一段文字逐字符染成渐变，返回<b>已翻好的</b>
      * {@code §x§R§R§G§G§B§B} 序列串。
      *
@@ -931,7 +1217,7 @@ INFO_MODESHIFT = new SlimefunItemStack(
      * <p>★ 那条构造器对名字/描述仍会执行一次
      * {@code translateAlternateColorCodes('&', …)}，但它只翻 {@code '&'} 开头的两位序列，
      * <b>不会动已有的 {@code §}</b> —— 所以上面那串带 {@code §x} 的渐变能原样穿过去。
-     * 这一条是实测过的（证据见 {@code /touhou lilywhite} 与 {@code /touhou harvest} 打印的 JSON）。
+     * 这一条是实测过的（证据见 {@code /touhou springherald} / {@code /touhou momiji} 打印的 JSON）。
      *
      * <h2>插值口径</h2>
      * 第 {@code i} 个字符的比例是 {@code t = i / (len - 1)}（首字符=起点色，末字符=终点色），
