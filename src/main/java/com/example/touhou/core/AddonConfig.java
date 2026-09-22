@@ -308,6 +308,58 @@ public final class AddonConfig {
      */
     public int harvestCooldownMillis = 5000;
 
+    // ---- 落叶（「落叶」的获取机制：玩家手动破坏树叶按概率掉落）----
+
+    /**
+     * 落叶机制总开关（{@code leaves.enabled}）。
+     *
+     * <p>关掉之后：破坏树叶<b>不再</b>掉落落叶；物品本身照旧存在
+     * （已经拿到的落叶不受影响，指南页也照常显示）。
+     */
+    public boolean fallenLeavesEnabled = true;
+
+    /**
+     * 破坏一片树叶掉落落叶的<b>概率</b>（{@code leaves.drop-chance}，0~1）。
+     *
+     * <p>用户口径是 <b>20%</b> ⇒ 默认 {@code 0.2}。
+     * 配 0 = 永不掉落，配 1 = 每次都掉（两者都用于调试/极端玩法）。
+     */
+    public double fallenLeavesDropChance = 0.2D;
+
+    /**
+     * 命中时掉落数量的<b>下限</b>（{@code leaves.min-amount}，含端点）。
+     *
+     * <p>用户口径是 <b>2~7 个</b> ⇒ 默认 2 / 7。
+     */
+    public int fallenLeavesMinAmount = 2;
+
+    /**
+     * 命中时掉落数量的<b>上限</b>（{@code leaves.max-amount}，含端点）。
+     *
+     * <p>★ 上下限都会被 {@code validate} 钳到
+     * {@code 1..FallenLeaves.MAX_DROP_AMOUNT}，且保证 {@code max >= min} ——
+     * 否则 {@code nextInt(max - min + 1)} 会因负数参数在破坏方块时抛异常。
+     */
+    public int fallenLeavesMaxAmount = 7;
+
+    /**
+     * 用<b>剪刀</b>破坏树叶时要不要掉落叶（{@code leaves.drop-with-shears}）。
+     *
+     * <p>★ 默认 {@code false} = <b>不生效</b>（用户口径）。这不只是玩法偏好：
+     * <b>剪刀破坏会掉"树叶方块本身"</b>，而拿到方块就能"放置 → 破坏"无限循环 ——
+     * 关掉它就等于堵掉了那条刷取路径（判据见 {@link FallenLeaves#isExcludedTool}）。
+     */
+    public boolean fallenLeavesDropWithShears = false;
+
+    /**
+     * 用带<b>精准采集</b>的工具破坏树叶时要不要掉落叶
+     * （{@code leaves.drop-with-silk-touch}）。
+     *
+     * <p>★ 默认 {@code false} = <b>不生效</b>（用户口径），理由同上：
+     * 精准采集同样会掉"树叶方块本身"。
+     */
+    public boolean fallenLeavesDropWithSilkTouch = false;
+
     // ---- 维度穿梭（「另一个世界的回响」的获取机制）----
 
     /**
@@ -534,6 +586,9 @@ public final class AddonConfig {
         // 丰收之时那一段（机器行为参数：每方块冷却 + 自己的消息前缀）。
         loadHarvest(c, cfg);
 
+        // 落叶那一段（获取机制：概率 / 数量上下限 / 总开关）。
+        loadLeaves(c, cfg);
+
         c.consoleInfo = cfg.getBoolean("logging.console-info", c.consoleInfo);
         c.supplyEnabled = cfg.getBoolean("supply.enabled", c.supplyEnabled);
 
@@ -751,6 +806,28 @@ public final class AddonConfig {
     }
 
     /**
+     * 读 {@code leaves:} 段 —— 「落叶」的获取机制参数。
+     *
+     * <p>与 {@code echo:} / {@code harvest:} 同一类：这些是"机制参数"而不是物品属性，
+     * 所以落在 {@code config.yml}（本文件）而不是 {@code Items.yml}。
+     */
+    private static void loadLeaves(AddonConfig c, FileConfiguration cfg) {
+        ConfigurationSection s = cfg.getConfigurationSection("leaves");
+        if (s == null) {
+            return;
+        }
+        c.fallenLeavesEnabled = s.getBoolean("enabled", c.fallenLeavesEnabled);
+        // ★ 概率这一段允许写成百分比以外的形式吗？不允许 —— 口径固定为 0~1 的小数，
+        //   并在 validate 里钳死，免得"写 20 以为是 20%"这种歧义。
+        c.fallenLeavesDropChance = s.getDouble("drop-chance", c.fallenLeavesDropChance);
+        c.fallenLeavesMinAmount = s.getInt("min-amount", c.fallenLeavesMinAmount);
+        c.fallenLeavesMaxAmount = s.getInt("max-amount", c.fallenLeavesMaxAmount);
+        c.fallenLeavesDropWithShears = s.getBoolean("drop-with-shears", c.fallenLeavesDropWithShears);
+        c.fallenLeavesDropWithSilkTouch =
+                s.getBoolean("drop-with-silk-touch", c.fallenLeavesDropWithSilkTouch);
+    }
+
+    /**
      * 把明显不合法的配置挡下来并改成安全值。
      *
      * <p>真实踩点：`MachineFuel` 的进程 tick 必须 > 0（`FuelOperation` 构造器里有
@@ -876,6 +953,38 @@ public final class AddonConfig {
                     "harvest.cooldown-millis < 0，回退为 0（关闭冷却）");
             c.harvestCooldownMillis = 0;
         }
+        // 落叶概率：口径固定为 0~1 的小数，越界就钳住
+        //   ★ 上限必须钳到 1.0：写成 20（"以为是 20%"）时若不钳，`random.nextDouble() >= 20`
+        //     永远为假 ⇒ 变成"每次必掉"，正是最容易误判的那种静默行为。
+        if (c.fallenLeavesDropChance < 0.0D || c.fallenLeavesDropChance > 1.0D) {
+            Touhou.getInstance().getLogger().warning(
+                    "leaves.drop-chance (" + c.fallenLeavesDropChance
+                            + ") 不在 0~1 之间，已钳制（注意：口径是小数，20% 要写 0.2）");
+            c.fallenLeavesDropChance = Math.max(0.0D, Math.min(1.0D, c.fallenLeavesDropChance));
+        }
+        // 落叶数量上下限：钳到 1..MAX，并保证 max >= min
+        //   ★ 若不保证 max >= min，`nextInt(max - min + 1)` 会拿到 <= 0 的参数并抛异常
+        //     —— 那发生在"玩家破坏方块"这条高频路径上，会直接炸事件总线。
+        if (c.fallenLeavesMinAmount < 1 || c.fallenLeavesMinAmount > FallenLeaves.MAX_DROP_AMOUNT) {
+            Touhou.getInstance().getLogger().warning(
+                    "leaves.min-amount (" + c.fallenLeavesMinAmount + ") 越界，钳制为 1.."
+                            + FallenLeaves.MAX_DROP_AMOUNT);
+            c.fallenLeavesMinAmount = Math.max(1,
+                    Math.min(FallenLeaves.MAX_DROP_AMOUNT, c.fallenLeavesMinAmount));
+        }
+        if (c.fallenLeavesMaxAmount < 1 || c.fallenLeavesMaxAmount > FallenLeaves.MAX_DROP_AMOUNT) {
+            Touhou.getInstance().getLogger().warning(
+                    "leaves.max-amount (" + c.fallenLeavesMaxAmount + ") 越界，钳制为 1.."
+                            + FallenLeaves.MAX_DROP_AMOUNT);
+            c.fallenLeavesMaxAmount = Math.max(1,
+                    Math.min(FallenLeaves.MAX_DROP_AMOUNT, c.fallenLeavesMaxAmount));
+        }
+        if (c.fallenLeavesMaxAmount < c.fallenLeavesMinAmount) {
+            Touhou.getInstance().getLogger().warning(
+                    "leaves.max-amount (" + c.fallenLeavesMaxAmount + ") < min-amount ("
+                            + c.fallenLeavesMinAmount + ")，已把 max 抬到 min");
+            c.fallenLeavesMaxAmount = c.fallenLeavesMinAmount;
+        }
     }
 
     /** 赛钱箱那一段的摘要（{@code /touhou saizen ... info} 用）。 */
@@ -936,6 +1045,11 @@ public final class AddonConfig {
                 "echo              = 维度穿梭 " + (echoEnabled ? "开" : "关")
                         + "  换算 " + echoCrystalPerEcho + " 水晶 → " + echoEchoPerCrystal + " 回响"
                         + "  玩家冷却 " + echoConvertCooldownMillis + " ms"
-                        + "  前缀「" + echoPrefix + "」");
+                        + "  前缀「" + echoPrefix + "」",
+                "harvest           = 丰收之时 每方块冷却 " + harvestCooldownMillis + " ms"
+                        + "  前缀「" + harvestPrefix + "」",
+                "leaves            = 落叶 " + (fallenLeavesEnabled ? "开" : "关")
+                        + "  破坏树叶 " + String.format(java.util.Locale.ROOT, "%.1f", fallenLeavesDropChance * 100.0D)
+                        + "% 掉落 " + fallenLeavesMinAmount + "~" + fallenLeavesMaxAmount + " 个");
     }
 }

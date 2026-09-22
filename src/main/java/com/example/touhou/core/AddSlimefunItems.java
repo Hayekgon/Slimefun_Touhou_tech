@@ -78,6 +78,17 @@ public final class AddSlimefunItems {
      */
     public static HarvestTime HARVEST_TIME;
     /**
+     * 落叶 —— <b>玩家手动破坏树叶</b>时按概率掉落的材料（见 {@link FallenLeaves}）。
+     *
+     * <p>★ 它不是合成品：配方类型 {@link RecipeType#NULL} + 9 格全空
+     * （{@link #noRecipe()}）⇒ 在任何工作台/机器里都摆不出来，
+     * 指南页槽 10 显示空气（NULL 的 {@code getItem(Player)} 返回空气）。
+     * 用户没要求做门面类型来说明获取方式，所以本实现没加。
+     *
+     * <p>★ 归属 1 级组 {@link AddGroups#MATERIAL}：与春泥 / 莉莉白同为"纯素材"。
+     */
+    public static SlimefunItem FALLEN_LEAVES;
+    /**
      * 另一个世界的回响（材料；玩家穿过维度之门时由能量水晶转化而来）。
      *
      * <p>它<b>不是</b>合成品：配方数组是 {@link #noRecipe()}，配方类型是
@@ -205,6 +216,15 @@ public final class AddSlimefunItems {
                 AddItems.HARVEST_TIME,
                 RecipeType.MAGIC_WORKBENCH,
                 harvestTimeRecipe()), plugin);
+
+        // 落叶：不是合成品，靠"玩家手动破坏树叶"获得（见 FallenLeaves / FallenLeavesListener）。
+        // ★ 配方类型用 NULL + 9 格全空 ⇒ 任何工作台/机器里都摆不出来（与炙热的灰烬同一路数）。
+        //   代价是指南页槽 10 显示空气；用户没要求做门面类型说明获取方式，所以没加。
+        FALLEN_LEAVES = register(new SlimefunItem(
+                AddGroups.MATERIAL,
+                AddItems.FALLEN_LEAVES,
+                RecipeType.NULL,
+                noRecipe()), plugin);
 
         // GUI 模式玻璃板：必须真实注册，否则它的粘液 id 不存在。
         // 归属 INFO（1 级）—— 它是 GUI 内部功能件，不是可制造的材料。
@@ -512,6 +532,8 @@ public final class AddSlimefunItems {
                                 + ",产出" + LILY_WHITE_OUTPUT_AMOUNT + ")")
                 + " / " + (HARVEST_TIME == null ? "丰收之时=未注册"
                         : "丰收之时=OK(" + HARVEST_TIME.getId() + ",产出1)")
+                + " / " + (FALLEN_LEAVES == null ? "落叶=未注册"
+                        : "落叶=OK(" + FALLEN_LEAVES.getId() + ",破坏树叶掉落)")
                 + " / " + (ECHO_OF_ANOTHER_WORLD == null ? "另一个世界的回响=未注册"
                         : "另一个世界的回响=OK(" + ECHO_OF_ANOTHER_WORLD.getId() + ")")
                 + " / " + (INFO_MODESHIFT == null ? "模式玻璃板=未注册" : "模式玻璃板=OK")

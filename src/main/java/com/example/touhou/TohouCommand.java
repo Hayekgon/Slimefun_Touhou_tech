@@ -95,6 +95,8 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
                     lilyWhite(sender, Arrays.copyOfRange(args, 1, args.length));
             case "harvest", "harvesttime" ->
                     harvest(sender, Arrays.copyOfRange(args, 1, args.length));
+            case "leaves", "fallenleaves", "fallen_leaves" ->
+                    leaves(sender, Arrays.copyOfRange(args, 1, args.length));
             case "autobuild" -> autobuild(sender, Arrays.copyOfRange(args, 1, args.length));
             case "reactor" -> reactor(sender, Arrays.copyOfRange(args, 1, args.length));
             case "clickinfo" -> clickInfo(sender, Arrays.copyOfRange(args, 1, args.length));
@@ -183,6 +185,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         s.sendMessage("\u00a77/touhou echo selfcheck | rule | container <x> <y> <z> | convert [玩家] | probe <玩家> [世界] | shuttle <玩家> <from> <to> [--force] | cooldown [clear]   「维度穿梭」无头验证");
         s.sendMessage("\u00a77/touhou lilywhite [selfcheck|name|recipe]   莉莉白：头贴图 / 粉白渐变（JSON 证据）/ 配方产出 2 个");
         s.sendMessage("\u00a77/touhou harvest [selfcheck | test <x> <y> <z> | probe <x> <y> <z> | clear <x> <y> <z> | cell <x> <y> <z> [面] | rng <x> <y> <z> | wake <x> <y> <z> [crops|empty] | cooldown [clear]]   丰收之时：范围催熟 / 骨粉行为 / 提示语验证");
+        s.sendMessage("\u00a77/touhou leaves [selfcheck | tools | drop [n] | field <x> <y> <z> [n] | check <x> <y> <z> | clear <x> <y> <z>]   落叶：掉率/数量分布/工具判据/非树叶对照");
         s.sendMessage("\u00a77/touhou guide [reactor|saizen|echo]   粘液书自定义配方页的内容自检（展示列表 + 可合成性核查）");
         s.sendMessage("\u00a77/touhou place <x> <y> <z> <sfId> [world] [--force]");
         s.sendMessage("\u00a77/touhou remove <x> <y> <z>            删除方块 + Slimefun 方块数据（setblock 清不掉）");
@@ -1632,6 +1635,551 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
             }
         }
         return n;
+    }
+
+    // ------------------------------------------------------------------ leaves（落叶）
+
+    /**
+     * 「落叶」的无头验证入口。
+     *
+     * <pre>
+     *   /touhou leaves                          物品 + 渐变 + 监听器 + 工具判据自检
+     *   /touhou leaves field &lt;x&gt; &lt;y&gt; &lt;z&gt; [n]       铺一片各类型树叶（用 Tag.LEAVES 现查），默认 1000 格
+     *   /touhou leaves drop [n]                 大样本掉率与数量分布（默认 1000 次，固定种子可复现）
+     *   /touhou leaves tools                    剪刀 / 精准采集 / 普通工具 的判据逐条核对
+     *   /touhou leaves check &lt;x&gt; &lt;y&gt; &lt;z&gt;         非树叶对照：周边方块是不是都没被当成树叶
+     *   /touhou leaves clear &lt;x&gt; &lt;y&gt; &lt;z&gt;         清掉测试树叶
+     * </pre>
+     *
+     * <p>★ <b>无头服造不出真玩家</b>（没有在线玩家，{@code BlockDropItemEvent}
+     * 又必须由真实破坏触发）⇒ 这里<b>不模拟事件</b>，而是直接调
+     * <b>事件监听器调用的那同一个方法</b> {@link com.example.touhou.core.FallenLeaves#rollLeaves}。
+     * 于是"命令算出的掉率"就是"玩家会遇到的掉率"；事件绑定那一条由
+     * {@code activeListeners} 证明（插件注册了哪些监听器可查）。
+     */
+    private void leaves(CommandSender sender, String[] args) {
+        String sub = args.length >= 1 ? args[0].toLowerCase(Locale.ROOT) : "selfcheck";
+
+        if (sub.equals("selfcheck") || sub.equals("all")) {
+            leavesSelfCheck(sender);
+        }
+        if (sub.equals("tools") || sub.equals("tool")) {
+            leavesTools(sender);
+        }
+        if (sub.equals("drop") || sub.equals("rate")) {
+            int trials = args.length >= 2 ? parseIntOr(args[1], 1000) : 1000;
+            leavesDrop(sender, trials);
+        }
+        if (sub.equals("field") || sub.equals("place")) {
+            Location loc = resolveAny(sender, Arrays.copyOfRange(args, 1, args.length));
+            if (loc == null) {
+                return;
+            }
+            leavesField(sender, loc, args);
+        }
+        if (sub.equals("check")) {
+            Location loc = resolveAny(sender, Arrays.copyOfRange(args, 1, args.length));
+            if (loc == null) {
+                return;
+            }
+            leavesCheck(sender, loc);
+        }
+        if (sub.equals("proof")) {
+            Location loc = resolveAny(sender, Arrays.copyOfRange(args, 1, args.length));
+            if (loc == null) {
+                return;
+            }
+            leavesProof(sender, loc);
+        }
+        if (sub.equals("clear") || sub.equals("clean")) {
+            Location loc = resolveAny(sender, Arrays.copyOfRange(args, 1, args.length));
+            if (loc == null) {
+                return;
+            }
+            int n = leavesClear(loc.getBlock(), false);
+            guideLine(sender, PREFIX + "\u00a7a已清掉测试树叶 " + n + " 格 @ " + xyz(loc));
+        }
+        if (sub.equals("selfcheck") || sub.equals("all") || sub.equals("tools")
+                || sub.equals("tool") || sub.equals("drop") || sub.equals("rate")
+                || sub.equals("field") || sub.equals("place") || sub.equals("check")
+                || sub.equals("proof") || sub.equals("clear") || sub.equals("clean")) {
+            return;
+        }
+        sender.sendMessage(PREFIX + "\u00a7c用法: /touhou leaves [selfcheck | tools |"
+                + " drop [n] | field <x> <y> <z> [n] | check <x> <y> <z> |"
+                + " proof <x> <y> <z> | clear <x> <y> <z>]");
+    }
+
+    /** 物品 / 渐变 / 配方 / 监听器自检。 */
+    private void leavesSelfCheck(CommandSender sender) {
+        SlimefunItem item = SlimefunItem.getById(com.example.touhou.core.FallenLeaves.ID);
+        guideLine(sender, PREFIX + "\u00a7e落叶 · 物品自检");
+        if (item == null) {
+            guideLine(sender, "\u00a7c  未注册（Slimefun 注册表里查不到 "
+                    + com.example.touhou.core.FallenLeaves.ID + "）");
+            return;
+        }
+        ItemStack icon = item.getItem();
+        guideLine(sender, "\u00a78  id = " + item.getId());
+        guideLine(sender, "\u00a78  材质 = " + (icon == null ? "(null)" : String.valueOf(icon.getType()))
+                + "（应为 KELP）");
+        guideLine(sender, "\u00a78  物品组 = " + (item.getItemGroup() == null
+                ? "(null)" : item.getItemGroup().getKey().toString()));
+        guideLine(sender, "\u00a78  配方类型 = " + (item.getRecipeType() == null
+                ? "(null)" : item.getRecipeType().getKey().toString())
+                + "（NULL ⇒ 不是合成品，指南页槽 10 显示空气）");
+        ItemStack[] grid = item.getRecipe();
+        int filled = 0;
+        if (grid != null) {
+            for (ItemStack cell : grid) {
+                if (cell != null && !cell.getType().isAir()) {
+                    filled++;
+                }
+            }
+        }
+        guideLine(sender, "\u00a78  配方非空格数 = " + filled + "（应为 0）");
+        guideLine(sender, "\u00a78  Bukkit/Slimefun 配方表里能产出它的 = "
+                + countRecipesFor(item) + " / " + countMachineRecipesFor(item) + "（都应为 0）");
+
+        ItemMeta meta = icon == null ? null : icon.getItemMeta();
+        if (meta != null) {
+            guideLine(sender, "\u00a78  附魔光效 = 附魔数 " + meta.getEnchants().size()
+                    + "，HIDE_ENCHANTS=" + meta.hasItemFlag(org.bukkit.inventory.ItemFlag.HIDE_ENCHANTS));
+            printDisplayNameEvidence(sender, "显示名（金→棕）", meta);
+            List<String> lore = meta.getLore();
+            if (lore == null) {
+                guideLine(sender, "\u00a7c  (没有 lore)");
+            } else {
+                for (int i = 0; i < lore.size(); i++) {
+                    String line = lore.get(i);
+                    guideLine(sender, "\u00a77  lore[" + i + "] 原样 = "
+                            + (line == null ? "" : line.replace("\u00a7", "\\u00a7")));
+                    // 三行描述都应是金→橙；第 0 行是空行（分隔名与描述），跳过
+                    if (i >= 1) {
+                        for (String cl : colorPerChar(line)) {
+                            guideLine(sender, "\u00a78    " + cl);
+                        }
+                    }
+                }
+            }
+        }
+
+        // ---- 配置读数
+        AddonConfig cfg = AddonConfig.get();
+        guideLine(sender, "\u00a7e  -- 配置 --");
+        guideLine(sender, "\u00a78  总开关 = " + cfg.fallenLeavesEnabled
+                + "   概率 = " + cfg.fallenLeavesDropChance
+                + "（" + String.format(Locale.ROOT, "%.1f", cfg.fallenLeavesDropChance * 100.0D) + "%）"
+                + "   数量 = " + cfg.fallenLeavesMinAmount + "~" + cfg.fallenLeavesMaxAmount);
+        guideLine(sender, "\u00a78  剪刀是否掉落 = " + cfg.fallenLeavesDropWithShears
+                + "   精准采集是否掉落 = " + cfg.fallenLeavesDropWithSilkTouch
+                + "（默认都 false = 不掉）");
+
+        // ---- 监听器：证明事件真的注册上了（查 BlockDropItemEvent 的已注册监听器表）
+        guideLine(sender, "\u00a7e  -- 监听器 --");
+        boolean registered = false;
+        for (org.bukkit.plugin.RegisteredListener rl
+                : org.bukkit.event.block.BlockDropItemEvent.getHandlerList().getRegisteredListeners()) {
+            if (rl.getPlugin() instanceof com.example.touhou.Touhou
+                    && rl.getListener() instanceof com.example.touhou.core.FallenLeavesListener) {
+                registered = true;
+                guideLine(sender, "\u00a78  BlockDropItemEvent ← 已注册 FallenLeavesListener"
+                        + "  优先级=" + rl.getPriority());
+            }
+        }
+        if (!registered) {
+            guideLine(sender, "\u00a7c  BlockDropItemEvent 上没找到 FallenLeavesListener（监听器没注册？）");
+        }
+        for (String line : com.example.touhou.core.FallenLeavesListener.describe()) {
+            guideLine(sender, "\u00a78    " + line);
+        }
+        log("[TOUHOU] leaves selfcheck id=" + item.getId()
+                + " material=" + (icon == null ? "null" : icon.getType())
+                + " recipeFilled=" + filled + " listener=" + registered
+                + " chance=" + cfg.fallenLeavesDropChance
+                + " amount=" + cfg.fallenLeavesMinAmount + "-" + cfg.fallenLeavesMaxAmount);
+    }
+
+    /** 工具判据逐条核对：徒手/普通工具 → 不排除；剪刀、精准采集 → 排除。 */
+    private void leavesTools(CommandSender sender) {
+        guideLine(sender, PREFIX + "\u00a7e落叶 · 工具判据核对（true = 被排除 = 不掉落叶）");
+        ItemStack hand = new ItemStack(Material.AIR);
+        guideLine(sender, "\u00a78  徒手(空手)            = "
+                + com.example.touhou.core.FallenLeaves.isExcludedTool(hand) + "（应为 false）");
+        ItemStack ironAxe = new ItemStack(Material.IRON_AXE);
+        guideLine(sender, "\u00a78  普通铁斧              = "
+                + com.example.touhou.core.FallenLeaves.isExcludedTool(ironAxe) + "（应为 false）");
+        ItemStack shears = new ItemStack(Material.SHEARS);
+        guideLine(sender, "\u00a78  剪刀                  = "
+                + com.example.touhou.core.FallenLeaves.isExcludedTool(shears) + "（应为 true）");
+        ItemStack silkAxe = new ItemStack(Material.IRON_AXE);
+        silkAxe.addUnsafeEnchantment(org.bukkit.enchantments.Enchantment.SILK_TOUCH, 1);
+        guideLine(sender, "\u00a78  精准采集铁斧          = "
+                + com.example.touhou.core.FallenLeaves.isExcludedTool(silkAxe) + "（应为 true）");
+        ItemStack silkShears = new ItemStack(Material.SHEARS);
+        silkShears.addUnsafeEnchantment(org.bukkit.enchantments.Enchantment.SILK_TOUCH, 1);
+        guideLine(sender, "\u00a78  精准采集剪刀（两者同时）= "
+                + com.example.touhou.core.FallenLeaves.isExcludedTool(silkShears) + "（应为 true）");
+        ItemStack fortuneAxe = new ItemStack(Material.IRON_AXE);
+        fortuneAxe.addUnsafeEnchantment(org.bukkit.enchantments.Enchantment.LOOT_BONUS_BLOCKS, 3);
+        guideLine(sender, "\u00a78  时运III铁斧           = "
+                + com.example.touhou.core.FallenLeaves.isExcludedTool(fortuneAxe) + "（应为 false）");
+        log("[TOUHOU] leaves tools hand=" + com.example.touhou.core.FallenLeaves.isExcludedTool(hand)
+                + " shears=" + com.example.touhou.core.FallenLeaves.isExcludedTool(shears)
+                + " silk=" + com.example.touhou.core.FallenLeaves.isExcludedTool(silkAxe)
+                + " silkShears=" + com.example.touhou.core.FallenLeaves.isExcludedTool(silkShears)
+                + " fortune=" + com.example.touhou.core.FallenLeaves.isExcludedTool(fortuneAxe));
+    }
+
+    /**
+     * 大样本掉率与数量分布。
+     *
+     * <p>★ 用<b>固定种子</b>的 {@link java.util.Random}：同一份代码跑两次结果一致，
+     * 便于"改动有没有影响分布"的对比；也避免了"这次恰好偏高"的误判。
+     */
+    private void leavesDrop(CommandSender sender, int trials) {
+        int n = Math.max(1, Math.min(trials, 100000));
+        guideLine(sender, PREFIX + "\u00a7e落叶 · 大样本掉率（" + n + " 次，固定种子 20260921）");
+        java.util.Random random = new java.util.Random(20260921L);
+        AddonConfig cfg = AddonConfig.get();
+        int hit = 0;
+        int totalItems = 0;
+        java.util.Map<Integer, Integer> hist = new java.util.TreeMap<>();
+        for (int i = 0; i < n; i++) {
+            Integer amount = com.example.touhou.core.FallenLeaves.rollLeaves(random);
+            if (amount != null) {
+                hit++;
+                totalItems += amount;
+                hist.merge(amount, 1, Integer::sum);
+            }
+        }
+        double rate = hit * 100.0D / n;
+        guideLine(sender, "\u00a78  配置概率 = " + cfg.fallenLeavesDropChance
+                + "   配置数量 = " + cfg.fallenLeavesMinAmount + "~" + cfg.fallenLeavesMaxAmount);
+        guideLine(sender, "\u00a78  命中 = " + hit + " / " + n + " ⇒ 实测掉率 = "
+                + String.format(Locale.ROOT, "%.2f", rate) + "%"
+                + "（期望 " + String.format(Locale.ROOT, "%.2f", cfg.fallenLeavesDropChance * 100.0D) + "%）");
+        guideLine(sender, "\u00a78  命中时的平均掉落量 = "
+                + (hit == 0 ? "-" : String.format(Locale.ROOT, "%.3f", (double) totalItems / hit))
+                + "（期望 " + String.format(Locale.ROOT, "%.3f",
+                        (cfg.fallenLeavesMinAmount + cfg.fallenLeavesMaxAmount) / 2.0D) + "）");
+        guideLine(sender, "\u00a7e  -- 数量分布（只统计命中次数）--");
+        boolean bothEnds = hist.containsKey(cfg.fallenLeavesMinAmount)
+                && hist.containsKey(cfg.fallenLeavesMaxAmount);
+        for (java.util.Map.Entry<Integer, Integer> e : hist.entrySet()) {
+            guideLine(sender, "\u00a78    x" + e.getKey() + " ⇒ " + e.getValue() + " 次");
+        }
+        guideLine(sender, "\u00a78  两端都出现过（" + cfg.fallenLeavesMinAmount + " 与 "
+                + cfg.fallenLeavesMaxAmount + "）= " + bothEnds
+                + "   出现过的数量种类 = " + hist.size() + " 种"
+                + "（期望 " + (cfg.fallenLeavesMaxAmount - cfg.fallenLeavesMinAmount + 1) + " 种）");
+        log("[TOUHOU] leaves drop trials=" + n + " hits=" + hit
+                + " rate=" + String.format(Locale.ROOT, "%.2f", rate)
+                + " variants=" + hist.size() + " bothEnds=" + bothEnds);
+    }
+
+    /**
+     * 铺一片各类型树叶（用 {@link Tag#LEAVES} <b>现查</b>材质，不硬编码树种）。
+     *
+     * <p>★ 为什么现查：让"到底覆盖了哪些树种"这件事由标签说了算 ——
+     * 命令打印的清单就是代码实际认的清单，将来版本加树种也能立刻看出来。
+     */
+    private void leavesField(CommandSender sender, Location center, String[] args) {
+        Block base = center.getBlock();
+        World world = base.getWorld();
+        int x = base.getX();
+        int y = base.getY();
+        int z = base.getZ();
+        int n = args.length >= 5 ? parseIntOr(args[4], 1000) : 1000;
+
+        // 现查所有树叶材质
+        List<Material> leafTypes = new ArrayList<>();
+        for (Material m : Material.values()) {
+            if (!m.isAir() && m.isBlock() && com.example.touhou.core.FallenLeaves.isLeaves(m)) {
+                leafTypes.add(m);
+            }
+        }
+        if (leafTypes.isEmpty()) {
+            sender.sendMessage(PREFIX + "\u00a7cTag.LEAVES 里一个方块都没有（标签没加载？）");
+            return;
+        }
+        guideLine(sender, PREFIX + "\u00a7e落叶 · 测试树叶 @ " + xyz(center)
+                + "  共 " + leafTypes.size() + " 种树叶素材");
+        guideLine(sender, "\u00a78  Tag.LEAVES 现查结果：" + leafTypes);
+
+        int placed = 0;
+        int radius = (int) Math.ceil(Math.sqrt(n));
+        for (int i = 0; i < n; i++) {
+            int dx = i % radius;
+            int dz = i / radius;
+            Block b = world.getBlockAt(x + dx, y, z + dz);
+            b.setType(leafTypes.get(i % leafTypes.size()), false);
+            placed++;
+        }
+        guideLine(sender, "\u00a78  已铺 " + placed + " 格（" + radius + "×" + radius
+                + " 的平铺，循环使用上面的素材）");
+        guideLine(sender, "\u00a78  清掉它：/touhou leaves clear " + xyz(center));
+        log("[TOUHOU] leaves field @ " + xyz(center) + " placed=" + placed
+                + " types=" + leafTypes.size());
+    }
+
+    /**
+     * <b>非树叶对照</b>：把一片非树叶方块逐个过一遍 {@code isLeaves}，
+     * 证明它们<b>不会</b>被当成树叶（即"非树叶不触发"这条判据）。
+     *
+     * <p>★ 诚实边界：无头服<b>造不出真玩家</b>，{@code BlockDropItemEvent}
+     * 又必须由真实破坏触发，所以"事件真的没被触发"这件事<b>无法直接模拟</b>。
+     * 这里验的是<b>判据本身</b>（{@code isLeaves} 对非树叶一律 false）——
+     * 而"事件只在玩家手动破坏时触发"是 Bukkit 事件的固有语义，不是本插件的逻辑。
+     */
+    private void leavesCheck(CommandSender sender, Location center) {
+        World world = center.getWorld();
+        int x = center.getBlockX();
+        int y = center.getBlockY();
+        int z = center.getBlockZ();
+        Material[] nonLeaves = {
+                Material.STONE, Material.DIRT, Material.OAK_LOG, Material.OAK_PLANKS,
+                Material.FARMLAND, Material.HAY_BLOCK, Material.WATER, Material.AIR
+        };
+        guideLine(sender, PREFIX + "\u00a7e落叶 · 非树叶对照（isLeaves 必须全为 false）");
+        int wrong = 0;
+        for (Material m : nonLeaves) {
+            boolean isLeaf = com.example.touhou.core.FallenLeaves.isLeaves(m);
+            if (isLeaf) {
+                wrong++;
+            }
+            guideLine(sender, "\u00a78  " + m + " ⇒ isLeaves(" + isLeaf + ")"
+                    + (isLeaf ? "  \u00a7c←不该为 true" : ""));
+        }
+        // 顺手确认：这片区域里现有的方块都不是树叶（说明对照区是干净的）
+        int leafFound = 0;
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                Material t = world.getBlockAt(x + dx, y, z + dz).getType();
+                if (com.example.touhou.core.FallenLeaves.isLeaves(t)) {
+                    leafFound++;
+                }
+            }
+        }
+        guideLine(sender, "\u00a78  区块内 3×3 现存的树叶格 = " + leafFound + "（越界误判数 = " + wrong + "）");
+        guideLine(sender, "\u00a78  ⇒ 判据 " + (wrong == 0 ? "\u00a7a正确" : "\u00a7c有误"));
+        log("[TOUHOU] leaves check @ " + xyz(center) + " wrong=" + wrong
+                + " leavesNearby=" + leafFound);
+    }
+
+    /**
+     * <b>「为什么不存在刷物品循环」的实测证明</b>（{@code /touhou leaves proof <x> <y> <z>}）。
+     *
+     * <h2>要证明的三条前提</h2>
+     * <pre>
+     *   前提① 徒手/普通工具破坏树叶 ⇒ 掉落里【没有】树叶方块本身（只有树苗/木棍/苹果）
+     *         ⇒ 「放置树叶 → 破坏」是【消耗一个方块换一次判定】，不是循环
+     *   前提② 只有 剪刀 / 精准采集 能拿回树叶方块本身，而这两条【已被排除】
+     *         ⇒ 「能回收方块的那条路」不掉落叶
+     *   前提③ 落叶是 RecipeType.NULL ⇒ 没有任何配方、也变不回树叶方块
+     *   ⇒ 结论：树叶方块只能被消耗、不能被回收 ⇒ 无循环
+     * </pre>
+     *
+     * <p>★ 怎么"实测"而不只是断言：无头服造不出真玩家，所以<b>不模拟事件</b>，
+     * 而是用<b>与掉落实质等价的路径</b>去读世界真实的掉落实体：
+     * <pre>
+     *   world.getBlockAt(...).setType(树叶)      // 放一块真的树叶
+     *   用【普通工具】替换方块内容 → 收集世界新出现的 Item 实体 → 读它们的 type
+     *   用【精准采集工具】再放一块、再替换 → 同样收集并读 type
+     * </pre>
+     * 「替换方块」会走原版那套"方块消失 → 生成掉落"的逻辑，
+     * 所以掉落实体是<b>原版真实算出来的</b>，不是我们算的。
+     * 同时把 {@code FallenLeaves#isExcludedTool} 的判据并排打出来 ——
+     * 两条合起来正好证明"能回收方块的那条路不掉落叶"。
+     *
+     * <p>★ 测试用的树叶只动本命令指定的那几格，收尾全部清掉。
+     */
+    private void leavesProof(CommandSender sender, Location center) {
+        World world = center.getWorld();
+        int x = center.getBlockX();
+        int y = center.getBlockY();
+        int z = center.getBlockZ();
+        Material leaf = Material.OAK_LEAVES;
+
+        guideLine(sender, PREFIX + "\u00a7e落叶 · 「无刷物品循环」实测证明 @ " + xyz(center));
+        guideLine(sender, "\u00a78  测试用树叶 = " + leaf + "（用 setType 放真方块、再换掉，读世界真实掉落实体）");
+
+        // ---- 提前准备两块地：y 与 y-2（互不干扰）
+        Block spotNormal = world.getBlockAt(x, y, z);
+        Block spotSilk = world.getBlockAt(x, y - 2, z);
+        world.getBlockAt(x, y - 1, z).setType(Material.AIR, false);
+        world.getBlockAt(x, y - 3, z).setType(Material.AIR, false);
+
+        // ---- 前提①：普通工具破坏 → 掉落里没有树叶方块
+        //   工具用"同一把镐、有/无精准采集"，把差异唯一地归因到那个附魔上
+        ItemStack plainTool = new ItemStack(Material.DIAMOND_PICKAXE);
+        ItemStack silkTool = new ItemStack(Material.DIAMOND_PICKAXE);
+        silkTool.addUnsafeEnchantment(org.bukkit.enchantments.Enchantment.SILK_TOUCH, 1);
+
+        List<String> normalDrops = breakAndCollect(world, spotNormal, leaf, plainTool);
+        boolean normalHasLeafBlock = containsMaterial(normalDrops, leaf);
+        guideLine(sender, "\u00a7e  前提① 普通工具（无精准采集的钻石镐）破坏 " + leaf);
+        guideLine(sender, "\u00a78    实际掉落 = " + normalDrops);
+        guideLine(sender, "\u00a78    含树叶方块本身(" + leaf + ") = " + normalHasLeafBlock
+                + "  ⇒ " + (normalHasLeafBlock ? "\u00a7c【前提被推翻！有刷取漏洞】"
+                        : "\u00a7a符合（拿不回方块）"));
+
+        // ---- 前提①b：空手样本 —— 因为树叶掉树苗/木棍是**概率**的，
+        //   单块破坏很可能什么都不掉（实测第一次就是 []），所以只打一块说明不了问题。
+        //   这里连打 200 块，统计"到底掉出了什么、有没有掉出树叶方块"。
+        guideLine(sender, "\u00a7e  前提①b 空手连破 200 块树叶的掉落汇总（概率掉落需要样本）");
+        java.util.Map<String, Integer> tally = new java.util.TreeMap<>();
+        int leafBlockHits = 0;
+        int emptyHandBlocks = 200;
+        ItemStack emptyHand = new ItemStack(Material.AIR);
+        for (int i = 0; i < emptyHandBlocks; i++) {
+            Block b = world.getBlockAt(x, y, z);
+            for (String d : breakAndCollect(world, b, leaf, emptyHand)) {
+                tally.merge(d, 1, Integer::sum);
+                if (d.startsWith(leaf.name() + " x")) {
+                    leafBlockHits++;
+                }
+            }
+        }
+        guideLine(sender, "\u00a78    掉落汇总 = " + (tally.isEmpty() ? "（一块都没掉）" : tally));
+        guideLine(sender, "\u00a78    其中【树叶方块本身】出现次数 = " + leafBlockHits
+                + " ⇒ " + (leafBlockHits == 0
+                        ? "\u00a7a前提① 成立：空手拿不回树叶方块"
+                        : "\u00a7c【前提被推翻！】空手竟然掉了树叶方块，有刷取漏洞"));
+        clearDroppedItems(world, x, y, z);
+
+        // ---- 前提②：精准采集破坏 → 有树叶方块本身、但【排除判据成立】⇒ 不掉落叶
+        List<String> silkDrops = breakAndCollect(world, spotSilk, leaf, silkTool);
+        boolean silkHasLeafBlock = containsMaterial(silkDrops, leaf);
+        boolean silkExcluded = com.example.touhou.core.FallenLeaves.isExcludedTool(silkTool);
+        boolean shearsExcluded =
+                com.example.touhou.core.FallenLeaves.isExcludedTool(new ItemStack(Material.SHEARS));
+        guideLine(sender, "\u00a7e  前提② 精准采集钻石镐破坏 " + leaf);
+        guideLine(sender, "\u00a78    实际掉落 = " + silkDrops);
+        guideLine(sender, "\u00a78    含树叶方块本身 = " + silkHasLeafBlock
+                + "  ⇒ " + (silkHasLeafBlock ? "\u00a7a符合（精准采集确实拿得回方块）"
+                        : "\u00a77本次没验证到（掉落表可能没按附魔重算）"));
+        guideLine(sender, "\u00a78    isExcludedTool(精准采集镐) = " + silkExcluded + "（必须 true）");
+        guideLine(sender, "\u00a78    isExcludedTool(剪刀) = " + shearsExcluded + "（必须 true）");
+        guideLine(sender, "\u00a78    ⇒ 能回收树叶方块的两条路（剪刀 / 精准采集）都被排除判据挡住了");
+
+        // ---- 前提③：落叶没有任何配方
+        SlimefunItem fallen = SlimefunItem.getById(com.example.touhou.core.FallenLeaves.ID);
+        guideLine(sender, "\u00a7e  前提③ 落叶的配方口径");
+        if (fallen == null) {
+            guideLine(sender, "\u00a7c    落叶未注册！");
+        } else {
+            int filled = 0;
+            ItemStack[] grid = fallen.getRecipe();
+            if (grid != null) {
+                for (ItemStack c : grid) {
+                    if (c != null && !c.getType().isAir()) {
+                        filled++;
+                    }
+                }
+            }
+            guideLine(sender, "\u00a78    配方类型 = " + (fallen.getRecipeType() == null
+                    ? "(null)" : fallen.getRecipeType().getKey().toString())
+                    + "   非空格数 = " + filled);
+            guideLine(sender, "\u00a78    Bukkit 配方表里以落叶为【产物】的配方 = " + countRecipesFor(fallen));
+            guideLine(sender, "\u00a78    Slimefun 多方块配方表里以落叶为产物的 = "
+                    + countMachineRecipesFor(fallen));
+            guideLine(sender, "\u00a78    ⇒ 落叶变不回任何东西（尤其变不回树叶方块）");
+        }
+
+        // ---- 收尾：清掉测试用方块与实体
+        clearDroppedItems(world, x, y, z);
+        spotNormal.setType(Material.AIR, false);
+        spotSilk.setType(Material.AIR, false);
+        guideLine(sender, "\u00a78  已清掉测试方块与掉落物");
+        log("[TOUHOU] leaves proof @ " + xyz(center)
+                + " normalDrops=" + normalDrops + " normalHasLeafBlock=" + normalHasLeafBlock
+                + " silkDrops=" + silkDrops + " silkExcluded=" + silkExcluded);
+    }
+
+    /**
+     * 在 {@code spot} 放一块 {@code material}，用 {@code breakNaturally(tool)}
+     * <b>走原版真正的破坏路径</b>，再收集世界新出现的 {@code Item} 实体并返回可读清单。
+     *
+     * <p>★ 第一版这里用的是 {@code setType(AIR)} —— <b>那是错的</b>：
+     * 它只会把方块抹掉、<b>一个掉落都不产生</b>（实测拿到的是空列表 []），
+     * 于是"掉落里没有树叶方块"就成了空话（空列表当然不含任何东西）。
+     * 改用 {@code Block#breakNaturally(ItemStack)} —— 它执行的就是原版那套
+     * "结算掉落 → 生成 Item 实体"的逻辑，所以掉落实体是<b>原版真的算出来的</b>。
+     *
+     * <p>★ 工具用同一把镐（有/无精准采集各一次）：除非附魔本身不同，其余 NBT 完全一致，
+     * 于是两次的差异只能归因于那个附魔 —— 这正是"归因唯一"的做法。
+     */
+    private static List<String> breakAndCollect(World world, Block spot, Material material,
+                                                ItemStack tool) {
+        spot.setType(material, false);
+        // 先记录换掉之前世界里的 Item 实体（我们只关心这次新出现的）
+        java.util.Set<java.util.UUID> before = new java.util.HashSet<>();
+        for (org.bukkit.entity.Entity en : world.getNearbyEntities(
+                spot.getLocation().add(0.5D, 0.5D, 0.5D), 6.0D, 6.0D, 6.0D)) {
+            if (en instanceof org.bukkit.entity.Item) {
+                before.add(en.getUniqueId());
+            }
+        }
+        spot.breakNaturally(tool);
+        List<String> out = new ArrayList<>();
+        for (org.bukkit.entity.Entity en : world.getNearbyEntities(
+                spot.getLocation().add(0.5D, 0.5D, 0.5D), 6.0D, 6.0D, 6.0D)) {
+            if (en instanceof org.bukkit.entity.Item it && !before.contains(it.getUniqueId())) {
+                ItemStack stack = it.getItemStack();
+                out.add(stack.getType() + " x" + stack.getAmount());
+            }
+        }
+        return out;
+    }
+
+    /** 掉落清单里有没有某个材质。 */
+    private static boolean containsMaterial(List<String> drops, Material material) {
+        if (material == null || drops == null) {
+            return false;
+        }
+        String needle = material.name() + " x";
+        for (String d : drops) {
+            if (d.startsWith(needle)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 清掉某点附近 6 格内的掉落物实体（证明实验的收尾）。 */
+    private static int clearDroppedItems(World world, int x, int y, int z) {
+        int n = 0;
+        for (org.bukkit.entity.Entity en : world.getNearbyEntities(
+                new Location(world, x + 0.5D, y + 0.5D, z + 0.5D), 8.0D, 8.0D, 8.0D)) {
+            if (en instanceof org.bukkit.entity.Item) {
+                en.remove();
+                n++;
+            }
+        }
+        return n;
+    }
+
+    /** 清掉测试树叶（只清 Tag.LEAVES 口径的方块，不动别的东西）。 */
+    private int leavesClear(Block base, boolean unused) {
+        World world = base.getWorld();
+        int x = base.getX();
+        int y = base.getY();
+        int z = base.getZ();
+        int cleared = 0;
+        int radius = 64;    // 1000 格是按 32×32 铺的，这里给足
+        for (int dx = 0; dx < radius; dx++) {
+            for (int dz = 0; dz < radius; dz++) {
+                for (int dy = -1; dy <= 1; dy++) {
+                    Block b = world.getBlockAt(x + dx, y + dy, z + dz);
+                    if (com.example.touhou.core.FallenLeaves.isLeaves(b.getType())) {
+                        b.setType(Material.AIR, false);
+                        cleared++;
+                    }
+                }
+            }
+        }
+        return cleared;
     }
 
     // ------------------------------------------------------------------ seal
@@ -4459,7 +5007,12 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         if (args.length == 1) {
             return filter(List.of("reactor", "autobuild", "clickinfo", "structure", "saizen", "place",
                     "remove", "edit", "gui", "layout", "groups", "tags", "messages", "reload",
-                    "power", "dreamcatcher", "seal", "lily", "lilywhite", "harvest", "echo", "proj", "guide"), args[0]);
+                    "power", "dreamcatcher", "seal", "lily", "lilywhite", "harvest", "leaves",
+                    "echo", "proj", "guide"), args[0]);
+        }
+        if (args[0].equalsIgnoreCase("leaves") && args.length == 2) {
+            return filter(List.of("selfcheck", "tools", "drop", "field", "check", "proof",
+                    "clear"), args[1]);
         }
         if (args[0].equalsIgnoreCase("lilywhite") && args.length == 2) {
             return filter(List.of("selfcheck", "name", "recipe"), args[1]);
@@ -4568,6 +5121,6 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
     public static List<String> commands() {
         return List.of("reactor", "autobuild", "clickinfo", "structure", "saizen", "place", "remove",
                 "edit", "gui", "layout", "groups", "tags", "messages", "reload", "power",
-                "dreamcatcher", "seal", "lily", "lilywhite", "harvest", "proj");
+                "dreamcatcher", "seal", "lily", "lilywhite", "harvest", "leaves", "proj");
     }
 }

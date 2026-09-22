@@ -6,6 +6,7 @@ import com.example.touhou.core.StructureBuildListener;
 import com.example.touhou.core.AddItems;
 import com.example.touhou.core.AddSlimefunItems;
 import com.example.touhou.core.EchoOfAnotherWorldListener;
+import com.example.touhou.core.FallenLeavesListener;
 import com.example.touhou.core.FantasySealArrowListener;
 import com.example.touhou.core.MurderousLilyListener;
 import com.example.touhou.core.PortGuiListener;
@@ -68,6 +69,9 @@ public class Touhou extends JavaPlugin implements SlimefunAddon {
         //    它事件驱动（零轮询），且"事件成立"本身就等于"玩家真的被传送过去了"
         //    （站在传送门方块里不会触发）—— 详细对比见 EchoOfAnotherWorldListener 的类注释。
         getServer().getPluginManager().registerEvents(new EchoOfAnotherWorldListener(), this);
+        //    落叶：玩家手动破坏树叶 → 按概率掉落落叶（见 FallenLeavesListener 的类注释：
+        //    为什么用 BlockDropItemEvent 而不是 BlockBreakEvent，以及剪刀/精准采集为何排除）
+        getServer().getPluginManager().registerEvents(new FallenLeavesListener(), this);
 
         // 无头自检 + 充能循环：关键参数打到控制台，方便不进游戏就能核对
         if (AddSlimefunItems.FANTASY_SEAL != null) {

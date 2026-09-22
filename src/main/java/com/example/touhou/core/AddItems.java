@@ -44,7 +44,22 @@ public final class AddItems {
         /** 莉莉白：粉 → 白。 */
         PINK_WHITE(0xFFB3D9, 0xFFFFFF),
         /** 丰收之时：橙 → 黄（用户要求"橙色→黄色 左到右渐变"）。 */
-        ORANGE_YELLOW(0xFF8C00, 0xFFE24A);
+        ORANGE_YELLOW(0xFF8C00, 0xFFE24A),
+        /**
+         * 落叶的<b>名称</b>：金 → 棕（用户要求"金色至棕色"）。
+         *
+         * <p>★ 色号是本实现的判断（用户只给了颜色名）：金取 {@code #FFD700}
+         * （就是"gold"那个标准金），棕取 {@code #8B4513}（saddlebrown，标准的鞍棕色）。
+         */
+        GOLD_BROWN(0xFFD700, 0x8B4513),
+        /**
+         * 落叶的<b>描述</b>：金 → 橙（用户要求"金色至橙色"）。
+         *
+         * <p>★★ 注意这与 {@link #GOLD_BROWN} <b>不是同一套</b> ——
+         * 用户原文对名称和描述各给了一套（名称"金色至棕色"、描述"金色至橙色"）。
+         * 本实现<b>照做</b>，没有擅自统一；报告里也提了一句"看起来像不统一"。
+         */
+        GOLD_ORANGE(0xFFD700, 0xFF8C00);
 
         private final int start;
         private final int end;
@@ -135,6 +150,26 @@ public final class AddItems {
      * 与梦想封印 集 / 杀意的百合 / 另一个世界的回响同一套做法）。
      */
     public static SlimefunItemStack HARVEST_TIME;
+
+    /**
+     * 落叶 —— 秋风的问候（东方 Project 里"秋天的问候"这一意象的实体化）。
+     *
+     * <p>id 按本项目铁律 {@code TOUHOU_"物品组"_"英文名"}：它归属 1 级组
+     * {@link AddGroups#MATERIAL}，英文名取 <b>Fallen Leaves</b>
+     * ⇒ {@code TOUHOU_MATERIAL_FALLEN_LEAVES}（与同为"纯素材"的春泥并列）。
+     *
+     * <p>★ 获取方式：<b>玩家手动破坏树叶</b>时按概率掉落（见
+     * {@link FallenLeaves}）—— 它不是合成品，所以配方类型是
+     * {@link RecipeType#NULL} + 9 格全空（{@code AddSlimefunItems#noRecipe()}）。
+     * ⚠ 这让指南页<b>槽 10 显示空气</b>（{@code RecipeType#getItem} 对 NULL 返回空气）。
+     * 用户没要求做"维度穿梭"那种门面类型来说明获取方式，所以本实现<b>没有擅自加</b>；
+     * 想加的话照 {@code TouhouRecipeTypes} 里那三个门面类型的写法补一个即可。
+     *
+     * <p>★★ 两套渐变<b>故意不同</b>：<b>名称</b>用金→棕（{@link Gradient#GOLD_BROWN}），
+     * <b>描述三行</b>用金→橙（{@link Gradient#GOLD_ORANGE}）。这是用户原文
+     * （名称"金色至棕色"、描述"金色至橙色"）—— 看起来像不统一，但按原文照做。
+     */
+    public static SlimefunItemStack FALLEN_LEAVES;
 
     // ------------------------------------------------------------------ INFO 组：信息类纸张
     // 全部使用 PAPER 材质，纯信息展示，无配方、无功能。
@@ -365,6 +400,19 @@ public final class AddItems {
                 gradientNameOrangeYellow("丰收之时"),
                 "",
                 gradientNameOrangeYellow("秋姐妹的赠与信奉丰收之人的宝物"));
+
+        // 落叶：秋风的问候。
+        // ★ 材质：海带（KELP）—— 细长下垂的形状与"落叶/枯叶"最接近的现成原版材质。
+        // ★★ 两套渐变故意不同：名称金→棕，描述三行金→橙（用户原文如此，见字段注释）。
+        // ★ 描述三行【逐字照抄】，第二行自带双引号（用户原文就有），一个字都没改。
+        FALLEN_LEAVES = new SlimefunItemStack(
+                "TOUHOU_MATERIAL_FALLEN_LEAVES",
+                Material.KELP,
+                gradientName("落叶", Gradient.GOLD_BROWN),
+                "",
+                gradientName("萧瑟的秋风，带来了这份来自秋天的问候，", Gradient.GOLD_ORANGE),
+                gradientName("\"秋天来临之际，冬天也不远了呢\"", Gradient.GOLD_ORANGE),
+                gradientName("似曾相识的获取方式呢", Gradient.GOLD_ORANGE));
 
 INFO_MODESHIFT = new SlimefunItemStack(
                 "TOUHOU_INFO_MODESHIFT",
@@ -674,6 +722,15 @@ INFO_MODESHIFT = new SlimefunItemStack(
         if (harvestMeta != null) {
             harvestMeta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
             HARVEST_TIME.setItemMeta(harvestMeta);
+        }
+
+        // 落叶：附魔光效（同一套"挂无用附魔 + HIDE_ENCHANTS"）。
+        //   ★ 它没有"要看附魔行"的要求，所以照光效惯例把附魔行藏掉，只留光晕。
+        FALLEN_LEAVES.addUnsafeEnchantment(Enchantment.ARROW_INFINITE, 1);
+        ItemMeta leavesMeta = FALLEN_LEAVES.getItemMeta();
+        if (leavesMeta != null) {
+            leavesMeta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
+            FALLEN_LEAVES.setItemMeta(leavesMeta);
         }
 
         // ------------------------------------------------------------------ POWER（1 级组）
