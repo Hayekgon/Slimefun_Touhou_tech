@@ -1706,14 +1706,11 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         }
         String method = com.example.touhou.core.Acquisition.resolve(item);
         sender.sendMessage(PREFIX + "\u00a7e" + id);
-        sender.sendMessage("\u00a78  获取方式 = " + (method == null
-                ? "\u00a7c★未标注（请到 Acquisition.METHOD_BY_ID 补一行）" : method));
-        sender.sendMessage("\u00a78  lore 里有那一行 = "
-                + com.example.touhou.core.Acquisition.hasLore(item)
-                + "   配方类型 = " + com.example.touhou.core.Acquisition.recipeTypeKey(item)
-                + "   门面 = " + com.example.touhou.core.Acquisition.isDecorated(item));
+        for (String line : com.example.touhou.core.Acquisition.detail(item)) {
+            sender.sendMessage("\u00a78  " + line);
+        }
         log("[TOUHOU] acquisition id=" + id + " method=" + method
-                + " lore=" + com.example.touhou.core.Acquisition.hasLore(item));
+                + " decorated=" + com.example.touhou.core.Acquisition.isDecorated(item));
     }
 
     // ------------------------------------------------------------------ leaves（落叶）
@@ -1878,9 +1875,12 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         guideLine(sender, "\u00a78  配方非空格数 = " + filled + "（应为 0）");
         guideLine(sender, "\u00a78  Bukkit/Slimefun 配方表里能产出它的 = "
                 + countRecipesFor(item) + " / " + countMachineRecipesFor(item) + "（都应为 0）");
-        guideLine(sender, "\u00a78  ★ 获取方式标注 = "
-                + (com.example.touhou.core.Acquisition.hasLore(item) ? "\u00a7a有" : "\u00a7c缺")
-                + "\u00a78（" + com.example.touhou.core.Acquisition.method(item.getId()) + "）");
+        guideLine(sender, "\u00a78  ★ 指南页槽 10（来源）= "
+                + (com.example.touhou.core.Acquisition.resolveSource(item) == null
+                        ? "\u00a7c缺（未登记来源）"
+                        : "\u00a7a" + com.example.touhou.core.Acquisition.loreLine(
+                                com.example.touhou.core.Acquisition.resolveSource(item).method())
+                                .replace("\u00a7", "\\u00a7")));
 
         ItemMeta meta = icon == null ? null : icon.getItemMeta();
         if (meta != null) {

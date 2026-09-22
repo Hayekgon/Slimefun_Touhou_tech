@@ -846,76 +846,13 @@ INFO_MODESHIFT = new SlimefunItemStack(
         applyStructureLore(SAIZENBAKO,
                 AddonConfig.get().saizenLayers, AddonConfig.get().saizenLegend);
 
-        // ------------------------------------------------------------------ 统一标注「获取方式」
-        // ★ 必须放在整个 setup() 的【最末尾】：上面 applyStructureLore 也会往
-        //   lore 末尾追加（建造材料清单），获取方式要排在它后面，才能稳定地
-        //   成为"物品描述的最后一行"。
-        // ★ 口径与总表见 Acquisition 的类注释（每件物品、哪怕 null 配方都要标注）。
-        applyAcquisitionLore();
-    }
-
-    /**
-     * 给<b>每一件</b>物品模板的 lore 末尾追加一行「获取方式」。
-     *
-     * <p>★ 方法文字与判断全部来自 {@link Acquisition}（唯一出处），本方法只负责
-     * "把这一行接在所有模板后面"。于是"加一件新物品忘了写获取方式"会同时体现在
-     * 两处：{@code /touhou acquisition} 的 [MISS] 列表，以及控制台启动时的 warn
-     * （见 {@code Acquisition.applyFacades}）。
-     *
-     * <p>★ 表格里没登记、但配方类型能推断出机器名的物品（例如核心走增强型工作台）
-     * 同样会补上 —— 这一条兜住"只写了配方、忘了写获取方式"的情形。
-     */
-    private static void applyAcquisitionLore() {
-        for (Map.Entry<String, SlimefunItemStack> e : acquisitionTemplates().entrySet()) {
-            Acquisition.appendLore(e.getValue(), e.getKey());
-        }
-    }
-
-    /**
-     * 物品模板总表：粘液 id → 模板。
-     *
-     * <p>★ 新增物品时<b>必须</b>在这里补一行 —— 这是"获取方式标注"能不遗漏的前提。
-     * 漏了不会崩，但 {@code /touhou acquisition} 会把该物品列进 [MISS]。
-     */
-    private static Map<String, SlimefunItemStack> acquisitionTemplates() {
-        Map<String, SlimefunItemStack> m = new java.util.LinkedHashMap<>();
-        // 材料 / 素材
-        m.put("TOUHOU_MATERIAL_LOGIC_SINGULARITY", BLAZING_ASH);
-        m.put("TOUHOU_MATERIAL_ECHO_OF_ANOTHER_WORLD", ECHO_OF_ANOTHER_WORLD);
-        m.put("TOUHOU_MATERIAL_SPRING_MUD", SPRING_MUD);
-        m.put("TOUHOU_MATERIAL_LILY_WHITE", LILY_WHITE);
-        m.put("TOUHOU_MATERIAL_FALLEN_LEAVES", FALLEN_LEAVES);
-        // 单方块机器
-        m.put("TOUHOU_SIMPLE_MACHINE_HARVEST_TIME", HARVEST_TIME);
-        // 多方块
-        m.put("TOUHOU_COMPLEX_MACHINE_UTSUHO_REACTOR_CORE", UTSUHO_REACTOR_CORE);
-        m.put("TOUHOU_COMPLEX_MACHINE_REACTOR_FRAME", REACTOR_FRAME);
-        m.put("TOUHOU_COMPLEX_MACHINE_REACTOR_SHIELD", REACTOR_SHIELD);
-        m.put("TOUHOU_COMPLEX_MACHINE_REACTOR_STABILIZER", REACTOR_STABILIZER);
-        m.put("TOUHOU_COMPLEX_MACHINE_REACTOR_BASE", REACTOR_BASE);
-        m.put("TOUHOU_COMPLEX_MACHINE_REACTOR_INPUT_PORT", REACTOR_INPUT_PORT);
-        m.put("TOUHOU_COMPLEX_MACHINE_REACTOR_OUTPUT_PORT", REACTOR_OUTPUT_PORT);
-        m.put("TOUHOU_COMPLEX_MACHINE_SHRINE_POST", SHRINE_POST);
-        m.put("TOUHOU_COMPLEX_MACHINE_SAIZENBAKO", SAIZENBAKO);
-        // 符卡 / 道具
-        m.put("TOUHOU_PARTY_ITEM_FANTASY_SEAL_CONVERGE", FANTASY_SEAL);
-        m.put("TOUHOU_PARTY_ITEM_MURDEROUS_LILY", MURDEROUS_LILY);
-        // POWER 系统
-        m.put("TOUHOU_POWER_POWER_INTEGRATED_CORE", POWER_INTEGRATED_CORE);
-        m.put("TOUHOU_POWER_POWER_REPEATER", POWER_REPEATER);
-        m.put("TOUHOU_POWER_POWER_STORAGE_UNIT", POWER_STORAGE_UNIT);
-        m.put("TOUHOU_POWER_DREAMCATCHER", POWER_DREAMCATCHER);
-        m.put("TOUHOU_POWER_POWER_SUPPLY_UNIT", POWER_SUPPLY_UNIT);
-        // INFO 组
-        m.put("TOUHOU_INFO_MODESHIFT", INFO_MODESHIFT);
-        m.put("TOUHOU_INFO_PLUGIN_MESSAGE", INFO_PLUGIN_MESSAGE);
-        m.put("TOUHOU_INFO_DECLARATION_1", INFO_DECLARATION_1);
-        m.put("TOUHOU_INFO_DECLARATION_2", INFO_DECLARATION_2);
-        m.put("TOUHOU_INFO_DECLARATION_3", INFO_DECLARATION_3);
-        m.put("TOUHOU_INFO_TARTARIC_ACID", INFO_TARTARIC_ACID);
-        m.put("TOUHOU_INFO_TEAM_SHANGHAI_ALICE", INFO_TEAM_SHANGHAI_ALICE);
-        m.put("TOUHOU_INFO_NING_MENG", INFO_NING_MENG);
-        return m;
+        // ★ 关于「获取方式」：**刻意不写进物品自己的介绍**。
+        //   用户口径（2026-09-22）：获取方式写在**指南页**上 —— 指南页槽 10 显示
+        //   "来源"（有配方 → 那台机器；从方块掉落 → 那个方块；多方块 → 那个结构的核心），
+        //   槽 10 的 lore 就是「获取方式：→ …」。
+        //   落地在 Acquisition.applyFacades()（AddSlimefunItems.setup 末尾调），
+        //   总表是 Acquisition.SOURCE_BY_ID。本方法所在的 setup() 因此不再注入任何
+        //   "获取方式"行 —— 物品介绍保持用户原文，一个字都不用加。
     }
 
     /**

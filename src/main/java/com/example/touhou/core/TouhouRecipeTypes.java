@@ -121,6 +121,18 @@ public final class TouhouRecipeTypes {
                 + " / 维度穿梭=" + keyOf(DIMENSION_SHUTTLE);
     }
 
+    /**
+     * 这个配方类型是不是本类专供的门面（反应堆核心 / 赛钱箱 / 维度穿梭）。
+     *
+     * <p>★ 用途：{@link Acquisition#applyFacades()} 要靠它判断"这件物品已经有
+     * 一个更具体的槽 10 说明" —— 那三个门面带着"搭建完整结构 + 材料清单"之类的
+     * 定制文字，<b>不能被通用的获取方式门面覆盖掉</b>。
+     */
+    public static boolean isDedicatedFacade(RecipeType type) {
+        return type != null
+                && (type == REACTOR_CORE || type == SAIZENBAKO || type == DIMENSION_SHUTTLE);
+    }
+
     private static String keyOf(RecipeType type) {
         return type == null ? "未创建" : type.getKey().toString();
     }
