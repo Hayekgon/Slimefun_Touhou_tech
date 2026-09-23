@@ -27,6 +27,7 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
+import org.bukkit.entity.Creeper;
 import org.bukkit.entity.Entity;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
@@ -98,6 +99,8 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
                     momiji(sender, Arrays.copyOfRange(args, 1, args.length));
             case "cirno", "icefairy", "ice_fairy" ->
                     cirno(sender, Arrays.copyOfRange(args, 1, args.length));
+            case "fairy", "fairyinmist", "fairy_in_mist", "mist" ->
+                    fairy(sender, Arrays.copyOfRange(args, 1, args.length));
             case "harvest", "harvesttime" ->
                     harvest(sender, Arrays.copyOfRange(args, 1, args.length));
             case "leaves", "fallenleaves", "fallen_leaves" ->
@@ -220,6 +223,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         s.sendMessage("\u00a77/touhou springherald [selfcheck|name|recipe]   报春の妖精：头贴图 / 粉白渐变（JSON 证据）/ 配方产出 2 个");
         s.sendMessage("\u00a77/touhou momiji [selfcheck|name|recipe|attr]   红叶飞散の天狗：头贴图 / 橙金渐变+灰删除线 / 配方产出 1 / 属性加成读数");
         s.sendMessage("\u00a77/touhou cirno [selfcheck|recipe|effect <x> <y> <z>|cooldown [clear|wait]]   冰の妖精：头贴图逐字符比对 / 浅蓝白渐变 / 配方产出 1 / 9x9x9 冰冻+缓慢9 效果内核");
+        s.sendMessage("\u00a77/touhou fairy [selfcheck|recipe|effect <x> <y> <z> [--timer]|place <x> <y> <z>]   雾中の妖精：头贴图逐字符比对 / 整行亮绿 / 配方产出 1 / 召唤 Bomb 效果内核");
         s.sendMessage("\u00a77/touhou harvest [selfcheck | test <x> <y> <z> | probe <x> <y> <z> | clear <x> <y> <z> | cell <x> <y> <z> [面] | rng <x> <y> <z> | wake <x> <y> <z> [crops|empty] | cooldown [clear]]   丰收之时：范围催熟 / 骨粉行为 / 提示语验证");
         s.sendMessage("\u00a77/touhou acquisition [all|rule|<物品id>]   获取方式标注核查（所有物品统一，含 null 配方）");
         s.sendMessage("\u00a77/touhou leaves [selfcheck | tools | drop [n] | watch [n|off] | field <x> <y> <z> [n] | check <x> <y> <z> | clear <x> <y> <z>]   落叶：掉率/数量分布/工具判据/非树叶对照；watch=实机追踪（走 Log.always）");
@@ -1995,6 +1999,632 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         }
         Material[] all = Material.values();
         b.setType(materialOrdinal < all.length ? all[materialOrdinal] : Material.AIR, false);
+    }
+
+    // ------------------------------------------------------------------ fairy（雾中の妖精）
+
+    /**
+     * 「雾中の妖精」的无头验证入口。
+     *
+     * <pre>
+     *   /touhou fairy                       全部打印（selfcheck + recipe）
+     *   /touhou fairy selfcheck             物品 / 头贴图逐字符比对 / 名称与两行描述逐字符颜色
+     *   /touhou fairy recipe                配方 9 格逐格 + 两条消费路径的产出数量
+     *   /touhou fairy effect &lt;x&gt; &lt;y&gt; &lt;z&gt;   即时版：召唤 → 立刻收尾 → 逐条回读 → 清场
+     *   /touhou fairy effect &lt;x&gt; &lt;y&gt; &lt;z&gt; --timer
+     *                                       走真实 20 tick：先回读"已生成"，1 秒后回读
+     *                                       "已消失 + 留下了什么"（这是唯一验到计时的路径）
+     *   /touhou fairy place &lt;x&gt; &lt;y&gt; &lt;z&gt;   真把方块放下，再读回"它有粘液方块数据"（占位判据的一半）
+     * </pre>
+     *
+     * <p>★★ <b>诚实性声明（必须写进报告）</b>：无头测试服<b>没有真玩家</b>，
+     * 而 {@code Player} 对象无法伪造（造假玩家是 {@code modules/07} §9.6 明令禁止的），
+     * 所以本节验的是<b>效果内核</b>（{@code FairyInMist.summonAt} / {@code finish} /
+     * {@code createBombItem}，与真实触发调的是<b>同一份</b>方法），<b>不是</b>
+     * "玩家对空气右键那一步"：动作闸（必须是 RIGHT_CLICK_AIR）、主手闸、
+     * 扣 1 个物品、以及聊天栏那行绿色 {@code Bomb} 都不会被执行。
+     * 那四条留给作者在游戏里亲测。
+     */
+    private void fairy(CommandSender sender, String[] args) {
+        String sub = args.length >= 1 ? args[0].toLowerCase(Locale.ROOT) : "all";
+        boolean all = sub.equals("all") || sub.equals("check");
+        boolean selfcheck = all || sub.equals("selfcheck");
+        boolean recipe = all || sub.equals("recipe");
+        if (sub.equals("effect")) {
+            fairyEffect(sender, Arrays.copyOfRange(args, 1, args.length));
+            return;
+        }
+        if (sub.equals("despawn")) {
+            fairyDespawnProbe(sender, Arrays.copyOfRange(args, 1, args.length));
+            return;
+        }
+        if (sub.equals("place")) {
+            fairyPlace(sender, Arrays.copyOfRange(args, 1, args.length));
+            return;
+        }
+        if (!selfcheck && !recipe) {
+            sender.sendMessage(PREFIX + "\u00a7c用法: /touhou fairy [selfcheck|recipe|"
+                    + "effect <x> <y> <z> [--timer]|place <x> <y> <z>]");
+            return;
+        }
+        if (selfcheck) {
+            fairySelfCheck(sender);
+        }
+        if (recipe) {
+            fairyRecipe(sender);
+        }
+    }
+
+    /**
+     * 实体<b>自然清除</b>对照实验（{@code /touhou fairy despawn <x> <y> <z>}）。
+     *
+     * <p>★ 为什么需要它：实测发现召唤出来的苦力怕会在第 1~3 tick 之间
+     * {@code isValid=false}。要定位是"我们设的某个 flag"还是"环境本身"
+     * （无头服没有玩家 / 区块 / 别的插件），就必须有<b>对照组</b>：
+     * <ol>
+     *   <li>{@code plain}：什么都没设的原版苦力怕；</li>
+     *   <li>{@code named}：只加自定义名；</li>
+     *   <li>{@code full}：完整套用 {@code FairyInMist} 的那一套 flag。</li>
+     * </ol>
+     * 三条同时生成、同一套快照，于是"哪一组活得久"直接指出根因。
+     */
+    private void fairyDespawnProbe(CommandSender sender, String[] args) {
+        Location loc = resolveAny(sender, args);
+        if (loc == null) {
+            return;
+        }
+        World world = loc.getWorld();
+        guideLine(sender, PREFIX + "\u00a7e实体自然清除 · 对照实验 @ " + xyz(loc));
+        guideLine(sender, "\u00a78  ★ groups=plain / named / full，全部走 runTaskLater 快照");
+
+        Location a = new Location(world, loc.getBlockX() + 0.5D, loc.getBlockY(), loc.getBlockZ() + 0.5D);
+        Location b = a.clone().add(2, 0, 0);
+        Location c = a.clone().add(4, 0, 0);
+
+        Creeper plain = (Creeper) world.spawnEntity(a, org.bukkit.entity.EntityType.CREEPER);
+
+        Creeper named = (Creeper) world.spawnEntity(b, org.bukkit.entity.EntityType.CREEPER);
+        named.setCustomName("\u00a7aBomb");
+        named.setCustomNameVisible(true);
+
+        Creeper full = (Creeper) world.spawnEntity(c, org.bukkit.entity.EntityType.CREEPER);
+        full.setCustomName("\u00a7aBomb");
+        full.setCustomNameVisible(true);
+        full.setInvulnerable(true);
+        full.setAI(true);
+        full.setCollidable(false);
+        full.setSilent(true);
+        full.setPersistent(true);
+        full.setExplosionRadius(0);
+        full.setPowered(false);
+
+        for (long t : new long[]{1L, 3L, 5L, 19L}) {
+            org.bukkit.Bukkit.getScheduler().runTaskLater(com.example.touhou.Touhou.getInstance(), () -> {
+                log("[FAIRY-DESPAWN] t=" + t
+                        + " plain(valid=" + plain.isValid() + ",age=" + plain.getTicksLived() + ")"
+                        + " named(valid=" + named.isValid() + ",age=" + named.getTicksLived() + ")"
+                        + " full(valid=" + full.isValid() + ",age=" + full.getTicksLived() + ")");
+            }, t);
+        }
+        // 30 tick 后统一清场
+        org.bukkit.Bukkit.getScheduler().runTaskLater(com.example.touhou.Touhou.getInstance(), () -> {
+            int n = 0;
+            for (Creeper cr : new Creeper[]{plain, named, full}) {
+                if (cr.isValid()) {
+                    cr.remove();
+                    n++;
+                }
+            }
+            log("[FAIRY-DESPAWN] cleanup removed=" + n);
+        }, 30L);
+    }
+
+    /** 物品自检：id / 材质 / 头贴图（逐字符比对）/ 名称与两行描述的逐字符颜色 / 光效。 */
+    private void fairySelfCheck(CommandSender sender) {
+        SlimefunItem item = com.example.touhou.core.FairyInMist.find();
+        guideLine(sender, PREFIX + "\u00a7e雾中の妖精 · 物品自检");
+        if (item == null) {
+            guideLine(sender, "\u00a7c  未注册（Slimefun 注册表里查不到 "
+                    + com.example.touhou.core.FairyInMist.ID + "）");
+            return;
+        }
+        ItemStack icon = item.getItem();
+        guideLine(sender, "\u00a78  id = " + item.getId()
+                + "   类 = " + item.getClass().getSimpleName());
+        guideLine(sender, "\u00a78  材质 = " + (icon == null ? "(null)" : String.valueOf(icon.getType()))
+                + "（应为 PLAYER_HEAD）");
+        guideLine(sender, "\u00a78  物品组 = " + (item.getItemGroup() == null
+                ? "(null)" : item.getItemGroup().getKey().toString()));
+
+        // ---- 头贴图：逐字符比对（两串都打出来，不只写"相等"）
+        String expect = AddItems.FAIRY_IN_MIST_TEXTURE;
+        String actual = AddItems.FAIRY_IN_MIST == null
+                ? null : AddItems.FAIRY_IN_MIST.getSkullTexture().orElse(null);
+        guideLine(sender, "\u00a78  ---- 头贴图比对（逐字符） ----");
+        guideLine(sender, "\u00a78  模板常量 FAIRY_IN_MIST_TEXTURE = " + expect);
+        guideLine(sender, "\u00a78  getSkullTexture() 读回           = " + actual);
+        boolean same = expect.equals(actual);
+        guideLine(sender, "\u00a78  两串逐字符相等 = " + same
+                + (same ? "  \u00a7a[SKULL-MATCH]" : "  \u00a7c[SKULL-MISMATCH]"));
+        guideLine(sender, "\u00a78  模板数量 = "
+                + (AddItems.FAIRY_IN_MIST == null ? "(null)" : AddItems.FAIRY_IN_MIST.getAmount())
+                + "（应为 1）");
+
+        ItemMeta meta = icon == null ? null : icon.getItemMeta();
+        if (meta != null) {
+            guideLine(sender, "\u00a78  附魔光效 = 附魔数 " + meta.getEnchants().size()
+                    + "，HIDE_ENCHANTS=" + meta.hasItemFlag(org.bukkit.inventory.ItemFlag.HIDE_ENCHANTS));
+        }
+
+        // ---- 名称与两行描述：逐字符颜色读数（要能看出整行亮绿）
+        fairyName(sender, meta);
+
+        // ---- 效果常量（一处改、处处生效的那些）
+        guideLine(sender, "\u00a7e  -- 效果参数（全部抽成常量）--");
+        guideLine(sender, "\u00a78  召唤物名 = " + com.example.touhou.core.FairyInMist.NAME_COLOR
+                + com.example.touhou.core.FairyInMist.BOMB_NAME
+                + "（颜色常量 NAME_COLOR = \\u00a7a 绿色；"
+                + "名称可见 = " + com.example.touhou.core.FairyInMist.BOMB_NAME_VISIBLE + "）");
+        guideLine(sender, "\u00a78  寿命 = " + com.example.touhou.core.FairyInMist.LIFETIME_TICKS
+                + " tick（= " + (com.example.touhou.core.FairyInMist.LIFETIME_TICKS / 20)
+                + " 秒，原版 tick 口径）");
+        guideLine(sender, "\u00a78  无敌 = " + com.example.touhou.core.FairyInMist.BOMB_INVULNERABLE
+                + "  AI = " + com.example.touhou.core.FairyInMist.BOMB_AI
+                + "  silent = " + com.example.touhou.core.FairyInMist.BOMB_SILENT
+                + "  persistent = " + com.example.touhou.core.FairyInMist.BOMB_PERSISTENT
+                + "  爆炸半径 = " + com.example.touhou.core.FairyInMist.BOMB_EXPLOSION_RADIUS
+                + "（四道保险，绝不真炸）");
+        guideLine(sender, "\u00a78  粒子 = VILLAGER_HAPPY x1（本版本没有 GREEN_STAR，已 javap 核实）");
+        guideLine(sender, "\u00a78  掉落物 = " + com.example.touhou.core.FairyInMist.BOMB_ITEM_MATERIAL
+                + "  名 = " + com.example.touhou.core.FairyInMist.NAME_COLOR
+                + com.example.touhou.core.FairyInMist.BOMB_ITEM_NAME
+                + "  附魔 = " + com.example.touhou.core.FairyInMist.BOMB_ENCHANTMENT.getKey()
+                + " " + com.example.touhou.core.FairyInMist.BOMB_ENCHANTMENT_LEVEL
+                + "（addUnsafeEnchantment；刻意不加 HIDE_ENCHANTS）");
+        guideLine(sender, "\u00a78  聊天栏 = " + com.example.touhou.core.FairyInMist.CHAT_COLOR
+                + com.example.touhou.core.FairyInMist.BOMB_NAME + "（不走 Notify 前缀）");
+        guideLine(sender, "\u00a78  占位提示 = \u00a7f"
+                + com.example.touhou.core.Notify.plain(com.example.touhou.core.FairyInMist.PLACEHOLDER_HINT));
+        guideLine(sender, "\u00a78  冷却 = 无（用户口径：对空气右键本身就消耗 1 个物品）");
+
+        log("[TOUHOU] fairy selfcheck id=" + item.getId()
+                + " material=" + (icon == null ? "null" : icon.getType())
+                + " skullMatch=" + same
+                + " templateAmount="
+                + (AddItems.FAIRY_IN_MIST == null ? -1 : AddItems.FAIRY_IN_MIST.getAmount())
+                + " group=" + (item.getItemGroup() == null ? "null"
+                        : item.getItemGroup().getKey().toString()));
+    }
+
+    /**
+     * 名称与描述的颜色读数（副标题 + lore）。
+     *
+     * <p>★ 期望：<b>名称 + 两行描述，整行都是同一个亮绿 {@code #00FF00}</b>
+     * （起止同色的"单色配色"）—— 描述<b>行数 = 2</b>。
+     */
+    private void fairyName(CommandSender sender, ItemMeta meta) {
+        guideLine(sender, "\u00a7e  -- 名称与描述（整行亮绿 #00FF00，单色）--");
+        if (meta == null) {
+            guideLine(sender, "\u00a7c  拿不到 ItemMeta");
+            return;
+        }
+        printDisplayNameEvidence(sender, "显示名（应为整行 #00FF00）", meta);
+        List<String> lore = meta.getLore();
+        if (lore == null) {
+            guideLine(sender, "\u00a7c  (没有 lore)");
+            return;
+        }
+        int coloredLines = 0;
+        for (int i = 0; i < lore.size(); i++) {
+            String line = lore.get(i);
+            guideLine(sender, "\u00a77  lore[" + i + "] 原样 = "
+                    + (line == null ? "" : line.replace("\u00a7", "\\u00a7")));
+            if (line == null || line.isEmpty()) {
+                continue;               // 名称与描述之间的空行
+            }
+            coloredLines++;
+            for (String cl : colorPerChar(line)) {
+                guideLine(sender, "\u00a78    " + cl);
+            }
+        }
+        // 机器可读汇总：每一行都应当是"整行同一个 #00FF00"
+        guideLine(sender, "\u00a78  ---- 汇总 ----");
+        guideLine(sender, "\u00a78  非空 lore 行数 = " + coloredLines
+                + "（期望 2 —— 描述两行；用户已更正：原文里多出来的那个 (endl) 是多打的）");
+        List<String> checks = new ArrayList<>();
+        for (String line : lore) {
+            if (line == null || line.isEmpty()) {
+                continue;
+            }
+            List<String> per = colorPerChar(line);
+            // per[0] 是"可见字符数=… 十六进制颜色序列个数=…"那一行，字符从下标 1 开始
+            int distinct = 0;
+            String firstColor = null;
+            boolean allGreen = true;
+            for (int k = 1; k < per.size(); k++) {
+                String c = shortColor(per.get(k));
+                if (firstColor == null) {
+                    firstColor = c;
+                } else if (!firstColor.equals(c)) {
+                    distinct++;
+                }
+                if (!c.contains("#00FF00")) {
+                    allGreen = false;
+                }
+            }
+            boolean ok = firstColor != null && allGreen && distinct == 0;
+            checks.add(ok ? "OK" : "BAD");
+            guideLine(sender, "\u00a78    首字符色 " + firstColor + "  不同色个数 " + distinct
+                    + "  整行 #00FF00 = " + allGreen + "  ⇒ " + (ok ? "\u00a7a符合" : "\u00a7c不符"));
+        }
+        log("[TOUHOU] fairy name lines=" + coloredLines + " allGreen=" + checks);
+    }
+
+    /** 配方：9 格逐格 + 产出数量（两条消费路径）。 */
+    private void fairyRecipe(CommandSender sender) {
+        SlimefunItem item = com.example.touhou.core.FairyInMist.find();
+        guideLine(sender, PREFIX + "\u00a7e雾中の妖精 · 配方");
+        if (item == null) {
+            guideLine(sender, "\u00a7c  未注册");
+            return;
+        }
+        guideLine(sender, "\u00a78  配方类型 = " + (item.getRecipeType() == null
+                ? "(null)" : item.getRecipeType().getKey().toString())
+                + "   指向的机器 = " + (item.getRecipeType() == null
+                        || item.getRecipeType().getMachine() == null
+                                ? "(无)" : item.getRecipeType().getMachine().getId()));
+        ItemStack declared = item.getRecipeOutput();
+        int amount = declared == null ? -1 : declared.getAmount();
+        guideLine(sender, "\u00a78  [路径①] SlimefunItem.getRecipeOutput().getAmount() = " + amount
+                + "  期望 1 ⇒ " + (amount == 1 ? "\u00a7a符合（4 参构造器，没有 recipeOutput）" : "\u00a7c不符"));
+        ItemStack tableOutput = null;
+        io.github.thebusybiscuit.slimefun4.core.multiblocks.MultiBlockMachine wb = findMagicWorkbench();
+        if (wb != null) {
+            tableOutput = findRecipeOutput(wb, item.getRecipe());
+        }
+        int tableAmount = tableOutput == null ? -1 : tableOutput.getAmount();
+        guideLine(sender, "\u00a78  [路径②] 魔法工作台配方表里那条 output.getAmount() = " + tableAmount
+                + "  期望 1 ⇒ " + (tableAmount == 1 ? "\u00a7a符合" : "\u00a7c不符"));
+        guideLine(sender, "\u00a78  [模板] AddItems.FAIRY_IN_MIST.getAmount() = "
+                + (AddItems.FAIRY_IN_MIST == null ? "(null)" : AddItems.FAIRY_IN_MIST.getAmount())
+                + "  期望 1 ⇒ " + (AddItems.FAIRY_IN_MIST != null
+                        && AddItems.FAIRY_IN_MIST.getAmount() == 1
+                                ? "\u00a7a符合（没污染模板）" : "\u00a7c不符"));
+
+        guideLine(sender, "\u00a7e  -- 配方 9 格（左上→右下，共 3 行）--");
+        ItemStack[] grid = item.getRecipe();
+        for (int i = 0; i < (grid == null ? 0 : grid.length); i++) {
+            ItemStack cell = grid[i];
+            guideLine(sender, "\u00a78    [" + i + "]=" + (cell == null ? "(空)"
+                    : cell.getType() + " x" + cell.getAmount()
+                            + "  粘液id=" + idOf(cell)
+                            + "  名=" + com.example.touhou.core.RecipePages.labelOf(cell)));
+        }
+        guideLine(sender, "\u00a78  Slimefun 多方块机器配方表里能产出它的 = "
+                + countMachineRecipesFor(item) + " 条（应为 1）");
+        guideLine(sender, "\u00a78  Bukkit 配方表里能产出它的 = " + countRecipesFor(item)
+                + " 条（应为 0 —— 走粘液多方块）");
+        log("[TOUHOU] fairy recipe declaredOutput=" + amount
+                + " machineRecipeTable=" + tableAmount
+                + " templateAmount="
+                + (AddItems.FAIRY_IN_MIST == null ? -1 : AddItems.FAIRY_IN_MIST.getAmount())
+                + " machineRecipes=" + countMachineRecipesFor(item)
+                + " bukkitRecipes=" + countRecipesFor(item));
+    }
+
+    /**
+     * <b>效果内核实机验证</b>。两条路：
+     * <ul>
+     *   <li>默认（即时版）：{@code summonAt} → 立刻 {@code finishNow} → 逐条回读 → 清场。
+     *       一条命令读完，不依赖服务器 tick。</li>
+     *   <li>{@code --timer}：{@code summonAt} 之后<b>真的等 20 tick</b>，
+     *       由调度器里的那个 {@code finish} 收尾，并在一秒后回读
+     *       "实体已不在世界 + 原地留下了什么"。★ 这是唯一验到<b>计时</b>的路径。</li>
+     * </ul>
+     *
+     * <p>★★ 它<b>不假装是玩家右键</b>：绕过的是"谁触发"这一步
+     * （动作闸 / 主手闸 / 扣物品 / 聊天栏那句话）。
+     */
+    private void fairyEffect(CommandSender sender, String[] args) {
+        Location loc = resolveAny(sender, args);
+        if (loc == null) {
+            return;
+        }
+        boolean timer = false;
+        boolean keepChunk = false;
+        for (String a : args) {
+            if (a == null) {
+                continue;
+            }
+            if (a.equalsIgnoreCase("--timer")) {
+                timer = true;
+            }
+            if (a.equalsIgnoreCase("--keepchunk")) {
+                keepChunk = true;
+            }
+        }
+        World world = loc.getWorld();
+        // ★ 诊断开关：把区块强制加载，用来分辨"实体是被原版自然清除"还是
+        //   "区块被卸载 ⇒ 实体随之离场"。实测发现苦力怕会在第 1~5 tick 之间
+        //   变成 isValid=false，而这两种原因的修法完全不同，必须先分开。
+        if (keepChunk) {
+            world.setChunkForceLoaded(loc.getBlockX() >> 4, loc.getBlockZ() >> 4, true);
+            guideLine(sender, "\u00a78  --keepchunk: 已强制加载区块 "
+                    + (loc.getBlockX() >> 4) + "," + (loc.getBlockZ() >> 4)
+                    + "  isForceLoaded="
+                    + world.isChunkForceLoaded(loc.getBlockX() >> 4, loc.getBlockZ() >> 4));
+        }
+        Location at = new Location(world, loc.getBlockX() + 0.5D, loc.getBlockY(), loc.getBlockZ() + 0.5D);
+        at.setYaw(0.0F);
+        at.setPitch(0.0F);
+
+        guideLine(sender, PREFIX + "\u00a7e雾中の妖精 · 效果内核验证 @ " + xyz(loc)
+                + (timer ? "\u00a77（--timer：真走 20 tick）" : "\u00a77（即时版：不等 tick）"));
+        guideLine(sender, "\u00a78  ★ 这条验的是【效果内核】（FairyInMist.summonAt / finish / "
+                + "createBombItem），不是玩家对空气右键那一步 —— 无头服没有真玩家");
+
+        // 记录在场实体（清场时只删我们自己造的）
+        Set<java.util.UUID> before = new HashSet<>();
+        for (Entity e : world.getEntities()) {
+            before.add(e.getUniqueId());
+        }
+
+        com.example.touhou.core.FairyInMist kernel = null;
+        SlimefunItem found = com.example.touhou.core.FairyInMist.find();
+        if (found instanceof com.example.touhou.core.FairyInMist f) {
+            kernel = f;
+        }
+        if (kernel == null) {
+            guideLine(sender, "\u00a7c  未注册，无法调内核");
+            return;
+        }
+
+        try {
+            // ---- ① 召唤
+            //   ★ 直接调"吃坐标"的那一版内核（summonAt）—— 与 summon(Player) 同一条路，
+            //     只是绕过"从玩家身上算身前 1 格"这一步（无头服没有真玩家）。
+            com.example.touhou.core.FairyInMist.SpawnReport spawn = kernel.summonAt(at, null);
+            guideLine(sender, "\u00a7e  -- ① 召唤 --");
+            guideLine(sender, "\u00a78    召唤点 = " + spawn.location.getBlockX() + ","
+                    + spawn.location.getBlockY() + "," + spawn.location.getBlockZ()
+                    + "（命令直接给坐标 ⇒ 绕过「从玩家朝向算身前 1 格」那一步；"
+                    + "真实路径给的就是同一个 summonAt 内核）");
+            guideLine(sender, "\u00a78    creeperSpawned = " + spawn.creeperSpawned
+                    + (spawn.failure == null ? "" : "  failure=" + spawn.failure));
+            if (!spawn.creeperSpawned) {
+                guideLine(sender, "\u00a7c    召唤失败，后续读数无意义");
+                return;
+            }
+            Entity e = spawn.creeper;
+            guideLine(sender, "\u00a78    实体类型 = " + e.getType()
+                    + "（期望 CREEPER）");
+            guideLine(sender, "\u00a78    自定义名 = " + mc(e.getCustomName())
+                    + "  名可见 = " + e.isCustomNameVisible()
+                    + "（期望 " + com.example.touhou.core.FairyInMist.BOMB_NAME_VISIBLE + "）");
+            guideLine(sender, "\u00a78    isInvulnerable = " + e.isInvulnerable()
+                    + "  期望 " + com.example.touhou.core.FairyInMist.BOMB_INVULNERABLE);
+            if (e instanceof org.bukkit.entity.LivingEntity le) {
+                guideLine(sender, "\u00a78    hasAI = " + le.hasAI()
+                        + "  期望 " + com.example.touhou.core.FairyInMist.BOMB_AI
+                        + "（★ 实测：false 会让实体在第 1~3 tick 被原版清除）");
+                guideLine(sender, "\u00a78    isCollidable = " + le.isCollidable()
+                        + "  期望 " + com.example.touhou.core.FairyInMist.BOMB_COLLIDABLE);
+            }
+            if (e instanceof Creeper c) {
+                guideLine(sender, "\u00a78    爆炸半径 = " + c.getExplosionRadius()
+                        + "  期望 " + com.example.touhou.core.FairyInMist.BOMB_EXPLOSION_RADIUS
+                        + "（第三道保险：绝不真炸）");
+            }
+            guideLine(sender, "\u00a78    isSilent = " + e.isSilent()
+                    + "  isPersistent = " + e.isPersistent());
+
+            if (timer) {
+                fairyEffectTimer(sender, world, spawn, before, at);
+                return;
+            }
+
+            // ---- ② 立刻收尾（干的是同一个 finishAt，锚定的是召唤坐标）
+            com.example.touhou.core.FairyInMist.InPlaceReport inPlace =
+                    com.example.touhou.core.FairyInMist.finishAt(at, (Creeper) e);
+            guideLine(sender, "\u00a7e  -- ② 收尾（finishAt → 与 1 秒后跑的是同一个方法）--");
+            guideLine(sender, "\u00a78    creeperRemoved（我们把它 remove 了）= " + inPlace.creeperRemoved
+                    + "   alreadyGone（收尾时已被服务器清掉）= " + inPlace.creeperAlreadyGone);
+            guideLine(sender, "\u00a78    ★ 两者都不算失败：本收尾锚定的是"
+                    + "「召唤时记下的坐标」，不依赖那个实体还活着");
+            guideLine(sender, "\u00a78    实体已不在世界 = " + !e.isValid() + "（期望 true）"
+                    + "  世界还在追踪它 = " + world.getEntities().contains(e) + "（期望 false）");
+            guideLine(sender, "\u00a78    粒子已撒 = " + inPlace.particleSpawned
+                    + "（VILLAGER_HAPPY x1）");
+            fairyReportDrop(sender, inPlace);
+
+            // ---- ③ 清场
+            int removed = 0;
+            for (Entity x : world.getEntities()) {
+                if (!before.contains(x.getUniqueId())) {
+                    x.remove();
+                    removed++;
+                }
+            }
+            guideLine(sender, "\u00a78  已清场：删除本次生成的实体 " + removed + " 个");
+            log("[TOUHOU] fairy effect @ " + xyz(loc)
+                    + " spawned=" + spawn.creeperSpawned
+                    + " inPlaceDrop=" + inPlace.dropSpawned);
+        } catch (RuntimeException ex) {
+            guideLine(sender, "\u00a7c  内核抛异常: " + ex);
+            log("[TOUHOU] fairy effect FAILED " + ex);
+        }
+    }
+
+    /**
+     * {@code --timer} 分支：真的等 20 tick，由调度器里的 {@code finish} 收尾。
+     *
+     * <p>★ 之所以"回读"要放在<b>另一个延迟任务</b>里：命令跑在主线程的一个 tick 内，
+     * 20 tick 的等待跨越了 tick 边界 ⇒ 本方法必须立刻返回，把回读挂到更晚的任务上。
+     * 它在控制台留下 {@code [FAIRY-TIMER]} 前缀的一行，供 harness grep。
+     */
+    private void fairyEffectTimer(CommandSender sender, World world,
+                                  com.example.touhou.core.FairyInMist.SpawnReport spawn,
+                                  Set<java.util.UUID> before, Location at) {
+        final Entity target = spawn.creeper;
+        final long scheduledAt = System.currentTimeMillis();
+        // ★ 打开逐 tick 快照（系统属性）——这一条命令就是"我现在要看线索"，
+        //   于是它会打出"实体在第几 tick 被服务器清掉"的时间线（无头服上必然发生）。
+        System.setProperty("touhou.debugFairy", "true");
+        if (target instanceof Creeper tc) {
+            com.example.touhou.core.FairyInMist.probeEarly(tc);
+        }
+        guideLine(sender, "\u00a78  已安排 20 tick 后的收尾（真实计时）。"
+                + "约 1 秒后控制台会出现 [FAIRY-TIMER] 的读数行");
+        org.bukkit.Bukkit.getScheduler().runTaskLater(com.example.touhou.Touhou.getInstance(), () -> {
+            long elapsed = System.currentTimeMillis() - scheduledAt;
+            // 收尾任务已经被调度器跑过了（同一个 20 tick）——这里只负责回读
+            boolean gone = target == null || !target.isValid();
+            // 在召唤点附近找我们刚掉出来的那个 Bomb 实体
+            org.bukkit.entity.Item found = null;
+            int nonBefore = 0;
+            StringBuilder kinds = new StringBuilder();
+            for (Entity e : world.getEntities()) {
+                if (before.contains(e.getUniqueId())) {
+                    continue;
+                }
+                nonBefore++;
+                kinds.append(e.getType()).append('@')
+                        .append(e.getLocation().getBlockX()).append(',')
+                        .append(e.getLocation().getBlockY()).append(',')
+                        .append(e.getLocation().getBlockZ()).append(' ');
+                if (e instanceof org.bukkit.entity.Item it) {
+                    found = it;
+                }
+            }
+            // ★ 用 log(...)＝Log.command，不受 logging.console-info 影响
+            log("[FAIRY-TIMER] elapsedMs=" + elapsed
+                    + " creeperGone=" + gone
+                    + " dropFound=" + (found != null)
+                    + " nonBeforeEntities=" + nonBefore
+                    + " kinds=[" + kinds.toString().trim() + "]"
+                    + " at=" + at.getBlockX() + "," + at.getBlockY() + "," + at.getBlockZ()
+                    + " drop=" + (found == null ? "(none)" : describeBombItem(found.getItemStack())));
+            int removed = 0;
+            for (Entity e : world.getEntities()) {
+                if (!before.contains(e.getUniqueId())) {
+                    e.remove();
+                    removed++;
+                }
+            }
+            log("[FAIRY-TIMER] cleanup removed=" + removed);
+        }, com.example.touhou.core.FairyInMist.LIFETIME_TICKS + 20L);
+    }
+
+    /** 打印掉落物的读数（材质 / 显示名 / 附魔等级 / 有没有 HIDE_ENCHANTS）。 */
+    private void fairyReportDrop(CommandSender sender,
+                                 com.example.touhou.core.FairyInMist.InPlaceReport inPlace) {
+        guideLine(sender, "\u00a7e  -- ③ 原地留下了什么 --");
+        guideLine(sender, "\u00a78    dropSpawned = " + inPlace.dropSpawned
+                + (inPlace.failure == null ? "" : "  failure=" + inPlace.failure));
+        if (inPlace.droppedItem == null) {
+            guideLine(sender, "\u00a7c    没有掉落物实体");
+            return;
+        }
+        guideLine(sender, "\u00a78    " + describeBombItem(inPlace.droppedItem.getItemStack()));
+        guideLine(sender, "\u00a78    ★ 与 createBombItem() 的期望逐项比对上方读数");
+    }
+
+    /** 一个 Bomb 物品的可读读数（纯 ASCII，便于 grep）。 */
+    private static String describeBombItem(ItemStack stack) {
+        if (stack == null) {
+            return "(null)";
+        }
+        ItemMeta meta = stack.getItemMeta();
+        String name = meta == null || meta.getDisplayName() == null
+                ? "(无名)" : meta.getDisplayName();
+        int lvl = meta == null ? -1
+                : meta.getEnchantLevel(com.example.touhou.core.FairyInMist.BOMB_ENCHANTMENT);
+        boolean hide = meta != null
+                && meta.hasItemFlag(org.bukkit.inventory.ItemFlag.HIDE_ENCHANTS);
+        return "material=" + stack.getType()
+                + " displayNameAscii=" + asciiOf(name)
+                + " enchantLevel=" + lvl
+                + " HIDE_ENCHANTS=" + hide
+                + (lvl == com.example.touhou.core.FairyInMist.BOMB_ENCHANTMENT_LEVEL && !hide
+                        ? " [BOMB-ITEM-OK]" : " [BOMB-ITEM-FAIL]");
+    }
+
+    /**
+     * 把一串带 {@code §} 与中文的文本转成<b>纯 ASCII</b>（{@code §}→{@code \u00a7}，其余非 ASCII → {@code U+XXXX}）。
+     *
+     * <p>★ 为什么要转：Paper 日志按 GBK 写盘（modules/07 §5），中文在 harness 回读时会乱码，
+     * 于是"名字对不对"这种读数就没法用于断言。转码之后 {@code Bomb} 这种 ASCII 原样可见，
+     * 颜色码也变成可读的 {@code \u00a7a}。
+     */
+    private static String asciiOf(String text) {
+        if (text == null) {
+            return "(null)";
+        }
+        StringBuilder out = new StringBuilder(text.length() * 4);
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c == '\u00a7') {
+                out.append("\\u00a7");
+            } else if (c < 128) {
+                out.append(c);
+            } else {
+                out.append(String.format(Locale.ROOT, "U+%04X", (int) c));
+            }
+        }
+        return out.toString();
+    }
+
+    /** {@code null} 安全的自定义名展示（控制台里 {@code §} 会乱码，所以标一下）。 */
+    private static String mc(String name) {
+        return name == null ? "(null)" : name.replace("\u00a7", "\\u00a7");
+    }
+
+    /**
+     * {@code /touhou fairy place <x> <y> <z>} —— 真把「雾中の妖精」放下。
+     *
+     * <p>★ 它验的是<b>"能被放下"这件事的一半</b>：命令走的是
+     * {@code createBlock}（与玩家放置后本体补写方块数据同一条落点），
+     * 用它证明"这个 id 是一个合法的可放置粘液方块、放下后有方块数据"。
+     * <b>验不到</b>的是"玩家对方块右键时不会触发效果" ——
+     * 那需要真人右键，只能登记给作者亲测（{@code modules/07} §9.6）。
+     */
+    private void fairyPlace(CommandSender sender, String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage(PREFIX + "\u00a7c用法: /touhou fairy place <x> <y> <z>");
+            return;
+        }
+        Location loc = resolveAny(sender, args);
+        if (loc == null) {
+            return;
+        }
+        String sfId = com.example.touhou.core.FairyInMist.ID;
+        SlimefunItem item = SlimefunItem.getById(sfId);
+        if (item == null) {
+            sender.sendMessage(PREFIX + "\u00a7c未注册: " + sfId);
+            return;
+        }
+        SlimefunItem occupant = BlockStorage.check(loc);
+        if (occupant != null) {
+            sender.sendMessage(PREFIX + "\u00a7c该位置已有粘液方块: " + occupant.getId()
+                    + "（先 /touhou remove " + xyz(loc) + "）");
+            return;
+        }
+        try {
+            loc.getBlock().setType(item.getItem().getType());
+            var data = Slimefun.getDatabaseManager().getBlockDataController().createBlock(loc, sfId);
+            SlimefunItem back = BlockStorage.check(loc);
+            guideLine(sender, PREFIX + "\u00a7e雾中の妖精 · 放置判据 @ " + xyz(loc));
+            guideLine(sender, "\u00a78    写的方块数据 = " + (data != null));
+            guideLine(sender, "\u00a78    checkID 读回 = " + (back == null ? "(null)" : back.getId())
+                    + (back != null && sfId.equals(back.getId()) ? "  \u00a7a[PLACE-OK]" : "  \u00a7c[FAIL]"));
+            guideLine(sender, "\u00a78    ★ 这一步证明「这个 id 能被放下、并且有粘液方块数据」；"
+                    + "验不到「玩家右键它不触发效果」—— 那需要真人");
+            log("[TOUHOU] fairy place @ " + xyz(loc) + " stored=" + (data != null)
+                    + " checkId=" + (back == null ? "null" : back.getId()));
+        } catch (RuntimeException e) {
+            sender.sendMessage(PREFIX + "\u00a7c放置失败: " + e);
+            log("[TOUHOU] fairy place FAILED " + e);
+        }
     }
 
     // ------------------------------------------------------------------ harvest（丰收之时）
@@ -6238,7 +6868,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
             return filter(List.of("reactor", "autobuild", "clickinfo", "structure", "saizen", "place",
                     "remove", "edit", "gui", "layout", "groups", "tags", "messages", "reload",
                     "power", "dreamcatcher", "seal", "lily", "springherald", "momiji", "cirno",
-                    "harvest", "leaves", "acquisition", "echo", "proj", "guide"), args[0]);
+                    "fairy", "harvest", "leaves", "acquisition", "echo", "proj", "guide"), args[0]);
         }
         if (args[0].equalsIgnoreCase("acquisition") && args.length == 2) {
             return filter(List.of("all", "rule"), args[1]);
@@ -6255,6 +6885,9 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         }
         if (args[0].equalsIgnoreCase("cirno") && args.length == 2) {
             return filter(List.of("selfcheck", "recipe", "effect", "cooldown"), args[1]);
+        }
+        if (args[0].equalsIgnoreCase("fairy") && args.length == 2) {
+            return filter(List.of("selfcheck", "recipe", "effect", "place"), args[1]);
         }
         if (args[0].equalsIgnoreCase("cirno") && args.length == 3
                 && args[1].equalsIgnoreCase("cooldown")) {
@@ -6364,7 +6997,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
     public static List<String> commands() {
         return List.of("reactor", "autobuild", "clickinfo", "structure", "saizen", "place", "remove",
                 "edit", "gui", "layout", "groups", "tags", "messages", "reload", "power",
-                "dreamcatcher", "seal", "lily", "springherald", "momiji", "cirno", "harvest",
-                "leaves", "proj");
+                "dreamcatcher", "seal", "lily", "springherald", "momiji", "cirno", "fairy",
+                "harvest", "leaves", "proj");
     }
 }

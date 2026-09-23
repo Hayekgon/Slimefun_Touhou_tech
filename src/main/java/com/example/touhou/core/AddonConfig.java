@@ -349,6 +349,25 @@ public final class AddonConfig {
      */
     public static final int MAX_CIRNO_COOLDOWN_MILLIS = 60000;
 
+    // ---- 雾中の妖精（「雾中の妖精」的一次性实体效果）----
+
+    /**
+     * 「雾中の妖精」—— 自己的消息前缀（{@code config.yml} 的 {@code fairy.message-prefix}）。
+     *
+     * <p>★ 与 {@link #echoPrefix} / {@link #harvestPrefix} / {@link #cirnoPrefix} 同理：
+     * 一件道具的提示不该蹭别的机器或反应堆的前缀（赛钱箱踩过的老路，见 {@link Notify#saizen()}）。
+     *
+     * <p>★ 本道具只用它发 warning（"放下后只是个占位" / 没权限），而 warning 不受档位影响、
+     * 永远输出 ⇒ 这里同样<b>没有</b>配套的 {@code messages.level}。
+     *
+     * <p>★ 那句成功的绿色 {@code Bomb} <b>不走前缀</b>（用户要求整行原话），
+     * 理由见 {@code FairyInMist} 里的破例注释。
+     *
+     * <p>★ <b>没有冷却配置项</b>：对空气右键本身就消耗 1 个物品，不会刷屏
+     * （用户原话"不做冷却"）。
+     */
+    public String fairyPrefix = "&8[&a雾中の妖精&8] &r";
+
     // ---- 落叶（「落叶」的获取机制：玩家手动破坏树叶按概率掉落）----
 
     /**
@@ -633,6 +652,9 @@ public final class AddonConfig {
         // 冰の妖精那一段（机器行为参数：每方块冷却 + 自己的消息前缀）。
         loadCirno(c, cfg);
 
+        // 雾中の妖精那一段（只有自己的消息前缀 —— 本道具不做冷却）。
+        loadFairy(c, cfg);
+
         c.consoleInfo = cfg.getBoolean("logging.console-info", c.consoleInfo);
         c.supplyEnabled = cfg.getBoolean("supply.enabled", c.supplyEnabled);
 
@@ -891,6 +913,26 @@ public final class AddonConfig {
     }
 
     /**
+     * 读 {@code fairy:} 段 —— 「雾中の妖精」的道具参数。
+     *
+     * <p>与 {@code echo:} / {@code harvest:} / {@code cirno:} 同一类：这些是"机制参数"，
+     * 不是物品属性，所以落在 {@code config.yml}（本文件）而不是 {@code Items.yml}。
+     *
+     * <p>★ 本道具<b>只有前缀一项</b>：用户明确"不做冷却"（对空气右键本身就消耗物品），
+     * 所以这里没有 cooldown 键 —— 加一个没有调用点的配置项只会让人以为"调了没用"。
+     *
+     * <p>★ 读不到段时保持内置默认值 —— 别在这里抛异常：老 {@code config.yml}
+     * 不会自动补新段（{@code saveDefaultConfig()} 只在文件不存在时生成）。
+     */
+    private static void loadFairy(AddonConfig c, FileConfiguration cfg) {
+        ConfigurationSection s = cfg.getConfigurationSection("fairy");
+        if (s == null) {
+            return;
+        }
+        c.fairyPrefix = s.getString("message-prefix", c.fairyPrefix);
+    }
+
+    /**
      * 把明显不合法的配置挡下来并改成安全值。
      *
      * <p>真实踩点：`MachineFuel` 的进程 tick 必须 > 0（`FuelOperation` 构造器里有
@@ -1126,6 +1168,8 @@ public final class AddonConfig {
                         + "  破坏树叶 " + String.format(java.util.Locale.ROOT, "%.1f", fallenLeavesDropChance * 100.0D)
                         + "% 掉落 " + fallenLeavesMinAmount + "~" + fallenLeavesMaxAmount + " 个",
                 "cirno             = 冰の妖精 每方块冷却 " + cirnoCooldownMillis + " ms"
-                        + "（用户口径 8000）  前缀「" + cirnoPrefix + "」");
+                        + "（用户口径 8000）  前缀「" + cirnoPrefix + "」",
+                "fairy             = 雾中の妖精 前缀「" + fairyPrefix + "」"
+                        + "（不做冷却：对空气右键消耗 1 个物品）");
     }
 }

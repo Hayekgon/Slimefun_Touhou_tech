@@ -236,6 +236,9 @@ public final class Acquisition {
         // 冰の妖精：魔法工作台合成（用户指定配方类型 MAGIC_WORKBENCH）。
         SOURCE_BY_ID.put("TOUHOU_CHARACTER_CIRNO",
                 Source.recipe("魔法工作台", () -> SlimefunItems.MAGIC_WORKBENCH));
+        // 雾中の妖精：魔法工作台合成（用户指定配方类型 MAGIC_WORKBENCH）。
+        SOURCE_BY_ID.put("TOUHOU_CHARACTER_FAIRY_IN_MIST",
+                Source.recipe("魔法工作台", () -> SlimefunItems.MAGIC_WORKBENCH));
 
         // ---- 单方块机器 ------------------------------------------------------
         SOURCE_BY_ID.put("TOUHOU_SIMPLE_MACHINE_HARVEST_TIME",

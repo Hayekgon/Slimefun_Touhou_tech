@@ -59,6 +59,19 @@ public final class AddItems {
             + "NWJmMzk2ODllYzI2MzA0YzRlYTk5ZGFjMWE1NjEyZDE3NWViMDJjZjhiYThjODI1OGM1ZmY5MzYxZDUzOGJhYiJ9fX0=";
 
     /**
+     * 「雾中の妖精」的头颅 Value —— 用户给定的那串 base64（<b>原样照抄、不做任何加工</b>）。
+     *
+     * <p>★ 判据同上：这串以 {@code "ey"} 开头 ⇒ {@code SlimefunItemStack} 的 {@code getTexture}
+     * 会把它<b>原样</b>当 base64 用（只有"64 位十六进制"那种才会被自动包成 base64），
+     * 所以这里不需要任何加工。
+     * 调试命令 {@code /touhou fairy selfcheck} 也读这个常量做<b>逐字符比对</b>
+     * （两串都打出来），于是"用户给的那串"与"物品实际带着的那串"只有一个出处。
+     */
+    public static final String FAIRY_IN_MIST_TEXTURE =
+            "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUv"
+            + "ZTI2OTAxNTkxNjFmNTkzNzMyNWNhYzk4YmU5MGVmYmVlMWQxM2Y1Yzc5NjYzNGFjZTFkY2E2ODU0MjRmYjZiMCJ9fX0=";
+
+    /**
      * 渐变配色表。
      *
      * <p>★ 起止色随配色走，而不是把"粉白"那组写死在 {@link #gradientName} 里 ——
@@ -102,7 +115,31 @@ public final class AddItems {
          * 浅蓝取 {@code #87CEEB}（skyblue，标准"天蓝/浅蓝"），白取 {@code #FFFFFF}（纯白）。
          * 想更深换成 {@code #4FC3F7}、想更浅换成 {@code #B3E5FC} —— <b>只动这一行</b>。
          */
-        ICE_FAIRY_BLUE_WHITE(0x87CEEB, 0xFFFFFF);
+        ICE_FAIRY_BLUE_WHITE(0x87CEEB, 0xFFFFFF),
+        /**
+         * 雾中の妖精：<b>亮绿色（单色，不是渐变）</b>。
+         *
+         * <h2>★★ 为什么"单色"也走 {@link Gradient} 而不是直接手拼 {@code §a}</h2>
+         * 用户两次都说"亮绿色字体"，也就是<b>整行同一个颜色</b>。按项目规范
+         * "配色与算法分离"，这里不写死 {@code §a}，而是<b>把起止色设成同一个值</b>：
+         * 插值 {@code t} 从 0 走到 1，但两端颜色相同 ⇒ 每个通道的插值结果恒定
+         * ⇒ <b>逐字符退化为单色</b>（每个字符都带一个值相同的
+         * {@code §x§R§R§G§G§B§B} 序列，视觉上就是整行亮绿）。
+         *
+         * <p>这样做的三个好处（与把 {@code ICE_FAIRY_BLUE_WHITE} 抽成枚举项同一理由）：
+         * <ol>
+         *   <li><b>换色只动一行</b>：以后要"深绿 / 荧光绿 / 换成别的单色"，改这一个常量即可，
+         *       调用点（名称与三行描述）一个字都不用动；</li>
+         *   <li><b>口径统一</b>：本件物品的名与描述全部经 {@code gradientNameFairyInMist(...)}
+         *       这一个入口，不会出现"名字用 §a、描述漏了一行没上色"这种不一致；</li>
+         *   <li><b>可核对</b>：{@code /touhou fairy selfcheck} 的逐字符颜色读数里
+         *       每个字符的颜色记号都是同一个 {@code #00FF00}，一眼可验证"整行同色"。</li>
+         * </ol>
+         * ★ 选 {@code #00FF00}（标准 bright green）而不是 {@code #55FF55}（原版 {@code §a}
+         * 那种偏柔和的绿）：用户要的是"<b>亮</b>绿色"，纯绿更贴合字面。
+         * 想改成原版 {@code §a} 的观感就把这一行的两个 {@code 0x00FF00} 一起换成 {@code 0x55FF55}。
+         */
+        FAIRY_BRIGHT_GREEN(0x00FF00, 0x00FF00);
 
         private final int start;
         private final int end;
@@ -274,6 +311,40 @@ public final class AddItems {
      * （与报春の妖精相反 —— 那件是 2 个，见 {@link AddSlimefunItems#SPRING_HERALD_OUTPUT_AMOUNT}）。
      */
     public static SlimefunItemStack CIRNO;
+
+    /**
+     * 雾中の妖精 —— 东方 Project 的「霧の妖精」（雾之湖的妖精，本作里通常指琪露诺的同类）。
+     *
+     * <p>id 按本项目铁律 {@code TOUHOU_"物品组"_"英文名"}：归属 1 级组
+     * {@link AddGroups#CHARACTER}（<b>「幻想之缘起」</b>—— 角色物品的家，用户指定；<b>不是</b>
+     * {@code MATERIAL}），英文名取 <b>Fairy in Mist</b>
+     * ⇒ {@code TOUHOU_CHARACTER_FAIRY_IN_MIST}。
+     *
+     * <p>★ 材质是<b>头颅 Value</b>（用户给定的 base64，见 {@link #FAIRY_IN_MIST_TEXTURE}），
+     * 与报春の妖精 / 红叶飞散の天狗 / 冰の妖精同一条构造器路径
+     * （{@code SlimefunItemStack(id, texture, name, lore...)} —— 本机运算，不发网络请求）。
+     *
+     * <p>★ 名称与<b>三行描述全部亮绿色</b>（用户两次都说"亮绿色字体"）。
+     * 走的是 {@link #gradientNameFairyInMist(String)} ——
+     * 起止色相同的"单色配色"（{@link Gradient#FAIRY_BRIGHT_GREEN}），
+     * 于是逐字符算法退化成一个恒定色号。<b>没有</b>任何一处手拼 {@code §a}，
+     * 理由见那个枚举项的注释（换色只动一行 / 口径统一 / 可核对）。
+     *
+     * <p>★★ 描述原文里的 {@code (endl)} 是<b>换行标记</b>，不是字面文字。
+     * 原文里有<b>两处</b>标记，但用户已明确更正：<b>第二个是多打的</b> ⇒
+     * 实际就是<b>两行</b>（"这反而显得"与"我更厉害嘛。"合并成一行，
+     * <b>中间不加空格、不加标点</b>）：
+     * <pre>
+     *   没有名字也没关系的啦。
+     *   这反而显得我更厉害嘛。
+     * </pre>
+     * 两行<b>逐字照抄</b>（一个字都没改、没补标点），且两行都是亮绿色。
+     *
+     * <p>★ <b>本模板的数量必须保持 1</b>：单次产出 1 个，
+     * 注册时用 <b>4 参构造器</b>、<b>不传</b> {@code recipeOutput}
+     * （与报春の妖精相反 —— 那件是 2 个，见 {@link AddSlimefunItems#SPRING_HERALD_OUTPUT_AMOUNT}）。
+     */
+    public static SlimefunItemStack FAIRY_IN_MIST;
 
     // ------------------------------------------------------------------ INFO 组：信息类纸张
     // 全部使用 PAPER 材质，纯信息展示，无配方、无功能。
@@ -558,6 +629,22 @@ public final class AddItems {
                 gradientNameIceFairy("冰之小妖精，Cirno，"),
                 gradientNameIceFairy("⑨⑨⑨⑨⑨⑨⑨⑨⑨⑨⑨⑨⑨⑨⑨⑨，"),
                 gradientNameIceFairy("惹到她恐怕会被当成青蛙冻起来吧"));
+
+        // 雾中の妖精。
+        // ★ 材质：用户给定的【头颅 Value】（base64，FAIRY_IN_MIST_TEXTURE）—— 判据同上面那三件：
+        //   这串以 "ey" 开头 ⇒ SlimefunItemStack 的 getTexture 原样当 base64 用，不需要加工；
+        //   运行期用 FAIRY_IN_MIST.getSkullTexture() 读回来核对（/touhou fairy selfcheck）。
+        // ★ 名称与描述【全部亮绿色】：走 gradientNameFairyInMist(...) 的单色配色
+        //   （起止色相同 ⇒ 逐字符算法退化为单色），没有任何一处手拼 §a。
+        // ★★ 描述是【两行】（用户已更正：原文里那个多出来的 (endl) 是多打的）。
+        //   第二行由"这反而显得"+"我更厉害嘛。"合并而成，中间不加空格、不加标点。
+        FAIRY_IN_MIST = new SlimefunItemStack(
+                "TOUHOU_CHARACTER_FAIRY_IN_MIST",
+                FAIRY_IN_MIST_TEXTURE,
+                gradientNameFairyInMist("雾中の妖精"),
+                "",
+                gradientNameFairyInMist("没有名字也没关系的啦。"),
+                gradientNameFairyInMist("这反而显得我更厉害嘛。"));
 
 INFO_MODESHIFT = new SlimefunItemStack(
                 "TOUHOU_INFO_MODESHIFT",
@@ -900,6 +987,16 @@ INFO_MODESHIFT = new SlimefunItemStack(
             CIRNO.setItemMeta(cirnoMeta);
         }
 
+        // 雾中の妖精：附魔光效（同一套"挂无用附魔 + HIDE_ENCHANTS"）。
+        //   ★ 它没有"要看附魔行"的要求，所以照光效惯例把附魔行藏掉，只留光晕。
+        //   ★ 必须在这里、也就是 register() 之前（注册后模板被 lock()，见 applyMomijiAttributes 的注释）。
+        FAIRY_IN_MIST.addUnsafeEnchantment(Enchantment.ARROW_INFINITE, 1);
+        ItemMeta fairyMeta = FAIRY_IN_MIST.getItemMeta();
+        if (fairyMeta != null) {
+            fairyMeta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
+            FAIRY_IN_MIST.setItemMeta(fairyMeta);
+        }
+
         // ------------------------------------------------------------------ POWER（1 级组）
         // 头贴图直接引用原生物品的贴图常量（HeadTexture 是公开枚举）。
         POWER_INTEGRATED_CORE = new SlimefunItemStack(
@@ -1221,6 +1318,22 @@ INFO_MODESHIFT = new SlimefunItemStack(
      */
     public static String gradientNameIceFairy(String text) {
         return gradientName(text, Gradient.ICE_FAIRY_BLUE_WHITE);
+    }
+
+    /**
+     * 把一段文字染成<b>亮绿色（单色）</b>——「雾中の妖精」名称与两行描述用的那套。
+     *
+     * <p>★★ <b>它不是渐变</b>：配色 {@link Gradient#FAIRY_BRIGHT_GREEN} 的起止色<B>相同</b>，
+     * 于是 {@link #gradientName(String, Gradient)} 的逐字符插值结果是恒定值 ——
+     * "单色"这件事在实现上就是"两端同色的退化渐变"。
+     * 为什么不直接写 {@code §a}：换色时只改枚举项一行、口径统一、可被自检逐字符核对，
+     * 详见那个枚举项的注释。
+     *
+     * @param text 要染的文字（纯文本，不要带 {@code §}/{@code &} 颜色代码）
+     * @return 整行同色的 {@code §x§R§R§G§G§B§B} 序列串
+     */
+    public static String gradientNameFairyInMist(String text) {
+        return gradientName(text, Gradient.FAIRY_BRIGHT_GREEN);
     }
 
     /**

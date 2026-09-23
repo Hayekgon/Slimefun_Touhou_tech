@@ -118,6 +118,21 @@ public final class AddSlimefunItems {
      */
     public static Cirno CIRNO;
     /**
+     * 雾中の妖精 —— <b>对空气右键</b>消耗 1 个、召唤一只叫 {@code Bomb} 的苦力怕
+     * （1 秒后原地消失，留下 1 个绿色星形粒子与一个带「保护 IX」的 Bomb 物品）。
+     *
+     * <p>★ 归属 1 级组 {@link AddGroups#CHARACTER}（「幻想之缘起」，角色物品的家）——
+     * 与另外三件角色物品同组，<b>不是</b> {@code MATERIAL}。
+     *
+     * <p>★ 配方类型 {@code RecipeType.MAGIC_WORKBENCH}（用户指定），
+     * 9 格图案见 {@link #fairyInMistRecipe()}。产出 <b>1 个</b> ⇒ 用 <b>4 参构造器</b>、
+     * <b>不传</b> {@code recipeOutput}（与报春の妖精刻意相反，别顺手抄成 2）。
+     *
+     * <p>★ 它的三种右键行为（对空气右键触发 / 对方块右键放下 / 右键已放下的方块只提示）
+     * 全在 {@link FairyInMist}（类注释里有那张表），这里只负责注册与配方。
+     */
+    public static FairyInMist FAIRY_IN_MIST;
+    /**
      * 另一个世界的回响（材料；玩家穿过维度之门时由能量水晶转化而来）。
      *
      * <p>它<b>不是</b>合成品：配方数组是 {@link #noRecipe()}，配方类型是
@@ -280,6 +295,15 @@ public final class AddSlimefunItems {
                 AddItems.CIRNO,
                 RecipeType.MAGIC_WORKBENCH,
                 cirnoRecipe()), plugin);
+
+        // 雾中の妖精：魔法工作台合成，【产出 1 个】⇒ 4 参构造器（不传 recipeOutput）。
+        // ★ 它的三种右键行为全在 FairyInMist（对空气右键触发 / 对方块右键放下 /
+        //   右键已放下的方块只提示），这里只负责注册与配方。
+        FAIRY_IN_MIST = register(new FairyInMist(
+                AddGroups.CHARACTER,
+                AddItems.FAIRY_IN_MIST,
+                RecipeType.MAGIC_WORKBENCH,
+                fairyInMistRecipe()), plugin);
 
         // GUI 模式玻璃板：必须真实注册，否则它的粘液 id 不存在。
         // 归属 INFO（1 级）—— 它是 GUI 内部功能件，不是可制造的材料。
@@ -596,6 +620,41 @@ public final class AddSlimefunItems {
         };
     }
 
+    /**
+     * 雾中の妖精的合成配方（<b>魔法工作台</b>，用户指定 3×3 图案）。
+     *
+     * <pre>
+     *   落叶           TNT           落叶
+     *   春泥           春泥           春泥
+     *   空白符文       春泥           空白符文
+     * </pre>
+     *
+     * <p>逐格对应（数组下标 0..8 是"左上 → 右下"的阅读顺序）：
+     * <ol>
+     *   <li>{@code [0] [2]} 落叶 = 本项目自己的物品 {@link AddItems#FALLEN_LEAVES}
+     *       （id {@code TOUHOU_MATERIAL_FALLEN_LEAVES}）—— 配方匹配是拿<b>粘液 id</b>
+     *       比的（{@code SlimefunUtils.isItemSimilar}），所以必须给模板本身；</li>
+     *   <li>{@code [1]} TNT = 原版 {@code Material.TNT}；</li>
+     *   <li>{@code [3] [4] [5] [7]} 春泥 = {@link AddItems#SPRING_MUD}
+     *       （id {@code TOUHOU_MATERIAL_SPRING_MUD}）—— 同上，必须给模板本身；</li>
+     *   <li>{@code [6] [8]} 空白符文 = <b>本体常量</b> {@code SlimefunItems.BLANK_RUNE}。
+     *       ★ 字段名已用 {@code javap} 在运行期 {@code Slimefun4-2025.1.jar} 上核实
+     *       （{@code public static final SlimefunItemStack BLANK_RUNE;}）——
+     *       与 {@code momijiTenguRecipe} 里用 {@code SlimefunItems.MAGIC_LUMP_3} 同一路数：
+     *       <b>用常量而不是硬写 id 字符串</b>，才不会在改名时静默失配。</li>
+     * </ol>
+     *
+     * <p>★ 单次产出 <b>1</b> 个：本方法只给 9 格图案，注册处用的是 4 参构造器
+     * （没有 {@code recipeOutput}），所以产出就是模板自己的数量 1。
+     */
+    private static ItemStack[] fairyInMistRecipe() {
+        return new ItemStack[] {
+                AddItems.FALLEN_LEAVES, new ItemStack(Material.TNT), AddItems.FALLEN_LEAVES,
+                AddItems.SPRING_MUD, AddItems.SPRING_MUD, AddItems.SPRING_MUD,
+                SlimefunItems.BLANK_RUNE, AddItems.SPRING_MUD, SlimefunItems.BLANK_RUNE
+        };
+    }
+
     private static ItemStack[] goheiRecipe() {
         return new ItemStack[] {
                 null, AddItems.BLAZING_ASH, null,
@@ -682,6 +741,8 @@ public final class AddSlimefunItems {
                         : "落叶=OK(" + FALLEN_LEAVES.getId() + ",破坏树叶掉落)")
                 + " / " + (CIRNO == null ? "冰の妖精=未注册"
                         : "冰の妖精=OK(" + CIRNO.getId() + ",产出1,右键9x9x9冰冻)")
+                + " / " + (FAIRY_IN_MIST == null ? "雾中の妖精=未注册"
+                        : "雾中の妖精=OK(" + FAIRY_IN_MIST.getId() + ",产出1,对空气右键召唤)")
                 + " / " + (ECHO_OF_ANOTHER_WORLD == null ? "另一个世界的回响=未注册"
                         : "另一个世界的回响=OK(" + ECHO_OF_ANOTHER_WORLD.getId() + ")")
                 + " / " + (INFO_MODESHIFT == null ? "模式玻璃板=未注册" : "模式玻璃板=OK")
