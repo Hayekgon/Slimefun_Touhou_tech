@@ -357,8 +357,11 @@ public final class AddonConfig {
      * <p>★ 与 {@link #echoPrefix} / {@link #harvestPrefix} / {@link #cirnoPrefix} 同理：
      * 一件道具的提示不该蹭别的机器或反应堆的前缀（赛钱箱踩过的老路，见 {@link Notify#saizen()}）。
      *
-     * <p>★ 本道具只用它发 warning（"放下后只是个占位" / 没权限），而 warning 不受档位影响、
+     * <p>★ 本道具只用它发 warning（"物品已消耗、召唤却失败"），而 warning 不受档位影响、
      * 永远输出 ⇒ 这里同样<b>没有</b>配套的 {@code messages.level}。
+     * ★ 它<b>不再</b>服务于"占位提示"（2026-09-22 用户口径变更：右键已放下的方块
+     * 什么都不输出）—— 所以现在只剩"召唤失败"一个调用点；
+     * <b>但前缀仍然要用，别当成死配置删掉</b>。
      *
      * <p>★ 那句成功的绿色 {@code Bomb} <b>不走前缀</b>（用户要求整行原话），
      * 理由见 {@code FairyInMist} 里的破例注释。
@@ -1170,6 +1173,6 @@ public final class AddonConfig {
                 "cirno             = 冰の妖精 每方块冷却 " + cirnoCooldownMillis + " ms"
                         + "（用户口径 8000）  前缀「" + cirnoPrefix + "」",
                 "fairy             = 雾中の妖精 前缀「" + fairyPrefix + "」"
-                        + "（不做冷却：对空气右键消耗 1 个物品）");
+                        + "（只用于「召唤失败」的 warning —— 右键已放下的方块不再有任何提示）");
     }
 }

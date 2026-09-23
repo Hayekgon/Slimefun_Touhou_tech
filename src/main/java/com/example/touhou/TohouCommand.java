@@ -2183,8 +2183,8 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
                 + "（addUnsafeEnchantment；刻意不加 HIDE_ENCHANTS）");
         guideLine(sender, "\u00a78  聊天栏 = " + com.example.touhou.core.FairyInMist.CHAT_COLOR
                 + com.example.touhou.core.FairyInMist.BOMB_NAME + "（不走 Notify 前缀）");
-        guideLine(sender, "\u00a78  占位提示 = \u00a7f"
-                + com.example.touhou.core.Notify.plain(com.example.touhou.core.FairyInMist.PLACEHOLDER_HINT));
+        guideLine(sender, "\u00a78  右键已放下的方块 = 什么都不发生"
+                + "（不触发 / 不消耗 / 不发消息 —— 用户口径；没有任何 handler 去实现它）");
         guideLine(sender, "\u00a78  冷却 = 无（用户口径：对空气右键本身就消耗 1 个物品）");
 
         log("[TOUHOU] fairy selfcheck id=" + item.getId()

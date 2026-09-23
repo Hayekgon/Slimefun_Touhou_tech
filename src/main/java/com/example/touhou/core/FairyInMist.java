@@ -6,17 +6,13 @@ import io.github.thebusybiscuit.slimefun4.api.items.ItemGroup;
 import io.github.thebusybiscuit.slimefun4.api.items.SlimefunItem;
 import io.github.thebusybiscuit.slimefun4.api.items.SlimefunItemStack;
 import io.github.thebusybiscuit.slimefun4.api.recipes.RecipeType;
-import io.github.thebusybiscuit.slimefun4.core.handlers.BlockUseHandler;
 import io.github.thebusybiscuit.slimefun4.core.handlers.ItemUseHandler;
-import io.github.thebusybiscuit.slimefun4.libraries.dough.protection.Interaction;
-import io.github.thebusybiscuit.slimefun4.implementation.Slimefun;
 import java.util.ArrayList;
 import java.util.List;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Particle;
 import org.bukkit.World;
-import org.bukkit.block.Block;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Creeper;
 import org.bukkit.entity.Entity;
@@ -40,8 +36,14 @@ import org.bukkit.inventory.meta.ItemMeta;
  *   <tr><td><b>对方块右键</b>（{@link Action#RIGHT_CLICK_BLOCK}）</td>
  *       <td>放下这个方块（{@code SlimefunItem} 默认就能放），<b>不触发</b>效果</td></tr>
  *   <tr><td><b>右键已经放下的那个方块</b></td>
- *       <td>什么都不触发（它只是个占位），只回一条提示</td></tr>
+ *       <td><b>什么都不发生</b>（不触发效果、不消耗物品、<b>不发任何消息</b>）</td></tr>
  * </table>
+ *
+ * <p>★ 最后那一行是<b>用户口径的变更</b>（2026-09-22）：第一版会在右键已放下的方块时
+ * 回一句"这只是占位方块"的提示，用户看过后要求不要输出任何提示。
+ * 于是那句提示与<b>只服务于它的 {@code BlockUseHandler}</b> 一起删掉了 ——
+ * "什么都不发生"现在是默认行为（既没有 {@code BlockUseHandler}、也没有
+ * {@code BlockMenuPreset}），不需要任何代码去"实现"它。
  *
  * <h2>★★ 为什么必须显式判 {@code RIGHT_CLICK_AIR}（本类最容易写错的一处）</h2>
  * {@code PlayerRightClickEvent} <b>同时</b>承载"右键空气"与"右键方块"两种情形，
@@ -227,55 +229,23 @@ public class FairyInMist extends SlimefunItem {
     public FairyInMist(ItemGroup itemGroup, SlimefunItemStack item,
                        RecipeType recipeType, ItemStack[] recipe) {
         super(itemGroup, item, recipeType, recipe);
-        // ★ 注意：本类直接继承 SlimefunItem、用 addItemHandler 逐个注册，
-        //   而【不】用 SimpleSlimefunItem —— 后者只支持"一个" handler
-        //   （它的 preRegister 固定调 getItemHandler() 一次），
-        //   而本物品需要【两个】：
-        //     ① ItemUseHandler   → 对空气右键触发效果
-        //     ② BlockUseHandler  → 右键已放下的方块时给一条"这只是占位"的提示
-        //   两者缺一不可，所以必须走 addItemHandler 这条路。
+        // ★ 本类直接继承 SlimefunItem、用 addItemHandler 注册（而不是 SimpleSlimefunItem）
+        //   —— 因为本物品【只】需要 ItemUseHandler 这一个 handler，
+        //   而 SlimefunItem 这条路比 SimpleSlimefunItem 更直白：
+        //   后者会强迫你把 handler 塞进 getItemHandler() 的泛型里。
+        //
+        // ★★ 为什么【没有】BlockUseHandler（2026-09-22 用户口径变更后的现状）：
+        //   第一版注册了它，用来在"右键已放下的方块"时回一句
+        //   「这只是占位方块，右键它不会触发效果」。
+        //   用户看过后要求【不要输出任何提示】⇒ 那句提示与它的 handler 一起删掉了。
+        //   **刻意不留一个空转的 handler**：它的唯一职责就是发那句话，
+        //   留个什么都不做的壳只会让下一个读代码的人以为"这里本来该干点什么"
+        //   （而且会白占一次 callItemHandler 的分派）。
+        //   于是"右键已放下的方块什么都不发生"现在是**默认行为**：
+        //   物品没有 BlockUseHandler、也没有 BlockMenuPreset
+        //   ⇒ 本体那条 rightClickBlock 分支找不到任何东西可做。
         addItemHandler((ItemUseHandler) this::onUse);
-
-        // ★★ 为什么敢注册 BlockUseHandler（本项目对它有历史阴影）：
-        //   本体 SlimefunItemInteractListener#rightClickBlock 的判据是
-        //   "callItemHandler(BlockUseHandler.class, …) 返回 true 就不开自有界面"，
-        //   而那个返回值是"这个物品有没有注册该 handler"（恒为 true）
-        //   ⇒ 注册了它就永远打不开自有界面（见 modules/04 §1.1 与 UtsuhoReactorCore 的注释）。
-        //   本物品【刻意不做 GUI】（需求没要求），所以这条副作用对我们不存在 ——
-        //   与「丰收之时」用同一路数。
-        addItemHandler((BlockUseHandler) event -> {
-            Block block = clickedBlock(event);
-            Player player = event.getPlayer();
-            if (player == null) {
-                return;
-            }
-            // 权限判据与项目其它机器同源（bypass 或 canUse + 领地交互权）——
-            // 没权限就静默返回：这只是个占位方块，没必要对没权限的人喊话。
-            if (!canUseHere(player, block)) {
-                return;
-            }
-            Notify.warn(Notify.fairy(), player, PLACEHOLDER_HINT);
-        });
     }
-
-    /**
-     * 右键已放下的方块时给玩家的提示文案 —— <b>整个插件里这句话只有这一个出处</b>
-     * （命令的自检输出也读它）。
-     *
-     * <p>★ 需求没给文案，本实现自己定。选这句的理由：
-     * <ol>
-     *   <li>先把"<b>没有失效</b>"说出来（"已经用掉了"），否则玩家会以为是 bug
-     *       —— 它确实是"一次性的：对空气右键就消耗掉"；</li>
-     *   <li>再说清"放下的这个只是个占位"，并点名它<b>不会</b>触发效果；</li>
-     *   <li>最后给一句"该怎么做"，把玩家引回正确用法（对空气右键）。</li>
-     * </ol>
-     * 用 {@link Notify#warn} 而不是 {@code info}：玩家"主动做了一件事但没成功"
-     * 正是 warn 的判据，而且 {@code Notify.info} 在默认档位下是<b>静默</b>的
-     * （见 modules/04 §6.2），用它等于"点了没反应"。
-     */
-    public static final String PLACEHOLDER_HINT =
-            "&7这只是「雾中の妖精」的&f占位方块&7 —— 右键它&c不会触发效果&7。"
-                    + "把它拿在手里&f对空气右键&7才会消耗并召唤 Bomb。";
 
     // ------------------------------------------------------------------ ① 对空气右键
 
@@ -346,7 +316,8 @@ public class FairyInMist extends SlimefunItem {
         //     ③ Notify.info 在项目默认档位（important）下是【静默】的，用它等于没反应；
         //        而 Notify.warn 会带上前缀，回到第 ① 条。
         //   ⇒ 结论：这一处用 player.sendMessage(颜色 + 原名)。
-        //   占位提示与权限提示照旧走 Notify.warn（那两条是"操作没成功"，不介意带前缀）。
+        //   注意：这条是【唯一】的玩家可见推送；"右键已放下的方块"不再有任何提示
+        //   （用户口径变更，见类注释里那张表），召唤失败那条 warning 仍走 Notify.warn。
         player.sendMessage(CHAT_COLOR + BOMB_NAME);
         Log.info(report.logLine());
     }
@@ -737,7 +708,14 @@ public class FairyInMist extends SlimefunItem {
         return at;
     }
 
-    /** 取出事件里的动作（拿不到就返回 {@code null}）。 */
+    /**
+     * 取出事件里的动作（拿不到就返回 {@code null}）。
+     *
+     * <p>★ 这是本类<b>唯一</b>的入口判据：只有 {@link Action#RIGHT_CLICK_AIR} 才触发效果。
+     * <p>★ 这里【没有】配套的 {@code clickedBlock(...)} / {@code canUseHere(...)} 了
+     * —— 它们只被第一版那个"右键已放下的方块回一句提示"的 {@code BlockUseHandler} 用到，
+     * 随着那句话一起删掉（不留死代码，见构造函数里的注释）。
+     */
     private static Action actionOf(PlayerRightClickEvent event) {
         if (event == null) {
             return null;
@@ -748,32 +726,6 @@ public class FairyInMist extends SlimefunItem {
         } catch (RuntimeException e) {
             return null;
         }
-    }
-
-    /** 右键事件里的"被点方块"（右键空气时为空）。 */
-    private static Block clickedBlock(PlayerRightClickEvent event) {
-        if (event == null) {
-            return null;
-        }
-        try {
-            return event.getClickedBlock().orElse(null);
-        } catch (RuntimeException e) {
-            return null;
-        }
-    }
-
-    /**
-     * 交互权限 —— 与 {@code ShrinePost#canOpen} / {@code Saizenbako#canOpen} /
-     * {@code AbstractReactorPort#canOpen} / {@code HarvestTime#canHarvest} /
-     * {@code Cirno#canUseHere} 完全同一条判据。
-     */
-    public boolean canUseHere(Player player, Block block) {
-        if (player == null || block == null) {
-            return false;
-        }
-        return player.hasPermission("slimefun.inventory.bypass")
-                || (canUse(player, false) && Slimefun.getProtectionManager()
-                        .hasPermission(player, block.getLocation(), Interaction.INTERACT_BLOCK));
     }
 
     // ---------------------------------------------------------------- 诊断
