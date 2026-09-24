@@ -36,6 +36,23 @@ public final class AddSlimefunItems {
      */
     public static final int SPRING_HERALD_OUTPUT_AMOUNT = 2;
 
+    /**
+     * 「P引擎」每次合成的产出数量 —— <b>8</b>。
+     *
+     * <p>抽成常量是为了让"需求说 8 个"只有一个出处：注册处
+     * （{@code new SlimefunItemStack(AddItems.P_ENGINE, P_ENGINE_OUTPUT_AMOUNT)}）
+     * 与验证命令 {@code /touhou pengine recipe} 都读它，
+     * 于是命令打印的"期望产出"与真正写进合成表的数量不可能对不上。
+     *
+     * <p>★★ 与 {@link #SPRING_HERALD_OUTPUT_AMOUNT}（产出 2）是同一套机制：
+     * 走 {@code SlimefunItem} 第 5 个参数 {@code recipeOutput}，
+     * 而<b>模板 {@link AddItems#P_ENGINE} 的数量必须保持 1</b> ——
+     * 改模板会连累 {@code /sf give} 与指南页图标，并触发粘液本体那条
+     * "illegal stack size … should be handled via the recipeOutput parameter" 告警
+     * （原话见 {@link #SPRING_HERALD} 的字段注释）。
+     */
+    public static final int P_ENGINE_OUTPUT_AMOUNT = 8;
+
     /** 反应堆核心（多方块核心 + 发电机）。 */
     public static UtsuhoReactorCore UTSUHO_REACTOR_CORE;
     /** 炙热的灰烬（材料）。 */
@@ -110,6 +127,22 @@ public final class AddSlimefunItems {
      * <p>★ 产出 <b>1 个</b> ⇒ 4 参构造器（不传 {@code recipeOutput}）。
      */
     public static SlimefunItem POINT;
+    /**
+     * P引擎 —— 增强型工作台合成的材料，★★ <b>单次产出 8 个</b>。
+     *
+     * <p>★ 归属 1 级组 {@link AddGroups#MATERIAL}（用户原话"放到'幻想之物'物品组"）。
+     * ⚠ 该组的<b>显示名</b>已改为「幻想之物」，但字段名/key 未动 —— 传的仍是
+     * {@code AddGroups.MATERIAL}，不是 {@code AddGroups.CHARACTER}。
+     *
+     * <p>★★ <b>多产出必须用第 5 个参数 {@code recipeOutput}</b>：
+     * 注册处传 {@code new SlimefunItemStack(AddItems.P_ENGINE, P_ENGINE_OUTPUT_AMOUNT)}，
+     * 而<b>模板本身的数量保持 1</b>（原因见那个常量的注释与 {@link #SPRING_HERALD} 的反面说明）。
+     * 判断"有没有真的生效"要读<b>两条消费路径</b>：
+     * {@code getRecipeOutput().getAmount()}（指南页产物格 / 自动合成机）与
+     * <b>增强型工作台配方表里那条</b>（{@code MultiBlockMachine#addRecipe} 收到的东西）——
+     * 两者都必须是 8（{@code /touhou pengine recipe} 会把这三条一起打出来）。
+     */
+    public static SlimefunItem P_ENGINE;
     /**
      * 冰の妖精（琪露诺 / Cirno）—— <b>右键生效的范围冰冻机器</b>（不需要 GUI）。
      *
@@ -306,6 +339,19 @@ public final class AddSlimefunItems {
                 AddItems.POINT,
                 RecipeType.ENHANCED_CRAFTING_TABLE,
                 pointRecipe()), plugin);
+
+        // P引擎：增强型工作台合成（与 POINT 同一台机器），★★【单次产出 8 个】
+        //   ⇒ 必须用吃第 5 个参数 recipeOutput 的 5 参构造器（判据见 P_ENGINE_OUTPUT_AMOUNT）。
+        //   ⚠ 模板 AddItems.P_ENGINE 保持 1 个 —— 顺手把模板改成 8 会连累 /sf give 与指南图标，
+        //     并触发粘液本体那条 "illegal stack size" 告警（SPRING_HERALD 的字段注释有原文）。
+        //   ★ 配方里引用了上一件物品 POINT（本项目自己的模板）—— 配方匹配拿**粘液 id** 比，
+        //     所以必须给模板本身，给"看起来一样"的别的东西是匹配不上的。
+        P_ENGINE = register(new SlimefunItem(
+                AddGroups.MATERIAL,
+                AddItems.P_ENGINE,
+                RecipeType.ENHANCED_CRAFTING_TABLE,
+                pEngineRecipe(),
+                new SlimefunItemStack(AddItems.P_ENGINE, P_ENGINE_OUTPUT_AMOUNT)), plugin);
 
         // 冰の妖精：魔法工作台合成，【产出 1 个】⇒ 4 参构造器（不传 recipeOutput）。
         // ★ 它的右键行为（9×9×9 冰冻 + 缓慢 9 + 那句 Bakabaka）全在 Cirno#getItemHandler，
@@ -637,6 +683,46 @@ public final class AddSlimefunItems {
     }
 
     /**
+     * P引擎的合成配方（<b>增强型工作台</b>）。
+     *
+     * <pre>
+     *   铜线     铜线     铜线
+     *   碳       钢板     锌锭
+     *   碳       POINT    锌锭
+     * </pre>
+     *
+     * <p>★ 用户说的"强化工作台"与项目里的"增强型工作台"<b>是同一台机器</b>：
+     * 本体的 {@code RecipeType.ENHANCED_CRAFTING_TABLE}，在
+     * {@link Acquisition#MACHINE_BY_RECIPE_TYPE_KEY} 里映射成显示名"增强型工作台"。
+     * 本体<b>没有</b>叫"强化工作台"的配方类型，所以用这个（与 POINT 那次同一判断）。
+     *
+     * <p>★ 四个本体材料都用 <b>{@code SlimefunItems} 常量</b>而不是硬写 id 字符串：
+     * 铜线 {@code COPPER_WIRE} / 碳 {@code CARBON} / 钢板 {@code STEEL_PLATE} /
+     * 锌锭 {@code ZINC_INGOT}。这四个字段名已在<b>运行期</b>
+     * {@code Slimefun-2026.07-release.jar} 上用 {@code javap} 逐个核实存在
+     * （同一个 jar 里另有 {@code COMPRESSED_CARBON} 等近似项，
+     * 需求点名的是 {@code CARBON}，所以<b>不</b>替换）。
+     * 用常量而不是字符串，才不会在改名时静默失配。
+     *
+     * <p>★ 「POINT」是上一件物品 {@link AddItems#POINT} 的<b>模板本身</b>：
+     * 配方匹配拿粘液 id 比，给"看起来一样"的别的东西是匹配不上的。
+     *
+     * <p>★ 配方撞车检查：本图案与项目里另外几条增强型工作台配方
+     * （春泥的泥土围边 / 反应堆核心的强化板 / 两张符卡的竖条）都不相同，
+     * 不会出现"后注册的覆盖前一个"（判据见 {@code modules\03} §6）。
+     *
+     * <p>★★ 产出 <b>8</b> 个<b>不在这里写</b> —— 本方法只管 9 格图案，
+     * 数量由注册处那个第 5 参数统一决定（见 {@link #P_ENGINE_OUTPUT_AMOUNT}）。
+     */
+    private static ItemStack[] pEngineRecipe() {
+        return new ItemStack[] {
+                SlimefunItems.COPPER_WIRE, SlimefunItems.COPPER_WIRE, SlimefunItems.COPPER_WIRE,
+                SlimefunItems.CARBON, SlimefunItems.STEEL_PLATE, SlimefunItems.ZINC_INGOT,
+                SlimefunItems.CARBON, AddItems.POINT, SlimefunItems.ZINC_INGOT
+        };
+    }
+
+    /**
      * 冰の妖精的合成配方（<b>魔法工作台</b>，用户指定 3×3 图案）。
      *
      * <pre>
@@ -797,6 +883,9 @@ public final class AddSlimefunItems {
                         : "雾中の妖精=OK(" + FAIRY_IN_MIST.getId() + ",产出1,对空气右键召唤)")
                 + " / " + (POINT == null ? "POINT=未注册"
                         : "POINT=OK(" + POINT.getId() + ",产出1)")
+                + " / " + (P_ENGINE == null ? "P引擎=未注册"
+                        : "P引擎=OK(" + P_ENGINE.getId() + ",产出" + P_ENGINE_OUTPUT_AMOUNT
+                                + ",模板" + AddItems.P_ENGINE.getAmount() + ")")
                 + " / " + (ECHO_OF_ANOTHER_WORLD == null ? "另一个世界的回响=未注册"
                         : "另一个世界的回响=OK(" + ECHO_OF_ANOTHER_WORLD.getId() + ")")
                 + " / " + (INFO_MODESHIFT == null ? "模式玻璃板=未注册" : "模式玻璃板=OK")

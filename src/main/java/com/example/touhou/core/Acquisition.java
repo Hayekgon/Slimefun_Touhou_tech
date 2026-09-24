@@ -242,6 +242,10 @@ public final class Acquisition {
         // POINT：增强型工作台合成（用户说的"强化工作台"= 这台机器）。
         SOURCE_BY_ID.put("TOUHOU_MATERIAL_POINT",
                 Source.recipe("增强型工作台", () -> SlimefunItems.ENHANCED_CRAFTING_TABLE));
+        // P引擎：增强型工作台合成（同上，用户说的"强化工作台"= 这台机器）；
+        // ★ 这里只写"怎么来"，【不】写产出 8 个 —— 那是物品自己的数量口径，与获取方式无关。
+        SOURCE_BY_ID.put("TOUHOU_MATERIAL_P_ENGINE",
+                Source.recipe("增强型工作台", () -> SlimefunItems.ENHANCED_CRAFTING_TABLE));
 
         // ---- 单方块机器 ------------------------------------------------------
         SOURCE_BY_ID.put("TOUHOU_SIMPLE_MACHINE_HARVEST_TIME",

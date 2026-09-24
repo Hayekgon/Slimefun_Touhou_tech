@@ -82,6 +82,19 @@ public final class AddItems {
             + "MTk4MDE3MjFjNzcxYzNjNDg5OGNiN2QyNDgzMjFkODlhOTA4N2E5MmQzZGQ1ODE2M2NiZDRlMTJlZDc1YjU0OSJ9fX0=";
 
     /**
+     * 「P引擎」的头颅 Value —— 用户给定的那串 base64（<b>原样照抄、不做任何加工</b>）。
+     *
+     * <p>★ 判据同上：以 {@code "ey"} 开头 ⇒ {@code getTexture} 原样当 base64 用
+     * （只有"64 位十六进制"那种才会被自动包成 base64），不需要任何加工。
+     * 调试命令 {@code /touhou pengine selfcheck} 读它做逐字符比对（两串都打）。
+     * ★ 这里按项目惯例拆成两段字符串拼接，断点与前几串相同（同一个公共前缀之后、
+     * 纹理 hash 的编码之前）—— 拼接是<b>编译期</b>完成的，运行时仍是那一整串。
+     */
+    public static final String P_ENGINE_TEXTURE =
+            "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUv"
+            + "M2IwNDMzZjFjMjI3OTYwOGY3YmQyY2VjZWI5OGNkMTc1Y2JhYWRjM2Y2Mjk5YWUzY2NhZTI1N2RjMjJhNTViMiJ9fX0=";
+
+    /**
      * 渐变配色表。
      *
      * <p>★ 起止色随配色走，而不是把"粉白"那组写死在 {@link #gradientName} 里 ——
@@ -171,7 +184,24 @@ public final class AddItems {
          * 这是 custom hex，不受 16 色限制；想换成原版观感就把这一行的两个值
          * 一起改成 {@code 0x0000AA}（原版 {@code §1} 的十六进制）。
          */
-        DEEP_BLUE(0x00008B, 0x00008B);
+        DEEP_BLUE(0x00008B, 0x00008B),
+        /**
+         * P引擎：<b>深蓝 → 浅蓝</b>的逐字符渐变（用户要求"深蓝 → 浅蓝 逐字符渐变"）。
+         *
+         * <p>★ 两端色值都是<b>复用本项目已有的口径</b>，没有新造一套颜色：
+         * <ol>
+         *   <li>起点 {@code #00008B} = {@link #DEEP_BLUE} 的那个深蓝（CSS 标准 darkblue），
+         *       也就是「POINT」用的同一个深蓝 —— 两件物品的蓝是同源，摆在一起不会"两个深蓝不一样"；</li>
+         *   <li>终点 {@code #87CEEB} = {@link #ICE_FAIRY_BLUE_WHITE} 的起点那个浅蓝
+         *       （skyblue，标准"天蓝/浅蓝"）—— 本项目里"浅蓝"就只有这一个值，保持一致。</li>
+         * </ol>
+         * 想更深/更浅只动这一行，调用点（名称与三行描述）一个字都不用改。
+         *
+         * <p>★★ 与 {@link #DEEP_BLUE} 的区别要看清：那条是<b>起止同色</b>（退化成单色），
+         * 本条的起止<b>不同</b> ⇒ 每个字符拿到的色号都不一样，是<b>真的渐变</b>。
+         * 所以 {@code /touhou pengine selfcheck} 的读数里，同一行的"不同色个数"必须 &gt; 0。
+         */
+        DEEP_TO_LIGHT_BLUE(0x00008B, 0x87CEEB);
 
         private final int start;
         private final int end;
@@ -336,6 +366,40 @@ public final class AddItems {
      * {@code slimefun:enhanced_crafting_table → 增强型工作台} 的映射），产出 <b>1 个</b>。
      */
     public static SlimefunItemStack POINT;
+
+    /**
+     * P引擎 —— 名字逐字照抄用户的「P引擎」（★ 中文<b>引擎</b>二字照抄，不加符号、不改字）。
+     *
+     * <p>id 按本项目铁律 {@code TOUHOU_"物品组"_"英文名"}：它归属 1 级组
+     * {@link AddGroups#MATERIAL}，英文名取 <b>P Engine</b>
+     * ⇒ {@code TOUHOU_MATERIAL_P_ENGINE}。
+     *
+     * <p>★ <b>物品组是 MATERIAL</b>（用户原话"放到'幻想之物'物品组"）——
+     * ⚠ 该组的<b>显示名</b>已改成「幻想之物」，但<b>字段名与 key 都没动</b>
+     * （见 {@link AddGroups#MATERIAL} 的注释），所以这里传的仍然是
+     * {@code AddGroups.MATERIAL} 这个字段，不要被显示名带偏去传 CHARACTER。
+     *
+     * <p>★ 名称与三行描述都是<b>深蓝 → 浅蓝</b>的逐字符渐变：
+     * 走 {@link #gradientNamePEngine(String)}（配色 {@link Gradient#DEEP_TO_LIGHT_BLUE}），
+     * 不散写 {@code §} 串。
+     * ★★ 三行是<b>每一行各自</b>从深蓝渐变到浅蓝，而不是三行连成一条 ——
+     * 与「冰の妖精」那件（三行各自浅蓝→白）口径一致：每行独立调用一次
+     * {@link #gradientNamePEngine(String)}，于是每行的首字符都是深蓝、末字符都是浅蓝。
+     * 理由：lore 渲染时每一行是独立的文本行，玩家从左往右读；
+     * "整块连成一条"会让第 2、3 行的开头变成中间色，看起来像"没上色成功"。
+     * （这条判断写在这里，因为它是本件物品的显示口径，不是渐变算法的性质。）
+     *
+     * <p>★ 材质是<b>头颅 Value</b>（用户给定的 base64，见 {@link #P_ENGINE_TEXTURE}），
+     * 与 POINT / 冰の妖精 / 报春の妖精 同一条构造器路径。
+     *
+     * <p>★ 配方是<b>增强型工作台</b>（用户说的"强化工作台"就是这台机器，
+     * 见 {@link Acquisition#MACHINE_BY_RECIPE_TYPE_KEY} 里
+     * {@code slimefun:enhanced_crafting_table → 增强型工作台} 的映射），
+     * ★★ <b>单次产出 8 个</b>：那就是"模板数量必须保持 1、产出数量走
+     * {@code SlimefunItem} 第 5 个参数 {@code recipeOutput}"的典型场合
+     * （判据见 {@link AddSlimefunItems#P_ENGINE_OUTPUT_AMOUNT}）。
+     */
+    public static SlimefunItemStack P_ENGINE;
 
     /**
      * 冰の妖精 —— 琪露诺（东方 Project 的「チルノ」，英文 Cirno）。
@@ -685,6 +749,26 @@ public final class AddItems {
                 gradientNamePoint("POINT"),
                 "",
                 gradientNamePoint("普通的点啦"));
+
+        // P引擎。
+        // ★ 名称逐字照抄用户给的「P引擎」（中文"引擎"二字照抄，没加符号、没改字）。
+        // ★ 材质：用户给定的【头颅 Value】（base64，P_ENGINE_TEXTURE）—— 判据同上面几件：
+        //   以 "ey" 开头 ⇒ getTexture 原样当 base64 用，不需要加工；
+        //   运行期用 P_ENGINE.getSkullTexture() 读回来逐字符比对（/touhou pengine selfcheck）。
+        // ★ 名称与三行描述都是【深蓝 → 浅蓝】逐字符渐变，走 gradientNamePEngine(...)
+        //   （配色 Gradient.DEEP_TO_LIGHT_BLUE）——不散写 § 串，换色只改枚举项一行。
+        // ★★ 描述原文里的 (endl) 是【换行标记】不是字面文字 ⇒ 拆成三行逐字照抄：
+        //   不合并、不改标点（前两行末尾的逗号是原文自带的，第三行没有标点）。
+        // ★★ 三行【每一行各自】从深蓝渐变到浅蓝（不是三行连成一条）：
+        //   每行独立调用一次 gradientNamePEngine(...)，理由见 P_ENGINE 字段注释。
+        P_ENGINE = new SlimefunItemStack(
+                "TOUHOU_MATERIAL_P_ENGINE",
+                P_ENGINE_TEXTURE,
+                gradientNamePEngine("P引擎"),
+                "",
+                gradientNamePEngine("无法被理解的造物，"),
+                gradientNamePEngine("幻想之物与现世之物结合而来，"),
+                gradientNamePEngine("窥探不存在的世界的第一步"));
 
         // 冰の妖精（琪露诺 / Cirno）。
         // ★ 材质：用户给定的【头颅 Value】（base64，CIRNO_TEXTURE）—— 判据同上面那两件头贴物品：
@@ -1044,6 +1128,17 @@ INFO_MODESHIFT = new SlimefunItemStack(
         if (pointMeta != null) {
             pointMeta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
             POINT.setItemMeta(pointMeta);
+        }
+
+        // P引擎：附魔光效（同一套"挂无用附魔 + HIDE_ENCHANTS"）。
+        //   ★ 用户没提光效，但这是项目里"每一件材料物品都这么处理"的惯例
+        //     （POINT / 落叶 / 丰收之时 / 三件角色物品都是），所以照做，保持一致；
+        //     不想要的话删掉这一段即可，与物品的其它属性无关。
+        P_ENGINE.addUnsafeEnchantment(Enchantment.ARROW_INFINITE, 1);
+        ItemMeta pEngineMeta = P_ENGINE.getItemMeta();
+        if (pEngineMeta != null) {
+            pEngineMeta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
+            P_ENGINE.setItemMeta(pEngineMeta);
         }
 
         // 红叶飞散の天狗：附魔光效（同一套"挂无用附魔 + HIDE_ENCHANTS"）。
@@ -1430,6 +1525,25 @@ INFO_MODESHIFT = new SlimefunItemStack(
      */
     public static String gradientNamePoint(String text) {
         return gradientName(text, Gradient.DEEP_BLUE);
+    }
+
+    /**
+     * 把一段文字逐字符染成<b>深蓝 → 浅蓝</b>的左到右渐变（「P引擎」用的配色）。
+     *
+     * <p>★ 起止色都是复用项目已有的口径：深蓝 {@code #00008B}（与 POINT 同源）、
+     * 浅蓝 {@code #87CEEB}（与冰の妖精同源）—— 见 {@link Gradient#DEEP_TO_LIGHT_BLUE}。
+     * 觉得浅蓝该更深/更浅就改那一行，本方法不用动。
+     *
+     * <p>★★ 「P引擎」的名字与<b>三行描述每一行各自调用一次</b>本方法
+     * （= 每行都从深蓝重新渐变到浅蓝），而不是把三行拼成一条串再渐变；
+     * 理由写在 {@link #P_ENGINE} 的字段注释里（lore 每行是独立文本行）。
+     * 于是每行的读数都应该是：首字符 {@code #00008B}、末字符 {@code #87CEEB}。
+     *
+     * @param text 要染的文字（纯文本，不要带 {@code §}/{@code &} 颜色代码）
+     * @return 每字符都带 {@code §x§R§R§G§G§B§B} 前缀的字符串
+     */
+    public static String gradientNamePEngine(String text) {
+        return gradientName(text, Gradient.DEEP_TO_LIGHT_BLUE);
     }
 
     /**

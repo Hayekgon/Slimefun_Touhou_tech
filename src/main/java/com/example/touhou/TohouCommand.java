@@ -103,6 +103,8 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
                     fairy(sender, Arrays.copyOfRange(args, 1, args.length));
             case "point", "points" ->
                     point(sender, Arrays.copyOfRange(args, 1, args.length));
+            case "pengine", "p_engine" ->
+                    pengine(sender, Arrays.copyOfRange(args, 1, args.length));
             case "harvest", "harvesttime" ->
                     harvest(sender, Arrays.copyOfRange(args, 1, args.length));
             case "leaves", "fallenleaves", "fallen_leaves" ->
@@ -227,6 +229,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         s.sendMessage("\u00a77/touhou cirno [selfcheck|recipe|effect <x> <y> <z>|cooldown [clear|wait]]   冰の妖精：头贴图逐字符比对 / 浅蓝白渐变 / 配方产出 1 / 9x9x9 冰冻+缓慢9 效果内核");
         s.sendMessage("\u00a77/touhou fairy [selfcheck|recipe|effect <x> <y> <z> [--timer]|place <x> <y> <z>]   雾中の妖精：头贴图逐字符比对 / 整行亮绿 / 配方产出 1 / 召唤 Bomb 效果内核");
         s.sendMessage("\u00a77/touhou point [selfcheck|recipe]   POINT：头贴图逐字符比对 / 整行深蓝 / 物品组=MATERIAL / 配方产出 1（增强型工作台）");
+        s.sendMessage("\u00a77/touhou pengine [selfcheck|recipe]   P引擎：头贴图逐字符比对 / 深蓝→浅蓝逐行渐变 / 物品组=MATERIAL / ★配方产出 8（模板仍是 1）");
         s.sendMessage("\u00a77/touhou harvest [selfcheck | test <x> <y> <z> | probe <x> <y> <z> | clear <x> <y> <z> | cell <x> <y> <z> [面] | rng <x> <y> <z> | wake <x> <y> <z> [crops|empty] | cooldown [clear]]   丰收之时：范围催熟 / 骨粉行为 / 提示语验证");
         s.sendMessage("\u00a77/touhou acquisition [all|rule|<物品id>]   获取方式标注核查（所有物品统一，含 null 配方）");
         s.sendMessage("\u00a77/touhou leaves [selfcheck | tools | drop [n] | watch [n|off] | field <x> <y> <z> [n] | check <x> <y> <z> | clear <x> <y> <z>]   落叶：掉率/数量分布/工具判据/非树叶对照；watch=实机追踪（走 Log.always）");
@@ -2204,6 +2207,220 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         SlimefunItem machine = SlimefunItem.getById("ENHANCED_CRAFTING_TABLE");
         return machine instanceof io.github.thebusybiscuit.slimefun4.core.multiblocks.MultiBlockMachine mbm
                 ? mbm : null;
+    }
+
+    // ------------------------------------------------------------------ pengine（P引擎）
+
+    /**
+     * 「P引擎」的无头验证入口。
+     *
+     * <pre>
+     *   /touhou pengine                全部打印（selfcheck + recipe）
+     *   /touhou pengine selfcheck      物品 / 头贴图逐字符比对 / 物品组 / 名称与三行描述的颜色读数
+     *   /touhou pengine recipe         配方 9 格逐格 + 【三条】产出数量读数
+     * </pre>
+     *
+     * <p>★ 它是一件<b>纯注册物品</b>（没有右键、没有 ticker、没有效果），
+     * 所以自检要证明的是：id / 材质（头颅）/ 物品组是 MATERIAL /
+     * 名称与<b>三行</b>描述是「深蓝 → 浅蓝」逐行渐变 /
+     * ★★ 配方<b>产出 8 个</b>而<b>模板仍是 1</b>。
+     */
+    private void pengine(CommandSender sender, String[] args) {
+        String sub = args.length >= 1 ? args[0].toLowerCase(Locale.ROOT) : "all";
+        boolean all = sub.equals("all") || sub.equals("check");
+        boolean selfcheck = all || sub.equals("selfcheck");
+        boolean recipe = all || sub.equals("recipe");
+        if (!selfcheck && !recipe) {
+            sender.sendMessage(PREFIX + "\u00a7c用法: /touhou pengine [selfcheck|recipe]");
+            return;
+        }
+        if (selfcheck) {
+            pEngineSelfCheck(sender);
+        }
+        if (recipe) {
+            pEngineRecipe(sender);
+        }
+    }
+
+    /** 物品自检：id / 材质 / 头贴图（逐字符）/ 物品组 / 名称与三行描述的颜色。 */
+    private void pEngineSelfCheck(CommandSender sender) {
+        SlimefunItem item = SlimefunItem.getById("TOUHOU_MATERIAL_P_ENGINE");
+        guideLine(sender, PREFIX + "\u00a7eP引擎 · 物品自检");
+        if (item == null) {
+            guideLine(sender, "\u00a7c  未注册（Slimefun 注册表里查不到 TOUHOU_MATERIAL_P_ENGINE）");
+            return;
+        }
+        ItemStack icon = item.getItem();
+        guideLine(sender, "\u00a78  id = " + item.getId()
+                + "   类 = " + item.getClass().getSimpleName());
+        guideLine(sender, "\u00a78  材质 = " + (icon == null ? "(null)" : String.valueOf(icon.getType()))
+                + "（应为 PLAYER_HEAD）");
+        // ★ 物品组：必须证明它进了 MATERIAL（key = touhou:touhou_material），不是 CHARACTER
+        String groupKey = item.getItemGroup() == null
+                ? "(null)" : item.getItemGroup().getKey().toString();
+        guideLine(sender, "\u00a78  物品组 = " + groupKey
+                + "  ⇒ " + ("touhou:touhou_material".equals(groupKey)
+                        ? "\u00a7a[GROUP-MATERIAL-OK]" : "\u00a7c[GROUP-FAIL 期望 touhou:touhou_material]"));
+
+        // ---- 头贴图：逐字符比对（两串都打出来）
+        String expect = AddItems.P_ENGINE_TEXTURE;
+        String actual = AddItems.P_ENGINE == null
+                ? null : AddItems.P_ENGINE.getSkullTexture().orElse(null);
+        guideLine(sender, "\u00a78  ---- 头贴图比对（逐字符） ----");
+        guideLine(sender, "\u00a78  模板常量 P_ENGINE_TEXTURE = " + expect);
+        guideLine(sender, "\u00a78  getSkullTexture() 读回    = " + actual);
+        boolean same = expect.equals(actual);
+        guideLine(sender, "\u00a78  两串逐字符相等 = " + same
+                + (same ? "  \u00a7a[SKULL-MATCH]" : "  \u00a7c[SKULL-MISMATCH]"));
+        guideLine(sender, "\u00a78  模板数量 = "
+                + (AddItems.P_ENGINE == null ? "(null)" : AddItems.P_ENGINE.getAmount())
+                + "（应为 1 —— 产出 8 个靠注册处的 recipeOutput，不靠模板）");
+
+        ItemMeta meta = icon == null ? null : icon.getItemMeta();
+        if (meta != null) {
+            guideLine(sender, "\u00a78  附魔光效 = 附魔数 " + meta.getEnchants().size()
+                    + "，HIDE_ENCHANTS=" + meta.hasItemFlag(org.bukkit.inventory.ItemFlag.HIDE_ENCHANTS));
+        }
+        // ---- 名称与三行描述：逐字符颜色读数（要能看出"深蓝 → 浅蓝"、且行数 = 3）
+        pEngineName(sender, meta);
+
+        log("[TOUHOU] pengine selfcheck id=" + item.getId()
+                + " material=" + (icon == null ? "null" : icon.getType())
+                + " skullMatch=" + same
+                + " templateAmount=" + (AddItems.P_ENGINE == null ? -1 : AddItems.P_ENGINE.getAmount())
+                + " group=" + groupKey);
+    }
+
+    /**
+     * 名称与描述的颜色读数。
+     *
+     * <p>★ 期望：<b>名称 + 三行描述，每一行各自</b>是「深蓝 {@code #00008B} → 浅蓝 {@code #87CEEB}」
+     * 的逐字符渐变 —— 也就是每行的<b>首字符</b>都是 {@code #00008B}、
+     * <b>末字符</b>都是 {@code #87CEEB}，且<b>不同色个数 &gt; 0</b>（真渐变而非单色）。
+     * <b>非空 lore 行数 = 3</b>（用户原文的 {@code (endl)} 是换行标记 ⇒ 拆成三行）。
+     *
+     * <p>★★ "不同色个数"是这里的关键判据：它与 POINT 那件（整行同色 ⇒ 不同色个数 = 0）
+     * 正好相反。只看"首字符是深蓝"是<b>区分不出</b>退化的单色实现的。
+     */
+    private void pEngineName(CommandSender sender, ItemMeta meta) {
+        guideLine(sender, "\u00a7e  -- 名称与描述（每行各自 #00008B → #87CEEB）--");
+        if (meta == null) {
+            guideLine(sender, "\u00a7c  拿不到 ItemMeta");
+            return;
+        }
+        printDisplayNameEvidence(sender, "显示名（应为 #00008B → #87CEEB 渐变）", meta);
+        List<String> lore = meta.getLore();
+        if (lore == null) {
+            guideLine(sender, "\u00a7c  (没有 lore)");
+            return;
+        }
+        int coloredLines = 0;
+        List<String> checks = new ArrayList<>();
+        for (int i = 0; i < lore.size(); i++) {
+            String line = lore.get(i);
+            guideLine(sender, "\u00a77  lore[" + i + "] 原样 = "
+                    + (line == null ? "" : line.replace("\u00a7", "\\u00a7")));
+            if (line == null || line.isEmpty()) {
+                continue;               // 名称与描述之间的空行
+            }
+            coloredLines++;
+            List<String> per = colorPerChar(line);
+            for (String cl : per) {
+                guideLine(sender, "\u00a78    " + cl);
+            }
+            // 逐字符核对：首字符 = #00008B、末字符 = #87CEEB、中间确实换过色
+            String firstColor = per.size() > 1 ? shortColor(per.get(1)) : null;
+            String lastColor = per.size() > 1 ? shortColor(per.get(per.size() - 1)) : null;
+            int distinct = 0;
+            String prev = null;
+            for (int k = 1; k < per.size(); k++) {
+                String c = shortColor(per.get(k));
+                if (prev != null && !prev.equals(c)) {
+                    distinct++;
+                }
+                prev = c;
+            }
+            boolean ok = firstColor != null && firstColor.contains("#00008B")
+                    && lastColor != null && lastColor.contains("#87CEEB")
+                    && distinct > 0;
+            checks.add(ok ? "OK" : "BAD");
+            guideLine(sender, "\u00a78    首字符色 " + firstColor + "  末字符色 " + lastColor
+                    + "  不同色个数 " + distinct
+                    + "  ⇒ " + (ok ? "\u00a7a符合（深蓝→浅蓝逐字符渐变）" : "\u00a7c不符"));
+        }
+        guideLine(sender, "\u00a78  ---- 汇总 ----");
+        guideLine(sender, "\u00a78  非空 lore 行数 = " + coloredLines
+                + "（期望 3 —— 用户原文里的 (endl) 是换行标记）");
+        log("[TOUHOU] pengine name lines=" + coloredLines + " gradientPerLine=" + checks);
+    }
+
+    /**
+     * 配方：9 格逐格 + <b>三条</b>产出数量读数。
+     *
+     * <p>★★ 三条路径必须一起读（这正是上一件多产出物品踩过的坑）：
+     * <pre>
+     *   [路径①] SlimefunItem.getRecipeOutput().getAmount()   期望 8（指南页产物格 / 自动合成机读它）
+     *   [路径②] 增强型工作台配方表里那条 output.getAmount()  期望 8（真摆九格做出来的是这个数）
+     *   [模板]   AddItems.P_ENGINE.getAmount()               期望 1（不能被多产出污染）
+     * </pre>
+     * 三条里任何一条对不上，都说明"多产出"没有真正落在那条路径上。
+     */
+    private void pEngineRecipe(CommandSender sender) {
+        SlimefunItem item = SlimefunItem.getById("TOUHOU_MATERIAL_P_ENGINE");
+        guideLine(sender, PREFIX + "\u00a7eP引擎 · 配方");
+        if (item == null) {
+            guideLine(sender, "\u00a7c  未注册");
+            return;
+        }
+        guideLine(sender, "\u00a78  配方类型 = " + (item.getRecipeType() == null
+                ? "(null)" : item.getRecipeType().getKey().toString())
+                + "   指向的机器 = " + (item.getRecipeType() == null
+                        || item.getRecipeType().getMachine() == null
+                                ? "(无)" : item.getRecipeType().getMachine().getId())
+                + "（★ 用户说的「强化工作台」就是这台「增强型工作台」）");
+        int expectAmount = com.example.touhou.core.AddSlimefunItems.P_ENGINE_OUTPUT_AMOUNT;
+        // ---- 路径①：SlimefunItem#getRecipeOutput（指南页产物格 / 自动合成机读它）
+        ItemStack declared = item.getRecipeOutput();
+        int amount = declared == null ? -1 : declared.getAmount();
+        guideLine(sender, "\u00a78  [路径①] SlimefunItem.getRecipeOutput().getAmount() = " + amount
+                + "  期望 " + expectAmount + " ⇒ " + (amount == expectAmount
+                        ? "\u00a7a符合（第 5 参数 recipeOutput）" : "\u00a7c不符"));
+        // ---- 路径②：增强型工作台配方表里那条
+        ItemStack tableOutput = null;
+        io.github.thebusybiscuit.slimefun4.core.multiblocks.MultiBlockMachine table =
+                findEnhancedCraftingTable();
+        if (table != null) {
+            tableOutput = findRecipeOutput(table, item.getRecipe());
+        }
+        int tableAmount = tableOutput == null ? -1 : tableOutput.getAmount();
+        guideLine(sender, "\u00a78  [路径②] 增强型工作台配方表里那条 output.getAmount() = " + tableAmount
+                + "  期望 " + expectAmount + " ⇒ " + (tableAmount == expectAmount
+                        ? "\u00a7a符合" : "\u00a7c不符")
+                + (table == null ? "  \u00a7c(找不到增强型工作台)" : ""));
+        guideLine(sender, "\u00a78  [模板] AddItems.P_ENGINE.getAmount() = "
+                + (AddItems.P_ENGINE == null ? "(null)" : AddItems.P_ENGINE.getAmount())
+                + "  期望 1 ⇒ " + (AddItems.P_ENGINE != null && AddItems.P_ENGINE.getAmount() == 1
+                        ? "\u00a7a符合（没污染模板；模板数量不是 1 才会让粘液本体告警）" : "\u00a7c不符"));
+        // ---- 9 格逐格
+        guideLine(sender, "\u00a7e  -- 配方 9 格（左上→右下，共 3 行）--");
+        ItemStack[] grid = item.getRecipe();
+        for (int i = 0; i < (grid == null ? 0 : grid.length); i++) {
+            ItemStack cell = grid[i];
+            guideLine(sender, "\u00a78    [" + i + "]=" + (cell == null ? "(空)"
+                    : cell.getType() + " x" + cell.getAmount()
+                            + "  粘液id=" + idOf(cell)
+                            + "  名=" + com.example.touhou.core.RecipePages.labelOf(cell)));
+        }
+        guideLine(sender, "\u00a78  Slimefun 多方块机器配方表里能产出它的 = "
+                + countMachineRecipesFor(item) + " 条（应为 1）");
+        guideLine(sender, "\u00a78  Bukkit 配方表里能产出它的 = " + countRecipesFor(item)
+                + " 条（应为 0 —— 走粘液多方块）");
+        log("[TOUHOU] pengine recipe declaredOutput=" + amount
+                + " machineRecipeTable=" + tableAmount
+                + " templateAmount=" + (AddItems.P_ENGINE == null ? -1 : AddItems.P_ENGINE.getAmount())
+                + " expectOutput=" + expectAmount
+                + " machineRecipes=" + countMachineRecipesFor(item)
+                + " bukkitRecipes=" + countRecipesFor(item));
     }
 
     // ------------------------------------------------------------------ fairy（雾中の妖精）
@@ -7073,7 +7290,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
             return filter(List.of("reactor", "autobuild", "clickinfo", "structure", "saizen", "place",
                     "remove", "edit", "gui", "layout", "groups", "tags", "messages", "reload",
                     "power", "dreamcatcher", "seal", "lily", "springherald", "momiji", "cirno",
-                    "fairy", "point", "harvest", "leaves", "acquisition", "echo", "proj", "guide"), args[0]);
+                    "fairy", "point", "pengine", "harvest", "leaves", "acquisition", "echo", "proj", "guide"), args[0]);
         }
         if (args[0].equalsIgnoreCase("acquisition") && args.length == 2) {
             return filter(List.of("all", "rule"), args[1]);
@@ -7095,6 +7312,9 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
             return filter(List.of("selfcheck", "recipe", "effect", "place"), args[1]);
         }
         if (args[0].equalsIgnoreCase("point") && args.length == 2) {
+            return filter(List.of("selfcheck", "recipe"), args[1]);
+        }
+        if (args[0].equalsIgnoreCase("pengine") && args.length == 2) {
             return filter(List.of("selfcheck", "recipe"), args[1]);
         }
         if (args[0].equalsIgnoreCase("cirno") && args.length == 3
@@ -7206,6 +7426,6 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         return List.of("reactor", "autobuild", "clickinfo", "structure", "saizen", "place", "remove",
                 "edit", "gui", "layout", "groups", "tags", "messages", "reload", "power",
                 "dreamcatcher", "seal", "lily", "springherald", "momiji", "cirno", "fairy",
-                "point", "harvest", "leaves", "proj");
+                "point", "pengine", "harvest", "leaves", "proj");
     }
 }
