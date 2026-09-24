@@ -1305,6 +1305,20 @@ INFO_MODESHIFT = new SlimefunItemStack(
                 gradientNameDarkPurpleDeepBlue("幻梦捕捉器"),
                 "",
                 gradientNameDarkPurpleDeepBlue("从梦境中去收集幻想之地的能量：POWER。"),
+                // ★ 第 2 行 = 机制说明（2026-09-24 用户给的原文这里是占位"把机制写进去"，
+                //   由我们据实写）。逐项与 {@code DreamCatcher} 的实现/类注释对齐，数字不许对不上：
+                //     检测 = 东/南/西/北四个【水平】面、判据 Tag.BEDS、一面只算一张、不含上下
+                //            （HORIZONTAL 只有 EAST/SOUTH/WEST/NORTH）；
+                //     效率 = intervalMillis = 基准 8 秒 ÷ 床数（1 张 8 秒 1 点、4 张 2 秒 1 点）；
+                //     产出 = 每轮 1 点、先投递给网络（depositPower），投不出去才留在自身缓冲，
+                //            缓冲上限 15 点；床数 0 ⇒ 间隔 -1 ⇒ 完全不产出。
+                //   ★ "8 秒 / 15 点"就是写给玩家看的当前数值 —— 刻意【不】写
+                //     "可在 Items.yml 改"这类运维话（用户口径：那是配置细节，不是物品描述）。
+                gradientNameDarkPurpleDeepBlue(
+                        "东南西北四面各算一张床（一面只算一张，头上脚下不算），"
+                        + "每轮 1 点 POWER，间隔 = 8 秒 ÷ 床数："
+                        + "1 张床 8 秒 1 点、4 张床 2 秒 1 点；"
+                        + "电优先并入网络，自身缓冲上限 15 点，没有床则完全不产出"),
                 gradientNameDarkPurpleDeepBlue(" "),
                 mixedLoreLine(LoreSegment.grayStrikethrough("使你充满了抛瓦。")));
 
