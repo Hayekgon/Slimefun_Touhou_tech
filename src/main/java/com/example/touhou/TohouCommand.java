@@ -89,6 +89,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         switch (args[0].toLowerCase()) {
             case "power" -> power(sender, Arrays.copyOfRange(args, 1, args.length));
             case "dreamcatcher", "dc" -> dreamcatcher(sender, Arrays.copyOfRange(args, 1, args.length));
+            case "danmaku", "dan", "bullet" -> danmaku(sender, Arrays.copyOfRange(args, 1, args.length));
             case "seal", "gohei", "fantasyseal" -> seal(sender, Arrays.copyOfRange(args, 1, args.length));
             case "lily", "murderouslily" -> lily(sender, Arrays.copyOfRange(args, 1, args.length));
             case "echo", "shuttle", "dimensionshuttle" ->
@@ -583,6 +584,246 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         for (String line : com.example.touhou.power.PowerNetworkManager.describe(loc)) {
             sender.sendMessage("\u00a78  " + line);
         }
+    }
+
+    // ------------------------------------------------------------------ danmaku（落方块弹幕实验）
+
+    /**
+     * ★ 「掉落的方块当弹幕」的**无头实验台** —— 用真实实体跑一遍，回答两个只能实测的问题：
+     * <ol>
+     *   <li><b>无重力悬停时，方块之间会不会互相挤压把形状挤散？</b>
+     *       （分析推断"同速 + 整数格不重叠 ⇒ 无挤压"，但没实测过）</li>
+     *   <li><b>落地/结束之后会不会往世界里生成方块？</b>
+     *       （需求硬要求"落地后不生成方块"）</li>
+     * </ol>
+     *
+     * <pre>
+     *   /touhou danmaku probe &lt;x&gt; &lt;y&gt; &lt;z&gt; [n]
+     *        摆一个 n×n（默认 3，最大 5）的【平面】落方块阵列、悬停在 y 上方，
+     *        每 20 tick 采样一次位置并打印，默认观察 15 秒；结束时清干净并核对世界方块。
+     *        n 是边长 ⇒ 实体数 = n×n（3 → 9 个，5 → 25 个）。
+     *   /touhou danmaku clean &lt;x&gt; &lt;y&gt; &lt;z&gt; [r]
+     *        手动清掉指定点附近（默认半径 24）的落方块实体与实验痕迹。
+     *   /touhou danmaku rule
+     *        打印本实验的判据与"为什么这么设"。
+     * </pre>
+     *
+     * <h2>★ 本命令刻意做的三件事（对应"保证无重力且落地后不生成方块"）</h2>
+     * <ul>
+     *   <li>{@code setGravity(false)}：不这么做，方块会各掉各的，形状必然散；</li>
+     *   <li>{@code setCancelDrop(true)} + {@code setDropItem(false)}：<b>落地不变方块、也不掉物品</b>；</li>
+     *   <li>{@code setHurtEntities(false)}：落方块默认会砸伤实体（会把实验场里的生物打飞）；</li>
+     *   <li>{@code shouldAutoExpire(false)}：关掉"自动过期"，让形状不因个别方块到期而缺块
+     *       （★ 代价是残留风险全归调用方 ⇒ 本命令结束时一定清场）。</li>
+     * </ul>
+     *
+     * <p>★ 判据读数都走 {@code log()}（不受 {@code logging.console-info} 影响），
+     * 且**不打印任何失败判据的字面串**（避免 grep 假阳性 —— 见 {@code modules\08} §O.1）。
+     */
+    private void danmaku(CommandSender sender, String[] args) {
+        String sub = args.length >= 1 ? args[0].toLowerCase(Locale.ROOT) : "rule";
+        if (sub.equals("rule") || sub.equals("rules") || sub.equals("help")) {
+            for (String line : List.of(
+                    "实验目的①：无重力悬停时，n×n 落方块阵列会不会因互相挤压而散架",
+                    "实验目的②：落地/结束后会不会往世界里生成方块（硬要求：不能生成）",
+                    "无重力      = FallingBlock#setGravity(false)（不设则各掉各的，必散）",
+                    "不生成方块  = setCancelDrop(true) + setDropItem(false)",
+                    "不砸伤实体  = setHurtEntities(false)",
+                    "不自动过期  = shouldAutoExpire(false)（形状完整性优先，代价是必须自己清场）",
+                    "不持久化    = setPersistent(false)（重启不留残留）",
+                    "采样        = 每 20 tick 一次，报告最大位移 / 相邻最小间距 / 是否落定",
+                    "判据        = 最大位移≈0 且 最小间距≥1.0 ⇒ 形状未散")) {
+                sender.sendMessage("\u00a78  " + line);
+            }
+            log("[TOUHOU] danmaku rule");
+            return;
+        }
+
+        if (sub.equals("clean") || sub.equals("clear")) {
+            Location loc = resolveAny(sender, Arrays.copyOfRange(args, 1, args.length));
+            if (loc == null) {
+                return;
+            }
+            int removed = clearFallingBlocks(loc, 24);
+            sender.sendMessage(PREFIX + "\u00a7a已清掉落方块实体 " + removed + " 个 @ " + xyz(loc));
+            log("[TOUHOU] danmaku clean @ " + xyz(loc) + " removed=" + removed);
+            return;
+        }
+
+        if (!sub.equals("probe") && !sub.equals("test") && !sub.equals("fall")) {
+            sender.sendMessage(PREFIX + "\u00a77用法: /touhou danmaku [probe <x> <y> <z> [n] | fall <x> <y> <z> [n] | clean <x> <y> <z> [r] | rule]");
+            return;
+        }
+
+        Location loc = resolveAny(sender, Arrays.copyOfRange(args, 1, args.length));
+        if (loc == null) {
+            return;
+        }
+        int n = 3;
+        for (int i = 4; i < args.length; i++) {
+            if (args[i] != null && !args[i].startsWith("--")) {
+                n = parseIntOr(args[i], 3);
+                break;
+            }
+        }
+        n = Math.max(1, Math.min(n, 5));
+        World world = loc.getWorld();
+        if (world == null) {
+            sender.sendMessage(PREFIX + "\u00a7c找不到世界");
+            return;
+        }
+
+        // 观测点：整片空域取中，方块摆在同一水平面（y = 观测点 y）
+        int side = n;
+        double spacing = 1.0D;
+        List<org.bukkit.entity.FallingBlock> blocks = new ArrayList<>();
+        List<Location> origin = new ArrayList<>();
+        clearFallingBlocks(loc, 24);
+        double half = (side - 1) / 2.0D;
+        for (int dx = 0; dx < side; dx++) {
+            for (int dz = 0; dz < side; dz++) {
+                Location at = new Location(world,
+                        loc.getBlockX() + 0.5D + (dx - half) * spacing,
+                        loc.getBlockY() + 0.5D,
+                        loc.getBlockZ() + 0.5D + (dz - half) * spacing);
+                org.bukkit.entity.FallingBlock fb = world.spawnFallingBlock(
+                        at, Material.RED_STAINED_GLASS.createBlockData());
+                // ★ 需求硬口径：无重力、落地不生成方块、不砸伤、可长期存在、不落盘
+                fb.setGravity(false);
+                fb.setCancelDrop(true);
+                fb.setDropItem(false);
+                fb.setHurtEntities(false);
+                fb.shouldAutoExpire(false);
+                fb.setPersistent(false);
+                fb.setSilent(true);
+                fb.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
+                // ★ fall 模式：要验"落地/结束会不会留方块" ⇒ 给一个【向下】初速度让它撞地。
+                //   ★★ 实测结论（2026-09-24）：`setGravity(false)` 在 1.20.4 的落方块上是
+                //      **真的把重力关掉了** —— 上一版给 +0.6 的向上初速度，它就以恒定速度
+                //      一路升到 y≈148 都没落下来（9 次采样 y 单调上升、minGap 恒 1.0）。
+                //      所以"关重力"的落方块是个【一次设速、永不衰减】的完美可编程弹丸。
+                //      反过来说：想让落方块真的落地，必须自己给它向下速度。
+                if (sub.equals("fall")) {
+                    // ★ 速度刻意取小（-0.35 格/tick）：-1.0 会在两次采样之间直接穿过平台，
+                    //   抓不到"接触瞬间"（第二次实测就是这么漏掉的）。
+                    fb.setVelocity(new org.bukkit.util.Vector(0, -0.35D, 0));
+                }
+                blocks.add(fb);
+                origin.add(at.clone());
+            }
+        }
+        log("[TOUHOU] danmaku probe spawn=" + blocks.size() + " side=" + side
+                + " @ " + xyz(loc) + " gravity=false cancelDrop=true dropItem=false"
+                + " hurtEntities=false autoExpire=false persistent=false");
+
+        boolean fallMode = sub.equals("fall");
+        final int samples = fallMode ? 32 : 15;      // fall：32 × 5 tick = 8 秒；probe：15 × 20 tick = 15 秒
+        final int stepTicks = fallMode ? 5 : 20;
+        final List<org.bukkit.entity.FallingBlock> refs = blocks;
+        final List<Location> starts = origin;
+        final World w = world;
+        final Location center = loc.clone();
+        for (int s = 1; s <= samples; s++) {
+            final int idx = s;
+            org.bukkit.Bukkit.getScheduler().runTaskLater(Touhou.getInstance(), () -> {
+                double maxDrift = 0.0D;
+                double minGap = Double.MAX_VALUE;
+                int alive = 0;
+                List<Location> now = new ArrayList<>();
+                for (int i = 0; i < refs.size(); i++) {
+                    org.bukkit.entity.FallingBlock fb = refs.get(i);
+                    if (fb == null || !fb.isValid()) {
+                        continue;
+                    }
+                    alive++;
+                    Location cur = fb.getLocation();
+                    now.add(cur);
+                    maxDrift = Math.max(maxDrift, starts.get(i).distance(cur));
+                }
+                for (int i = 0; i < now.size(); i++) {
+                    for (int j = i + 1; j < now.size(); j++) {
+                        minGap = Math.min(minGap, now.get(i).distance(now.get(j)));
+                    }
+                }
+                boolean grounded = false;
+                for (org.bukkit.entity.FallingBlock fb : refs) {
+                    if (fb != null && fb.isValid() && fb.isOnGround()) {
+                        grounded = true;
+                        break;
+                    }
+                }
+                String yLine = "-";
+                if (!refs.isEmpty() && refs.get(0) != null && refs.get(0).isValid()) {
+                    yLine = String.format(Locale.ROOT, "%.3f", refs.get(0).getLocation().getY());
+                }
+                log("[TOUHOU] danmaku t=" + (idx * stepTicks) + "tick alive=" + alive + "/" + refs.size()
+                        + " maxDrift=" + String.format(Locale.ROOT, "%.4f", maxDrift)
+                        + " minGap=" + (minGap == Double.MAX_VALUE ? "-"
+                                : String.format(Locale.ROOT, "%.4f", minGap))
+                        + " y0=" + yLine
+                        + " onGround=" + grounded
+                        + " tps=" + String.format(Locale.ROOT, "%.1f",
+                                org.bukkit.Bukkit.getTPS()[0]));
+
+                if (idx == samples) {
+                    // ---- 收尾：清场 + 核对"世界有没有多出方块"
+                    //   ★ 判据要拿【基线】比：实验前先把同一片区域数一遍，
+                    //     否则站在实心地质里会把原生方块当成"我们生成的"（第一次实验就踩了这个假阳性）。
+                    StringBuilder area = new StringBuilder();
+                    int nonAir = 0;
+                    for (int dy = -8; dy <= 8; dy++) {
+                        for (int dx = -4; dx <= 4; dx++) {
+                            for (int dz = -4; dz <= 4; dz++) {
+                                org.bukkit.block.Block b = w.getBlockAt(
+                                        center.getBlockX() + dx,
+                                        center.getBlockY() + dy,
+                                        center.getBlockZ() + dz);
+                                if (b.getType() == Material.RED_STAINED_GLASS) {
+                                    nonAir++;
+                                    if (area.length() < 120) {
+                                        area.append(b.getType()).append('@')
+                                                .append(dx).append(',').append(dy).append(',')
+                                                .append(dz).append(' ');
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    int removed = clearFallingBlocks(center, 24);
+                    log("[TOUHOU] danmaku verdict aliveAtEnd=" + alive + "/" + refs.size()
+                            + " maxDrift=" + String.format(Locale.ROOT, "%.4f", maxDrift)
+                            + " minGap=" + (minGap == Double.MAX_VALUE ? "-"
+                                    : String.format(Locale.ROOT, "%.4f", minGap))
+                            + " ourBlocksPlaced=" + nonAir
+                            + " entitiesRemoved=" + removed
+                            + (nonAir == 0 ? " [NO-BLOCK-GENERATED]" : " [BLOCK-GENERATED]"));
+                    log("[TOUHOU] danmaku ourBlockSpots=" + nonAir + " sample=" + area);
+                }
+            }, (long) stepTicks * s);
+        }
+        sender.sendMessage(PREFIX + "\u00a7e落方块阵列已生成（" + blocks.size()
+                + " 个，无重力 / 落地不生成方块 / 不砸伤），"
+                + (sub.equals("fall") ? "6 秒" : "15 秒") + "后自动清场：");
+        guideLine(sender, "\u00a78  ★ 站点要选【空域】（例如世界出生点上方 y=120）：站点在实心地质里时，"
+                + "区块扫描会把原生方块数进来");
+        guideLine(sender, "\u00a78  每 " + (sub.equals("fall") ? "5" : "20")
+                + " tick 一行读数，看 maxDrift / minGap 就知道形状散没散");
+        guideLine(sender, "\u00a78  最后一行看 ourBlocksPlaced 是否为 0（= 没有往世界生成方块）");
+    }
+
+    /** 清掉指定点附近（半径 r 的立方范围）的所有落方块实体，返回清掉的个数。 */
+    private int clearFallingBlocks(Location center, int r) {
+        if (center == null || center.getWorld() == null) {
+            return 0;
+        }
+        int removed = 0;
+        for (org.bukkit.entity.Entity e : center.getWorld().getNearbyEntities(center, r, r, r)) {
+            if (e instanceof org.bukkit.entity.FallingBlock) {
+                e.remove();
+                removed++;
+            }
+        }
+        return removed;
     }
 
     // ------------------------------------------------------------------ dreamcatcher
