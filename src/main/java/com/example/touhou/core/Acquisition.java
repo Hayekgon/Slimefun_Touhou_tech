@@ -286,10 +286,12 @@ public final class Acquisition {
         SOURCE_BY_ID.put("TOUHOU_POWER_POWER_SUPPLY_UNIT", Source.pending());
 
         // ---- INFO 组（代码内置的说明纸品） -----------------------------------
+        // ★ 单一出处：本组物品只在这张表里登记一次，新增一张就加一个 id（不另起一行 put）。
         for (String id : List.of("TOUHOU_INFO_MODESHIFT", "TOUHOU_INFO_PLUGIN_MESSAGE",
                 "TOUHOU_INFO_DECLARATION_1", "TOUHOU_INFO_DECLARATION_2",
                 "TOUHOU_INFO_DECLARATION_3", "TOUHOU_INFO_TARTARIC_ACID",
-                "TOUHOU_INFO_TEAM_SHANGHAI_ALICE", "TOUHOU_INFO_NING_MENG")) {
+                "TOUHOU_INFO_TEAM_SHANGHAI_ALICE", "TOUHOU_INFO_NING_MENG",
+                "TOUHOU_INFO_MATL114")) {
             SOURCE_BY_ID.put(id, Source.of("代码内置的说明纸品（不通过合成获得）", Material.PAPER));
         }
     }

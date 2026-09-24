@@ -498,6 +498,27 @@ public final class AddItems {
     public static SlimefunItemStack INFO_NING_MENG;
 
     /**
+     * matl114 —— 授权使用的多方块结构源码（★ 名称<b>全小写</b>，用户逐字指定，别自作主张大写）。
+     *
+     * <p>id 按本项目铁律 {@code TOUHOU_"物品组"_"英文名"}：它归属 1 级组
+     * {@link AddGroups#INFO}，英文名取 <b>MATL114</b>（id 必须全大写，
+     * 而<b>显示名</b>照用户原文保持小写）⇒ {@code TOUHOU_INFO_MATL114}。
+     *
+     * <p>★ 材质 {@code Material.PAPER}：与 INFO 组其余说明纸一致（本组只有「模式切换玻璃板」
+     * 是玻璃板，其余都是纸）。
+     *
+     * <p>★ 名称与那一行描述都用 <b>{@code &f} 白字</b>：用户没有指定颜色，
+     * 选白字是为了与同组现有纸品（「插件消息」/「声明」那几张的名都是 {@code &f}）
+     * 保持一致 —— <b>这是我的判断，不是用户口径</b>。
+     * ⚠ 也刻意<b>不</b>为它新造 {@link Gradient} 配色：本组没有任何一件用渐变，
+     * 单独给它加一套会把"配色与算法分离"的枚举表弄成一半白字一半渐变。
+     *
+     * <p>★ 无配方（{@link RecipeType#NULL} + {@code noRecipe()}，与同组其余七张完全一致）——
+     * 它不是可制造物，获取方式在指南页槽 10 由 {@link Acquisition} 统一标注。
+     */
+    public static SlimefunItemStack INFO_MATL114;
+
+    /**
      * Flee into Gensokyo：<b>梦想封印 集</b>（充能式 360° 追踪弹幕发射器）。
      *
      * <p>★ 2026-09-20 改名 + 改 id：原来是「博丽的御币」/ {@code TOUHOU_PARTY_ITEM_HAKUREI_GOHEI}，
@@ -921,6 +942,17 @@ INFO_MODESHIFT = new SlimefunItemStack(
                 "&aNing_Meng__",
                 "",
                 "&7项目提出者，代码开发者");
+
+        // matl114：INFO 组的第九张纸（★ 名称【全小写】照用户原文，id 仍全大写）。
+        // ★ 材质 PAPER、名与描述都用 &f 白字 —— 与同组的「插件消息」/「声明」保持一致
+        //   （用户没指定颜色，这条是本实现的选择，见 INFO_MATL114 的字段注释）。
+        // ★ 描述只有一行，逐字照抄（下面那个 "" 是名与描述之间的空行，本组统一这么做）。
+        INFO_MATL114 = new SlimefunItemStack(
+                "TOUHOU_INFO_MATL114",
+                Material.PAPER,
+                "&fmatl114",
+                "",
+                "&f授权使用的多方块结构源码");
 
         // 1 级物品组 PARTY_ITEM（Flee into Gensokyo）
         // id 规范：TOUHOU_"物品组"_"物品名英文" ⇒ TOUHOU_PARTY_ITEM_FANTASY_SEAL_CONVERGE

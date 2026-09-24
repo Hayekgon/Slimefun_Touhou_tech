@@ -170,6 +170,30 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
                     log("[TOUHOU] groups oldId=" + oldId
                             + " found=" + (SlimefunItem.getById(oldId) != null));
                 }
+                // ★ INFO 组纸品的登记读数（id 可查性 + 物品【自己的】材质 / 显示名 + 物品组 key）。
+                //   ★ 为什么专门加这一段：`/touhou acquisition <id>` 打出来的
+                //     `来源=PAPER "PAPER"` 是【来源图标】的材质（即 Source.of(..., Material.PAPER)
+                //     里那个），**不是纸品自己的材质** —— "材质 = PAPER" 这条读数只能从物品模板读，
+                //     所以在这里补一条（新增 INFO 纸品时不用改代码，遍历组即可）。
+                //   ★ name 去掉了颜色码：本组有全小写的显示名（例如 matl114），
+                //     "逐字照抄、没被顺手大写"这件事只能在读数里看。
+                //   ★ INFO 是 SubItemGroup（不是容器组），`getItems()` 天生可用 ——
+                //     容器组（TouhouNestedGroup / FlexItemGroup）才会抛
+                //     UnsupportedOperationException("A FlexItemGroup has no items!")，
+                //     所以这里不需要 instanceof 判断（写了反而编译不过：SubItemGroup
+                //     静态类型与 FlexItemGroup 不可转换）。
+                if (AddGroups.INFO != null) {
+                    for (SlimefunItem infoItem : AddGroups.INFO.getItems()) {
+                        ItemStack infoIcon = infoItem.getItem();
+                        ItemMeta infoMeta = infoIcon == null ? null : infoIcon.getItemMeta();
+                        log("[TOUHOU] groups infoItem id=" + infoItem.getId()
+                                + " material=" + (infoIcon == null ? "(无)" : infoIcon.getType())
+                                + " name=" + (infoMeta == null || infoMeta.getDisplayName() == null
+                                        ? "(无)" : ChatColor.stripColor(infoMeta.getDisplayName()))
+                                + " group=" + (infoItem.getItemGroup() == null
+                                        ? "(无)" : infoItem.getItemGroup().getKey().toString()));
+                    }
+                }
             }
             case "reload" -> {
                 Touhou.getInstance().reloadConfig();

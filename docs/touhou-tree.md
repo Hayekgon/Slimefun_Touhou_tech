@@ -56,7 +56,8 @@ TH Tech  (0 级容器 TOUHOU_TH_TECH, key touhou:touhou_th_tech, 指南主菜单
 │     ├── 声明 3/3                TOUHOU_INFO_DECLARATION_3
 │     ├── 酒石酸菌                TOUHOU_INFO_TARTARIC_ACID
 │     ├── 上海爱丽丝幻乐团          TOUHOU_INFO_TEAM_SHANGHAI_ALICE
-│     └── Ning_Meng__            TOUHOU_INFO_NING_MENG
+│     ├── Ning_Meng__            TOUHOU_INFO_NING_MENG
+│     └── matl114                TOUHOU_INFO_MATL114
 │
 └── Power           (1 级 TOUHOU_POWER,            key touhou:touhou_power)
       ├── POWER集成核心            TOUHOU_POWER_POWER_INTEGRATED_CORE   〔配方待补〕
@@ -66,10 +67,13 @@ TH Tech  (0 级容器 TOUHOU_TH_TECH, key touhou:touhou_th_tech, 指南主菜单
       └── POWER供给单元            TOUHOU_POWER_POWER_SUPPLY_UNIT       〔配方待补〕
 ```
 
-**小计**：1 个 0 级容器 + 6 个 1 级组（其中「科学世纪」自身是容器）+ 2 个 2 级组；**物品 32 件**
-（幻想之物 6 / 幻想之缘起 4 / 多方块 9 / 单方块 1 / 符卡 2 / INFO 8 / Power 5）。
-其中**没有配方的 14 件**（8 个多方块结构件 + 5 个 POWER 设备 + 炙热的灰烬），
-指南页槽 10 会显示**屏障图标 + 「暂未开放 —— 目前只能由管理员发放（配方待补）」**。
+**小计**：1 个 0 级容器 + 6 个 1 级组（其中「科学世纪」自身是容器）+ 2 个 2 级组；**物品 36 件**
+（幻想之物 6 / 幻想之缘起 4 / 多方块 9 / 单方块 1 / 符卡 2 / INFO 9 / Power 5）。
+其中**有真配方（会进合成表）的 11 件**（增强型工作台 6 + 魔法工作台 5），
+**没有任何配方的 25 件**（= 36 − 11）：落叶 · 回响（这 2 件靠机制获得）· 炙热的灰烬 ·
+多方块组里除反应堆核心外的 8 件（7 件结构件 + 赛钱箱核心门面）· INFO 9 件 · POWER 5 件。
+这 25 件里有 **13 件标着〔待补〕**（炙热的灰烬 + 7 件多方块结构件 + 5 件 POWER 设备），
+它们的指南页槽 10 会显示**屏障图标 + 「暂未开放 —— 目前只能由管理员发放（配方待补）」**。
 
 ---
 
@@ -146,6 +150,7 @@ TH Tech  (0 级容器 TOUHOU_TH_TECH, key touhou:touhou_th_tech, 指南主菜单
 | 酒石酸菌 | `TOUHOU_INFO_TARTARIC_ACID` | 无 | 同上 |
 | 上海爱丽丝幻乐团 | `TOUHOU_INFO_TEAM_SHANGHAI_ALICE` | 无 | 同上 |
 | Ning_Meng__ | `TOUHOU_INFO_NING_MENG` | 无 | 同上 |
+| matl114 | `TOUHOU_INFO_MATL114` | 无 | 同上 |
 
 ### 7. Power（自研 POWER 能源）
 
@@ -166,11 +171,12 @@ TH Tech  (0 级容器 TOUHOU_TH_TECH, key touhou:touhou_th_tech, 指南主菜单
 | **增强型工作台** | 6 | 春泥 · **反应堆核心** · **梦想封印 集** · **杀意的百合** · **POINT** · **P引擎**（产出 8） |
 | **魔法工作台** | 5 | **报春の妖精**（产出 2）· **红叶飞散の天狗** · **丰收之时** · **冰の妖精** · **雾中の妖精** |
 | **古代祭坛**（赛钱箱祈愿） | 1 | 基础祈愿 → POWER存储单元 ×4 |
-| **无配方**（机制获取 / 待补） | 20 | 落叶 / 回响（维度穿梭）· INFO 8 件 · 多方块结构件 7 件 · POWER 5 件 · 炙热的灰烬 |
+| **无配方**（机制获取 / 待补 / 核心门面） | 25 | 落叶 · 回响（维度穿梭）· 炙热的灰烬 · 多方块结构件 7 件 · 赛钱箱（核心门面）· INFO 9 件 · POWER 5 件 |
 
-**待补配方的 14 件**：炙热的灰烬、反应堆框架/保护罩/稳定器/基座/输入接口/输出接口、神社的木桩、
+**待补配方的 13 件**：炙热的灰烬、反应堆框架/保护罩/稳定器/基座/输入接口/输出接口、神社的木桩、
 POWER集成核心、POWER中继器、POWER存储单元、幻梦捕捉器、POWER供给单元。
-（另有 8 件 INFO 纸品是**刻意不给配方**的说明物，不算待补。）
+（另有 9 件 INFO 纸品是**刻意不给配方**的说明物，不算待补；
+赛钱箱也不是待补 —— 它靠搭完整结构 + 放入核心件获得。）
 
 ---
 

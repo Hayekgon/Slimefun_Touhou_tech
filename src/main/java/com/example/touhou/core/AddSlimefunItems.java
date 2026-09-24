@@ -201,6 +201,13 @@ public final class AddSlimefunItems {
     public static SlimefunItem INFO_TEAM_SHANGHAI_ALICE;
     /** Ning_Meng__（项目提出者、代码开发者）。 */
     public static SlimefunItem INFO_NING_MENG;
+    /**
+     * matl114（授权使用的多方块结构源码）—— INFO 组的第九张说明纸。
+     *
+     * <p>★ 配方类型 {@link RecipeType#NULL} + {@link #noRecipe()}：与同组其余七张纸完全一致，
+     * 它不是可制造物（在收尾的 {@code /touhou acquisition all} 里由 {@link Acquisition} 标注获取方式）。
+     */
+    public static SlimefunItem INFO_MATL114;
     /** 梦想封印 集（Flee into Gensokyo，POWER 充能道具）。 */
     public static FantasySeal FANTASY_SEAL;
     /**
@@ -401,6 +408,10 @@ public final class AddSlimefunItems {
                 RecipeType.NULL, noRecipe()), plugin);
         INFO_NING_MENG = register(new SlimefunItem(
                 AddGroups.INFO, AddItems.INFO_NING_MENG,
+                RecipeType.NULL, noRecipe()), plugin);
+        // matl114：INFO 组的第九张纸。★ 与同组其余七张同一路数（NULL + 9 格全空）。
+        INFO_MATL114 = register(new SlimefunItem(
+                AddGroups.INFO, AddItems.INFO_MATL114,
                 RecipeType.NULL, noRecipe()), plugin);
 
         // 多方块大型机器：反应堆核心
@@ -895,7 +906,8 @@ public final class AddSlimefunItems {
                                 + "," + INFO_DECLARATION_3.getId()
                                 + "," + INFO_TARTARIC_ACID.getId()
                                 + "," + INFO_TEAM_SHANGHAI_ALICE.getId()
-                                + "," + INFO_NING_MENG.getId()))
+                                + "," + INFO_NING_MENG.getId()
+                                + "," + INFO_MATL114.getId()))
                 + " / " + (FANTASY_SEAL == null ? "梦想封印 集=未注册" : "梦想封印 集=OK")
                 + " / " + (MURDEROUS_LILY == null ? "杀意的百合=未注册" : "杀意的百合=OK")
                 + " / " + (REACTOR_INPUT_PORT == null ? "输入接口=未注册" : "输入接口=OK")
