@@ -72,6 +72,16 @@ public final class AddItems {
             + "ZTI2OTAxNTkxNjFmNTkzNzMyNWNhYzk4YmU5MGVmYmVlMWQxM2Y1Yzc5NjYzNGFjZTFkY2E2ODU0MjRmYjZiMCJ9fX0=";
 
     /**
+     * 「POINT」的头颅 Value —— 用户给定的那串 base64（<b>原样照抄、不做任何加工</b>）。
+     *
+     * <p>★ 判据同上：以 {@code "ey"} 开头 ⇒ {@code getTexture} 原样当 base64 用，
+     * 不需要任何加工。调试命令 {@code /touhou point selfcheck} 读它做逐字符比对（两串都打）。
+     */
+    public static final String POINT_TEXTURE =
+            "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUv"
+            + "MTk4MDE3MjFjNzcxYzNjNDg5OGNiN2QyNDgzMjFkODlhOTA4N2E5MmQzZGQ1ODE2M2NiZDRlMTJlZDc1YjU0OSJ9fX0=";
+
+    /**
      * 渐变配色表。
      *
      * <p>★ 起止色随配色走，而不是把"粉白"那组写死在 {@link #gradientName} 里 ——
@@ -139,7 +149,29 @@ public final class AddItems {
          * 那种偏柔和的绿）：用户要的是"<b>亮</b>绿色"，纯绿更贴合字面。
          * 想改成原版 {@code §a} 的观感就把这一行的两个 {@code 0x00FF00} 一起换成 {@code 0x55FF55}。
          */
-        FAIRY_BRIGHT_GREEN(0x00FF00, 0x00FF00);
+        FAIRY_BRIGHT_GREEN(0x00FF00, 0x00FF00),
+        /**
+         * POINT：<b>深蓝</b>单色（用户两次都强调"深蓝色"）。
+         *
+         * <p>★ 与 {@link #FAIRY_BRIGHT_GREEN} 同一套做法：<b>起止色设成同一个值</b>，
+         * 于是 {@code gradientName} 的逐字符插值退化为单色（每个字符仍带一个
+         * {@code §x§R§R§G§G§B§B} 序列，只是值全都一样）。
+         * 好处也一样：换色只动这一行、口径统一、逐字符读数一眼可核对"整行同色"。
+         *
+         * <p>★ 色值选 {@code #00008B}（<b>CSS/HTML 的标准 "darkblue"</b>）而不是
+         * {@code #1E3A8A}（Tailwind 的 blue-900）：
+         * <ol>
+         *   <li>与本项目其它配色的取值习惯一致 —— 亮绿取的是标准 {@code #00FF00}、
+         *       金取标准 {@code #FFD700}、棕取标准 {@code #8B4513}（saddlebrown），
+         *       即"能在标准色名表里查到"；{@code #00008B} 正是标准 darkblue；</li>
+         *   <li>它比 {@code #1E3A8A} 更饱和、更"纯蓝"，在深色 tooltip 背景上更像
+         *       "深蓝"而不是"发灰的蓝"（{@code #1E3A8A} 带明显灰调）。</li>
+         * </ol>
+         * ★ 注意它不是原版 16 色里的 {@code §1}（那是最暗的"暗蓝"、几乎发黑）：
+         * 这是 custom hex，不受 16 色限制；想换成原版观感就把这一行的两个值
+         * 一起改成 {@code 0x0000AA}（原版 {@code §1} 的十六进制）。
+         */
+        DEEP_BLUE(0x00008B, 0x00008B);
 
         private final int start;
         private final int end;
@@ -279,6 +311,31 @@ public final class AddItems {
      * （名称"金色至棕色"、描述"金色至橙色"）—— 看起来像不统一，但按原文照做。
      */
     public static SlimefunItemStack FALLEN_LEAVES;
+
+    /**
+     * POINT —— 名字就叫 POINT（用户逐字指定的全大写英文，没加任何符号）。
+     *
+     * <p>id 按本项目铁律 {@code TOUHOU_"物品组"_"英文名"}：它归属 1 级组
+     * {@link AddGroups#MATERIAL}，英文名就是 <b>Point</b>
+     * ⇒ {@code TOUHOU_MATERIAL_POINT}。
+     *
+     * <p>★ <b>物品组是 MATERIAL</b>（用户原话"放到'材料'物品组"）——
+     * ⚠ 该组的<b>显示名</b>后来已改成「幻想之物」，但<b>字段名与 key 都没动</b>
+     * （见 {@link AddGroups#MATERIAL} 的注释），所以这里传的仍然是
+     * {@code AddGroups.MATERIAL} 这个字段，不要被显示名带偏去传 CHARACTER。
+     *
+     * <p>★ 名称与那一行描述<b>全部深蓝</b>：走
+     * {@link #gradientNamePoint(String)} 的单色配色（{@link Gradient#DEEP_BLUE}，
+     * 起止同色 ⇒ 逐字符退化为单色），不散写 {@code §1}/{@code §9}。
+     *
+     * <p>★ 材质是<b>头颅 Value</b>（用户给定的 base64，见 {@link #POINT_TEXTURE}），
+     * 与报春の妖精 / 冰の妖精 / 红叶飞散の天狗 / 雾中の妖精同一条构造器路径。
+     *
+     * <p>★ 配方是<b>增强型工作台</b>（用户说的"强化工作台"就是这台机器，
+     * 见 {@link Acquisition#MACHINE_BY_RECIPE_TYPE_KEY} 里
+     * {@code slimefun:enhanced_crafting_table → 增强型工作台} 的映射），产出 <b>1 个</b>。
+     */
+    public static SlimefunItemStack POINT;
 
     /**
      * 冰の妖精 —— 琪露诺（东方 Project 的「チルノ」，英文 Cirno）。
@@ -613,6 +670,21 @@ public final class AddItems {
                 gradientName("萧瑟的秋风，带来了这份来自秋天的问候，", Gradient.GOLD_ORANGE),
                 gradientName("\"秋天来临之际，冬天也不远了呢\"", Gradient.GOLD_ORANGE),
                 gradientName("似曾相识的获取方式呢", Gradient.GOLD_ORANGE));
+
+        // POINT。
+        // ★ 名称就是全大写英文「POINT」（用户逐字指定，没加符号）。
+        // ★ 材质：用户给定的【头颅 Value】（base64，POINT_TEXTURE）—— 判据同上面几件：
+        //   以 "ey" 开头 ⇒ getTexture 原样当 base64 用，不需要加工；
+        //   运行期用 POINT.getSkullTexture() 读回来逐字符比对（/touhou point selfcheck）。
+        // ★ 名称与描述【全部深蓝】：走 gradientNamePoint(...) 的单色配色（起止同色），
+        //   不散写 §1/§9 —— 换色只改 Gradient.DEEP_BLUE 一行。
+        // ★ 描述只有一行，逐字照抄（原文就是 三个字 + 啦 + 中文句号，下面那个 "" 是名与描述之间的空行）。
+        POINT = new SlimefunItemStack(
+                "TOUHOU_MATERIAL_POINT",
+                POINT_TEXTURE,
+                gradientNamePoint("POINT"),
+                "",
+                gradientNamePoint("普通的点啦"));
 
         // 冰の妖精（琪露诺 / Cirno）。
         // ★ 材质：用户给定的【头颅 Value】（base64，CIRNO_TEXTURE）—— 判据同上面那两件头贴物品：
@@ -963,6 +1035,15 @@ INFO_MODESHIFT = new SlimefunItemStack(
         if (leavesMeta != null) {
             leavesMeta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
             FALLEN_LEAVES.setItemMeta(leavesMeta);
+        }
+
+        // POINT：附魔光效（同一套"挂无用附魔 + HIDE_ENCHANTS"）。
+        //   ★ 它没有"要看附魔行"的要求，所以照光效惯例把附魔行藏掉，只留光晕。
+        POINT.addUnsafeEnchantment(Enchantment.ARROW_INFINITE, 1);
+        ItemMeta pointMeta = POINT.getItemMeta();
+        if (pointMeta != null) {
+            pointMeta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
+            POINT.setItemMeta(pointMeta);
         }
 
         // 红叶飞散の天狗：附魔光效（同一套"挂无用附魔 + HIDE_ENCHANTS"）。
@@ -1334,6 +1415,21 @@ INFO_MODESHIFT = new SlimefunItemStack(
      */
     public static String gradientNameFairyInMist(String text) {
         return gradientName(text, Gradient.FAIRY_BRIGHT_GREEN);
+    }
+
+    /**
+     * 把一段文字染成<b>深蓝（单色）</b>——「POINT」名称与那一行描述用的那套。
+     *
+     * <p>★★ 与 {@link #gradientNameFairyInMist(String)} 同构：<b>不是渐变</b>，
+     * 而是"两端同色的退化渐变"（配色 {@link Gradient#DEEP_BLUE} 的起止色相同）。
+     * 于是"整行深蓝"由逐字符 {@code §x§0§0§0§0§8§B} 实现，
+     * 既不改动渐变的实现，又能被 {@code /touhou point selfcheck} 的逐字符读数核对。
+     *
+     * @param text 要染的文字（纯文本，不要带 {@code §}/{@code &} 颜色代码）
+     * @return 整行同色的 {@code §x§R§R§G§G§B§B} 序列串
+     */
+    public static String gradientNamePoint(String text) {
+        return gradientName(text, Gradient.DEEP_BLUE);
     }
 
     /**

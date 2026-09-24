@@ -101,6 +101,16 @@ public final class AddSlimefunItems {
      */
     public static SlimefunItem FALLEN_LEAVES;
     /**
+     * POINT —— 增强型工作台合成的材料（配方里引用了三件角色物品）。
+     *
+     * <p>★ 归属 1 级组 {@link AddGroups#MATERIAL}（用户原话"放到'材料'物品组"）。
+     * ⚠ 该组的<b>显示名</b>已改为「幻想之物」，但字段名/key 未动 —— 传的仍是
+     * {@code AddGroups.MATERIAL}，不是 {@code AddGroups.CHARACTER}。
+     *
+     * <p>★ 产出 <b>1 个</b> ⇒ 4 参构造器（不传 {@code recipeOutput}）。
+     */
+    public static SlimefunItem POINT;
+    /**
      * 冰の妖精（琪露诺 / Cirno）—— <b>右键生效的范围冰冻机器</b>（不需要 GUI）。
      *
      * <p>★ 归属 1 级组 {@link AddGroups#MATERIAL}（用户指定"物品组 MATERIAL"）。
@@ -286,6 +296,16 @@ public final class AddSlimefunItems {
                 AddItems.FALLEN_LEAVES,
                 RecipeType.NULL,
                 noRecipe()), plugin);
+
+        // POINT：增强型工作台合成（用户说的"强化工作台"就是这台），【产出 1 个】
+        //   ⇒ 4 参构造器、不传 recipeOutput（那是"一次出多个"才用的）。
+        // ★ 配方里引用了另外三件角色物品（雾中の妖精 / 红叶飞散の天狗 / 报春の妖精）——
+        //   它们都是本项目自己的模板，配方匹配拿**粘液 id** 比，所以必须给模板本身。
+        POINT = register(new SlimefunItem(
+                AddGroups.MATERIAL,
+                AddItems.POINT,
+                RecipeType.ENHANCED_CRAFTING_TABLE,
+                pointRecipe()), plugin);
 
         // 冰の妖精：魔法工作台合成，【产出 1 个】⇒ 4 参构造器（不传 recipeOutput）。
         // ★ 它的右键行为（9×9×9 冰冻 + 缓慢 9 + 那句 Bakabaka）全在 Cirno#getItemHandler，
@@ -585,6 +605,38 @@ public final class AddSlimefunItems {
     }
 
     /**
+     * POINT 的合成配方（<b>增强型工作台</b>）。
+     *
+     * <pre>
+     *   青金石           雾中の妖精       青金石
+     *   红叶飞散の天狗    魔法结晶III      报春の妖精
+     *   青金石           冰の妖精         青金石
+     * </pre>
+     *
+     * <p>★ 用户说的"强化工作台"与项目里的"增强型工作台"<b>是同一台机器</b>：
+     * 本体的 {@code RecipeType.ENHANCED_CRAFTING_TABLE}，
+     * 在 {@link Acquisition#MACHINE_BY_RECIPE_TYPE_KEY} 里映射成显示名"增强型工作台"。
+     * 本体<b>没有</b>叫"强化工作台"的配方类型，所以用这个。
+     *
+     * <p>★ 三件角色物品都给<b>模板本身</b>（{@code AddItems.XXX}）—— 配方匹配拿粘液 id 比，
+     * 给"看起来一样"的别的物品是匹配不上的。
+     * 「雾中の妖精」是 CHARACTER 组的，但配方里引用它不影响 POINT 自己的物品组。
+     *
+     * <p>★ 「青金石」= {@code Material.LAPIS_LAZULI}：1.20.4 里就叫这个
+     * （老版本的染料类物品在 1.13 被拆成了独立 Material，不再有笼统的 {@code INK_SACK}）。
+     * 「魔法结晶III」= 本体常量 {@code SlimefunItems.MAGIC_LUMP_3}（与红叶飞散の天狗那件同款口径）。
+     *
+     * <p>★ 产出 <b>1</b> 个：本方法只管 9 格图案；注册处用的是 4 参构造器（无 {@code recipeOutput}）。
+     */
+    private static ItemStack[] pointRecipe() {
+        return new ItemStack[] {
+                new ItemStack(Material.LAPIS_LAZULI), AddItems.FAIRY_IN_MIST, new ItemStack(Material.LAPIS_LAZULI),
+                AddItems.MOMIJI_TENGU, SlimefunItems.MAGIC_LUMP_3, AddItems.SPRING_HERALD,
+                new ItemStack(Material.LAPIS_LAZULI), AddItems.CIRNO, new ItemStack(Material.LAPIS_LAZULI)
+        };
+    }
+
+    /**
      * 冰の妖精的合成配方（<b>魔法工作台</b>，用户指定 3×3 图案）。
      *
      * <pre>
@@ -743,6 +795,8 @@ public final class AddSlimefunItems {
                         : "冰の妖精=OK(" + CIRNO.getId() + ",产出1,右键9x9x9冰冻)")
                 + " / " + (FAIRY_IN_MIST == null ? "雾中の妖精=未注册"
                         : "雾中の妖精=OK(" + FAIRY_IN_MIST.getId() + ",产出1,对空气右键召唤)")
+                + " / " + (POINT == null ? "POINT=未注册"
+                        : "POINT=OK(" + POINT.getId() + ",产出1)")
                 + " / " + (ECHO_OF_ANOTHER_WORLD == null ? "另一个世界的回响=未注册"
                         : "另一个世界的回响=OK(" + ECHO_OF_ANOTHER_WORLD.getId() + ")")
                 + " / " + (INFO_MODESHIFT == null ? "模式玻璃板=未注册" : "模式玻璃板=OK")

@@ -239,6 +239,9 @@ public final class Acquisition {
         // 雾中の妖精：魔法工作台合成（用户指定配方类型 MAGIC_WORKBENCH）。
         SOURCE_BY_ID.put("TOUHOU_CHARACTER_FAIRY_IN_MIST",
                 Source.recipe("魔法工作台", () -> SlimefunItems.MAGIC_WORKBENCH));
+        // POINT：增强型工作台合成（用户说的"强化工作台"= 这台机器）。
+        SOURCE_BY_ID.put("TOUHOU_MATERIAL_POINT",
+                Source.recipe("增强型工作台", () -> SlimefunItems.ENHANCED_CRAFTING_TABLE));
 
         // ---- 单方块机器 ------------------------------------------------------
         SOURCE_BY_ID.put("TOUHOU_SIMPLE_MACHINE_HARVEST_TIME",
