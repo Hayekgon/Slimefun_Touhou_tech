@@ -6,7 +6,7 @@ import io.github.thebusybiscuit.slimefun4.api.recipes.RecipeType;
 import org.bukkit.NamespacedKey;
 
 /**
- * 两个多方块核心的<b>自定义配方类型</b>。
+ * 多方块核心与特殊机制的<b>自定义配方类型</b>（"只当门面、不落合成表"）。
  *
  * <h2>它解决什么问题</h2>
  * 指南的"配方页"槽 10 显示的图标是 {@code RecipeType#getItem(Player)} 的结果
@@ -15,7 +15,7 @@ import org.bukkit.NamespacedKey;
  * 里 {@code toItem() == null} 的分支），于是页面上"这台机器是什么"完全看不出来。
  * 换成这里定义的配方类型之后，槽 10 会显示核心自己的图标与名字。
  *
- * <h2>★★ 为什么它<b>不会</b>让核心变成可合成物品</h2>
+ * <h2>★★ 为什么它<b>不会</b>让物品变成可合成物品</h2>
  * 合成表是这样落地的：{@code SlimefunItem#load()} 调
  * {@code RecipeType#register(recipe, output)}，而那个方法只有两条路：
  * <pre>
@@ -24,14 +24,19 @@ import org.bukkit.NamespacedKey;
  * </pre>
  * 本类构造出来的配方类型：{@code registerConsumer} 为 {@code null}（
  * {@code RecipeType(NamespacedKey, SlimefunItemStack, String...)} 这条构造器不传回调），
- * 而 {@code machine} = 核心的物品 id，那个 {@code SlimefunItem} 是
- * {@link UtsuhoReactorCore} / {@link Saizenbako}（{@code AGenerator} / {@code PowerComponent} 的子孙），
- * <b>不是</b> {@code MultiBlockMachine}。两条路都不通 ⇒ <b>什么都不注册</b>。
- * 再加上两个核心传入的配方数组本来就是 {@code null} 填满的 9 格（{@code AddSlimefunItems#noRecipe}），
- * 于是工作台/增强工作台/任何机器里都摆不出这两个核心。
+ * 而 {@code machine} = 物品自己的 id，那个 {@code SlimefunItem} 是
+ * {@link UtsuhoReactorCore}（{@code AGenerator} 的子孙）/ {@link EchoOfAnotherWorld}
+ * （普通物品），<b>不是</b> {@code MultiBlockMachine}。两条路都不通 ⇒ <b>什么都不注册</b>。
+ * 再加上传进来的配方数组本来就是 {@code null} 填满的 9 格（{@code AddSlimefunItems#noRecipe}），
+ * 于是任何工作台/机器里都摆不出它们。
  *
  * <p>运行期由 {@code /touhou guide} 里的"可合成性核查"负责证明这一点：
- * 它遍历 {@code Bukkit.recipeIterator()} 数"产物是这两个核心的配方有几条"，正常必须是 0。
+ * 它遍历 {@code Bukkit.recipeIterator()} 数"产物是这些物品的配方有几条"，正常必须是 0。
+ *
+ * <p>★★ <b>2026-09-24 变更</b>：「赛钱箱」拿到了用户给的<b>真实</b>魔法工作台配方，
+ * 所以它<b>不再</b>使用本类的门面（{@code SAIZENBAKO} 那个类型已随之下线）——
+ * 门面类型与"真配方"是互斥的：有真配方就该让指南页槽 10 显示那台真实的机器。
+ * 现在本类只剩两个：反应堆核心、维度穿梭。
  *
  * <h2>为什么要有 setup() 而不是 static final 字段</h2>
  * {@code RecipeType(NamespacedKey, SlimefunItemStack, …)} 要吃 {@link SlimefunItemStack}
@@ -49,16 +54,12 @@ public final class TouhouRecipeTypes {
      *
      * <p>它承载的是 {@code UtsuhoReactorCore#getDisplayRecipes()} 那一页
      * （原油桶 → 炙热的灰烬 + 发电参数）。
+     *
+     * <p>⚠ 注意：反应堆核心的<b>配方类型</b>其实是
+     * {@code RecipeType.ENHANCED_CRAFTING_TABLE}（它有真的增强工作台配方）；
+     * 本类型只出现在"自定义配方页"的展示里，与槽 10 无关。
      */
     public static RecipeType REACTOR_CORE;
-
-    /**
-     * 赛钱箱（祭坛）核心的配方类型。
-     *
-     * <p>它承载的是 {@code Saizenbako#getDisplayRecipes()} 那一页
-     * （{@link SaizenbakoRecipes} 里注册的每一条祈愿配方）。
-     */
-    public static RecipeType SAIZENBAKO;
 
     /**
      * 「维度穿梭」的配方类型 —— 本项目的第三个门面类型。
@@ -83,15 +84,11 @@ public final class TouhouRecipeTypes {
     public static RecipeType DIMENSION_SHUTTLE;
 
     /**
-     * 建好三个配方类型 —— 必须在 {@link AddItems#setup()} 之后、
+     * 建好两个门面配方类型 —— 必须在 {@link AddItems#setup()} 之后、
      * {@link AddSlimefunItems#setup} 之前调用。
      */
     public static void setup() {
         REACTOR_CORE = core("reactor_core", AddItems.UTSUHO_REACTOR_CORE,
-                "",
-                "&a&o搭建完整的多方块结构后放入核心",
-                "&8材料清单见物品描述");
-        SAIZENBAKO = core("saizenbako", AddItems.SAIZENBAKO,
                 "",
                 "&a&o搭建完整的多方块结构后放入核心",
                 "&8材料清单见物品描述");
@@ -117,20 +114,22 @@ public final class TouhouRecipeTypes {
     /** 诊断：本模块的状态（{@code /touhou guide} 用）。 */
     public static String describe() {
         return "自定义配方类型：反应堆核心=" + keyOf(REACTOR_CORE)
-                + " / 赛钱箱=" + keyOf(SAIZENBAKO)
-                + " / 维度穿梭=" + keyOf(DIMENSION_SHUTTLE);
+                + " / 维度穿梭=" + keyOf(DIMENSION_SHUTTLE)
+                + "（赛钱箱已改为真实魔法工作台配方，门面已下线）";
     }
 
     /**
-     * 这个配方类型是不是本类专供的门面（反应堆核心 / 赛钱箱 / 维度穿梭）。
+     * 这个配方类型是不是本类专供的门面（反应堆核心 / 维度穿梭）。
      *
      * <p>★ 用途：{@link Acquisition#applyFacades()} 要靠它判断"这件物品已经有
-     * 一个更具体的槽 10 说明" —— 那三个门面带着"搭建完整结构 + 材料清单"之类的
+     * 一个更具体的槽 10 说明" —— 那两个门面带着"搭建完整结构 + 材料清单"之类的
      * 定制文字，<b>不能被通用的获取方式门面覆盖掉</b>。
+     *
+     * <p>⚠ 2026-09-24：赛钱箱那一支已移除（它现在有真配方，<b>本来就不会</b>被
+     * 通用门面覆盖 —— {@code applyFacades} 对"有真配方的物品"直接跳过）。
      */
     public static boolean isDedicatedFacade(RecipeType type) {
-        return type != null
-                && (type == REACTOR_CORE || type == SAIZENBAKO || type == DIMENSION_SHUTTLE);
+        return type != null && (type == REACTOR_CORE || type == DIMENSION_SHUTTLE);
     }
 
     private static String keyOf(RecipeType type) {

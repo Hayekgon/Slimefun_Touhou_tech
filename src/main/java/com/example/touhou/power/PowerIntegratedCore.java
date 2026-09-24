@@ -106,7 +106,18 @@ public class PowerIntegratedCore extends SlimefunItem
 
     public PowerIntegratedCore(ItemGroup itemGroup, SlimefunItemStack item,
                                RecipeType recipeType, ItemStack[] recipe) {
-        super(itemGroup, item, recipeType, recipe);
+        this(itemGroup, item, recipeType, recipe, null);
+    }
+
+    /**
+     * ★ 5 参重载：魔法工作台合成时<b>单次产出 2 个</b>（{@code recipeOutput}）。
+     *
+     * <p>模板数量保持 1，多产出只走这个参数 —— 判据见
+     * {@code AddSlimefunItems#POWER_INTEGRATED_CORE_OUTPUT_AMOUNT}。
+     */
+    public PowerIntegratedCore(ItemGroup itemGroup, SlimefunItemStack item,
+                               RecipeType recipeType, ItemStack[] recipe, ItemStack recipeOutput) {
+        super(itemGroup, item, recipeType, recipe, recipeOutput);
         addItemSetting(capacity);
         addItemSetting(hologramEnabled);
         addItemSetting(range);

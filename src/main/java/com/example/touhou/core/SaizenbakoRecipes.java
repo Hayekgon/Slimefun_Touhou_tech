@@ -1,6 +1,5 @@
 package com.example.touhou.core;
 
-import org.bukkit.Material;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.ArrayList;
@@ -50,28 +49,31 @@ public final class SaizenbakoRecipes {
      * <p>★ 为什么要在物品注册之后：配方里引用的是 {@link AddItems} 的
      * {@code SlimefunItemStack}，它们的 id 就是匹配判据（见
      * {@link SaizenbakoRecipe#sameItem}）。物品模板没建好之前注册，配方里就会是空 id。
+     *
+     * <h2>★★ 2026-09-24：原有的那条配方已被用户要求删除，这里现在是【空的】</h2>
+     * 删掉的是「赛钱箱-基础祈愿」（6 根木桩依次放 红色染料 / 钻石 / 下界之星 /
+     * POWER集成核心 / 红色染料 / 红色染料 → 产出 POWER存储单元 ×4）——
+     * 用户的原话是"POWER存储单元：<b>先去掉原有的祭坛配方</b>，再改为魔法工作台"
+     * （新的魔法工作台配方见 {@code AddSlimefunItems#powerStorageUnitRecipe()}）。
+     *
+     * <p>★ 删掉之后这台机器<b>还能不能运作</b>（如实说明，别让它在代码里静默变成空壳）：
+     * <ul>
+     *   <li><b>结构 / 激活 / GUI / POWER 存储照常</b> —— 那些都不依赖配方表；</li>
+     *   <li>配方表 <b>0 条</b> ⇒ {@link SaizenbakoManager} 每轮都会得到
+     *       {@code match() == null}，于是在核心 GUI 上显示
+     *       「<b>无匹配配方（6 个预留槽需同时满足）</b>」（不是静默：见
+     *       {@code SaizenbakoManager} 的待机分支），<b>永远不会产出</b>；</li>
+     *   <li>{@code /touhou saizen … seed} 会直接报「× 一条配方都没注册」；</li>
+     *   <li>核心的配方页会提示「请在 SaizenbakoRecipes.setup() 里注册一条」。</li>
+     * </ul>
+     * 也就是说：<b>祭坛机制本身保留、但当前没有任何可用的祈愿配方</b>。
+     * 以后要恢复，就在下面按 {@link #register} 的写法补一条（注册顺序 = 匹配优先级）。
      */
     public static void setup() {
         RECIPES.clear();
 
-        // ---------------- 配方 1（spec 给的第一条）----------------
-        //   0: 红色染料 ×1
-        //   1: 钻石     ×1
-        //   2: 下界之星 ×1
-        //   3: POWER集成核心 ×1   ← 粘液物品，按 id 比（不能只比材质）
-        //   4: 红色染料 ×1
-        //   5: 红色染料 ×1
-        //   产物: POWER存储单元 ×4
-        register(SaizenbakoRecipe.of("赛钱箱-基础祈愿")
-                .slot(0, new ItemStack(Material.RED_DYE), 1)
-                .slot(1, new ItemStack(Material.DIAMOND), 1)
-                .slot(2, new ItemStack(Material.NETHER_STAR), 1)
-                .slot(3, AddItems.POWER_INTEGRATED_CORE, 1)
-                .slot(4, new ItemStack(Material.RED_DYE), 1)
-                .slot(5, new ItemStack(Material.RED_DYE), 1)
-                .output(AddItems.POWER_STORAGE_UNIT, 4)
-                .note("spec 首条配方")
-                .build());
+        // ---------------- 目前没有内置配方 ----------------
+        // （原来那条「赛钱箱-基础祈愿」按用户要求于 2026-09-24 删除，见方法注释。）
     }
 
     /**

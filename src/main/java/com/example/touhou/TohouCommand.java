@@ -105,6 +105,8 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
                     point(sender, Arrays.copyOfRange(args, 1, args.length));
             case "pengine", "p_engine" ->
                     pengine(sender, Arrays.copyOfRange(args, 1, args.length));
+            case "item", "iteminfo" ->
+                    item(sender, Arrays.copyOfRange(args, 1, args.length));
             case "harvest", "harvesttime" ->
                     harvest(sender, Arrays.copyOfRange(args, 1, args.length));
             case "leaves", "fallenleaves", "fallen_leaves" ->
@@ -254,6 +256,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         s.sendMessage("\u00a77/touhou fairy [selfcheck|recipe|effect <x> <y> <z> [--timer]|place <x> <y> <z>]   雾中の妖精：头贴图逐字符比对 / 整行亮绿 / 配方产出 1 / 召唤 Bomb 效果内核");
         s.sendMessage("\u00a77/touhou point [selfcheck|recipe]   POINT：头贴图逐字符比对 / 整行深蓝 / 物品组=MATERIAL / 配方产出 1（增强型工作台）");
         s.sendMessage("\u00a77/touhou pengine [selfcheck|recipe]   P引擎：头贴图逐字符比对 / 深蓝→浅蓝逐行渐变 / 物品组=MATERIAL / ★配方产出 8（模板仍是 1）");
+        s.sendMessage("\u00a77/touhou item <物品id> [更多id…] | item all   通用逐件读数（模板/名称/描述逐行颜色/三条产出路径/9 格）+ 物品统计");
         s.sendMessage("\u00a77/touhou harvest [selfcheck | test <x> <y> <z> | probe <x> <y> <z> | clear <x> <y> <z> | cell <x> <y> <z> [面] | rng <x> <y> <z> | wake <x> <y> <z> [crops|empty] | cooldown [clear]]   丰收之时：范围催熟 / 骨粉行为 / 提示语验证");
         s.sendMessage("\u00a77/touhou acquisition [all|rule|<物品id>]   获取方式标注核查（所有物品统一，含 null 配方）");
         s.sendMessage("\u00a77/touhou leaves [selfcheck | tools | drop [n] | watch [n|off] | field <x> <y> <z> [n] | check <x> <y> <z> | clear <x> <y> <z>]   落叶：掉率/数量分布/工具判据/非树叶对照；watch=实机追踪（走 Log.always）");
@@ -2445,6 +2448,311 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
                 + " expectOutput=" + expectAmount
                 + " machineRecipes=" + countMachineRecipesFor(item)
                 + " bukkitRecipes=" + countRecipesFor(item));
+    }
+
+    // ------------------------------------------------------------------ item（通用逐件读数）
+
+    /**
+     * <b>通用</b>逐件读数 —— 任意一件本插件物品的「模板 / 名称 / 描述 / 配方」。
+     *
+     * <pre>
+     *   /touhou item &lt;物品id&gt; [更多物品id…]   逐件详细读数（可一次给多件）
+     *   /touhou item all                        全部本插件物品的统计（不逐件详读）
+     * </pre>
+     * <p>★ 为什么要有它（而不是再写 n 个 {@code /touhou xxx selfcheck}）：
+     * 2026-09-24 那一轮有 <b>7 件</b>物品同时改配方 / 渐变 / 描述，
+     * 每件要证明的东西完全一样（id / 物品组 / 材质 / 模板数量 /
+     * 名称与描述逐字符颜色 / 三条产出路径 / 9 格逐格）。写 7 份自检会立刻腐化，
+     * 所以抽成"给 id 就出读数"的通用入口。
+     *
+     * <p>★ 与既有自检命令的关系：{@code /touhou point}、{@code /touhou pengine}
+     * 那几条专用命令仍然保留（它们的读数更细，例如头贴图逐字符比对），
+     * 本命令是"任何物品都能用"的那一条。
+     */
+    private void item(CommandSender sender, String[] args) {
+        if (args.length == 0) {
+            guideLine(sender, PREFIX + "\u00a7c用法: /touhou item <物品id> [更多id…] | /touhou item all");
+            return;
+        }
+        if (args.length == 1 && (args[0].equalsIgnoreCase("all") || args[0].equalsIgnoreCase("sum"))) {
+            itemSummary(sender);
+            return;
+        }
+        for (String id : args) {
+            itemDetail(sender, id);
+        }
+    }
+
+    /**
+     * 全部本插件物品的<b>统计读数</b>（物品总数 / 有真配方数 / 无配方数 / 各机器条数）。
+     *
+     * <p>★ 这条读数的用途：树状图（{@code docs\touhou-tree.md}）里的那些计数
+     * 是<b>派生量</b>，手写一定会漂（踩过：总数 32 实际 35）。所以每次改配方都靠它复核：
+     * <pre>
+     *   [TOUHOU] items total=36 withRealRecipe=18 noRecipe=18
+     *   [TOUHOU] items byMachine={MAGIC_WORKBENCH=12, ENHANCED_CRAFTING_TABLE=6}
+     * </pre>
+     * ★ 判据：{@code recipeType.getMachine()} 是 {@code MultiBlockMachine}
+     * ⇒ 这个物品<b>真的会进某台机器的配方表</b>（本体 24 种类型里只有那几种走这条路）。
+     * 门面型配方类型（{@code touhou:…}，machine 指向本插件自己的物品）与
+     * {@code RecipeType.NULL} 都不算。
+     */
+    private void itemSummary(CommandSender sender) {
+        guideLine(sender, PREFIX + "\u00a7e本插件物品统计（配方口径）");
+        int total = 0;
+        int real = 0;
+        java.util.TreeMap<String, Integer> byMachine = new java.util.TreeMap<>();
+        for (SlimefunItem it : Slimefun.getRegistry().getAllSlimefunItems()) {
+            if (it == null || !com.example.touhou.core.Acquisition.isOurs(it.getId())) {
+                continue;
+            }
+            total++;
+            io.github.thebusybiscuit.slimefun4.core.multiblocks.MultiBlockMachine mbm = machineOf(it);
+            if (mbm == null) {
+                continue;
+            }
+            real++;
+            byMachine.merge(mbm.getId(), 1, Integer::sum);
+        }
+        int noRecipe = total - real;
+        guideLine(sender, "\u00a78  物品总数 = " + total);
+        guideLine(sender, "\u00a78  有真配方（会进某台机器的配方表）= " + real
+                + "   没有配方 = " + noRecipe + "（= " + total + " − " + real + "）");
+        for (var e : byMachine.entrySet()) {
+            guideLine(sender, "\u00a78     " + e.getKey() + " = " + e.getValue() + " 件");
+        }
+        log("[TOUHOU] items total=" + total + " withRealRecipe=" + real + " noRecipe=" + noRecipe);
+        log("[TOUHOU] items byMachine=" + byMachine);
+    }
+
+    /** 一件物品的详细读数：模板 / 名称 / 描述逐行 / 配方三条路径 + 9 格。 */
+    private void itemDetail(CommandSender sender, String rawId) {
+        String id = rawId.toUpperCase(Locale.ROOT);
+        SlimefunItem item = SlimefunItem.getById(id);
+        guideLine(sender, PREFIX + "\u00a7e物品读数 · " + id);
+        if (item == null) {
+            guideLine(sender, "\u00a7c  未注册（Slimefun 注册表里查不到这个 id）");
+            log("[TOUHOU] item id=" + id + " found=false");
+            return;
+        }
+        ItemStack icon = item.getItem();
+        String groupKey = item.getItemGroup() == null
+                ? "(null)" : item.getItemGroup().getKey().toString();
+        guideLine(sender, "\u00a78  id = " + item.getId() + "   类 = " + item.getClass().getSimpleName());
+        guideLine(sender, "\u00a78  物品组 = " + groupKey
+                + "   材质 = " + (icon == null ? "(null)" : icon.getType())
+                + "   模板数量 = " + (icon == null ? -1 : icon.getAmount()));
+        log("[TOUHOU] item id=" + item.getId()
+                + " class=" + item.getClass().getSimpleName()
+                + " group=" + groupKey
+                + " material=" + (icon == null ? "null" : icon.getType())
+                + " templateAmount=" + (icon == null ? -1 : icon.getAmount()));
+
+        ItemMeta meta = icon == null ? null : icon.getItemMeta();
+        // ---- 名称（JSON + 原样串 + 逐字符；再补一行纯 ASCII 端点色）
+        printDisplayNameEvidence(sender, "显示名", meta);
+        if (meta != null && meta.hasDisplayName()) {
+            List<String> per = colorPerChar(meta.getDisplayName());
+            log("[TOUHOU] item name id=" + item.getId()
+                    + " chars=" + (per.size() - 1)
+                    + " first=" + (per.size() > 1 ? shortColor(per.get(1)) : "(无)")
+                    + " last=" + (per.size() > 1 ? shortColor(per.get(per.size() - 1)) : "(无)"));
+        }
+        // ---- 描述逐行
+        itemLore(sender, item, meta);
+        // ---- 配方
+        itemRecipe(sender, item);
+    }
+
+    /**
+     * 描述逐行读数。
+     *
+     * <p>每行给四样东西：<b>原样串</b>（{@code §} 转义后打印，能看见每个字符的颜色码）、
+     * <b>逐字符颜色清单</b>、一行 <b>ASCII 摘要</b>（首/末色、不同色个数、样式标记）、
+     * 以及最后的行数汇总。
+     *
+     * <p>★ ASCII 摘要里那几个标记的判据（{@code /touhou item} 的读数靠它们做验收）：
+     * <ul>
+     *   <li>{@code grayStrike} —— 这一行里出现过 {@code §7§m}（灰 + 删除线）；</li>
+     *   <li>{@code strikeTail} —— 这一行以 {@code §r§7} 收尾（删除线片段必须显式收尾，
+     *       否则格式会漏到后面的字上，见 {@code AddItems.mixedLoreLine} 的注释）；</li>
+     *   <li>{@code pureRed} —— 每个可见字符的颜色都是 {@code &c}（整行红，无渐变）；</li>
+     *   <li>{@code hexSeqs} —— 这一行里有几个 {@code §x§R§R§G§G§B§B} 序列
+     *       （渐变行的"每个字符一个"，所以 = 可见字符数才叫真渐变）；</li>
+     *   <li>{@code quotes} —— 原文里的双引号个数（用来证明"逐字照抄"没被顺手改成一对）。</li>
+     * </ul>
+     */
+    private void itemLore(CommandSender sender, SlimefunItem item, ItemMeta meta) {
+        guideLine(sender, "\u00a7e  -- 描述逐行 --");
+        List<String> lore = meta == null ? null : meta.getLore();
+        if (lore == null) {
+            guideLine(sender, "\u00a7c  (没有 lore)");
+            log("[TOUHOU] item lore id=" + item.getId() + " lines=0");
+            return;
+        }
+        int colored = 0;
+        for (int i = 0; i < lore.size(); i++) {
+            String line = lore.get(i);
+            guideLine(sender, "\u00a77  lore[" + i + "] 原样 = "
+                    + (line == null ? "" : line.replace("\u00a7", "\\u00a7")));
+            if (line == null || line.isEmpty()) {
+                continue;               // 名与描述之间的空行
+            }
+            colored++;
+            List<String> per = colorPerChar(line);
+            for (String cl : per) {
+                guideLine(sender, "\u00a78    " + cl);
+            }
+            String first = per.size() > 1 ? shortColor(per.get(1)) : null;
+            String last = per.size() > 1 ? shortColor(per.get(per.size() - 1)) : null;
+            // ★ 统计时必须跳过"(无，继承上一个)"那种条目：它表示"这个字符没有自己的
+            //   颜色码、沿用上一个"，不是换了一种颜色（否则一条纯色行会被数成"不同色 1"、
+            //   "纯红 = false"——本命令第一版就踩了这个假读数）。
+            int distinct = 0;
+            String prev = null;
+            boolean sawRed = false;
+            boolean allRed = true;
+            for (int k = 1; k < per.size(); k++) {
+                String c = shortColor(per.get(k));
+                if (isInheritedColor(c)) {
+                    continue;
+                }
+                if (prev != null && !prev.equals(c)) {
+                    distinct++;
+                }
+                prev = c;
+                if (c.equals("&c")) {
+                    sawRed = true;
+                } else {
+                    allRed = false;
+                }
+            }
+            boolean pureRed = allRed && sawRed;
+            int quotes = 0;
+            for (int k = 0; k < line.length(); k++) {
+                if (line.charAt(k) == '"') {
+                    quotes++;
+                }
+            }
+            log("[TOUHOU] item lore id=" + item.getId()
+                    + " line=" + i
+                    + " visible=" + (per.size() - 1)
+                    + " first=" + (first == null ? "(无)" : first)
+                    + " last=" + (last == null ? "(无)" : last)
+                    + " distinct=" + distinct
+                    + " hexSeqs=" + hexSequenceCount(line)
+                    + " grayStrike=" + line.contains("\u00a77\u00a7m")
+                    + " strikeTail=" + line.endsWith("\u00a7r\u00a77")
+                    + " tail=" + tailCodesOf(line)
+                    + " pureRed=" + pureRed
+                    + " quotes=" + quotes);
+        }
+        guideLine(sender, "\u00a78  非空 lore 行数 = " + colored + "（原样共 " + lore.size() + " 行）");
+        log("[TOUHOU] item loreSummary id=" + item.getId()
+                + " nonEmptyLines=" + colored + " rawLines=" + lore.size());
+    }
+
+    /** 一件物品的配方读数：类型 / 三条产出路径 / 9 格逐格。 */
+    private void itemRecipe(CommandSender sender, SlimefunItem item) {
+        guideLine(sender, "\u00a7e  -- 配方 --");
+        var type = item.getRecipeType();
+        var machine = machineOf(item);
+        guideLine(sender, "\u00a78  配方类型 = " + describeRecipeTypeOf(type)
+                + "   指向的机器 = " + (machine == null ? "(不是多方块机器)" : machine.getId()));
+        // 路径①：getRecipeOutput（指南页产物格 / 自动合成机读它）
+        ItemStack declared = item.getRecipeOutput();
+        int amount = declared == null ? -1 : declared.getAmount();
+        // 路径②：那台机器的配方表里这一条
+        ItemStack tableOutput = machine == null ? null : findRecipeOutput(machine, item.getRecipe());
+        int tableAmount = tableOutput == null ? -1 : tableOutput.getAmount();
+        // 模板数量
+        int template = item.getItem() == null ? -1 : item.getItem().getAmount();
+        guideLine(sender, "\u00a78  [路径①] getRecipeOutput().getAmount() = " + amount);
+        guideLine(sender, "\u00a78  [路径②] 机器配方表里那条 output.getAmount() = " + tableAmount);
+        guideLine(sender, "\u00a78  [模板]   模板数量 = " + template + "（多产出时它必须是 1）");
+        ItemStack[] grid = item.getRecipe();
+        guideLine(sender, "\u00a7e  -- 配方 9 格（左上→右下）--");
+        int filled = 0;
+        for (int i = 0; i < (grid == null ? 0 : grid.length); i++) {
+            ItemStack cell = grid[i];
+            if (cell != null) {
+                filled++;
+            }
+            guideLine(sender, "\u00a78    [" + i + "]=" + (cell == null ? "(空)"
+                    : cell.getType() + " x" + cell.getAmount()
+                            + "  粘液id=" + idOf(cell)
+                            + "  名=" + com.example.touhou.core.RecipePages.labelOf(cell)));
+        }
+        guideLine(sender, "\u00a78  Slimefun 机器配方表里能产出它的 = " + countMachineRecipesFor(item)
+                + " 条；Bukkit 配方表里 = " + countRecipesFor(item) + " 条");
+        log("[TOUHOU] item recipe id=" + item.getId()
+                + " type=" + describeRecipeTypeOf(type)
+                + " machine=" + (machine == null ? "none" : machine.getId())
+                + " declaredOutput=" + amount
+                + " machineTableOutput=" + tableAmount
+                + " templateAmount=" + template
+                + " gridFilled=" + filled
+                + " machineRecipes=" + countMachineRecipesFor(item)
+                + " bukkitRecipes=" + countRecipesFor(item));
+    }
+
+    /**
+     * 物品的配方类型指向的那台<b>多方块机器</b>（认不出返回 {@code null}）。
+     *
+     * <p>★ 判据：{@code recipeType.getMachine()} 是 {@code MultiBlockMachine}。
+     * 门面型配方类型（{@code touhou:acquire_…}）的 machine 指向本插件自己的物品，
+     * {@code RecipeType.NULL} 的 machine 是空串 —— 两者都返回 {@code null}。
+     */
+    private static io.github.thebusybiscuit.slimefun4.core.multiblocks.MultiBlockMachine machineOf(
+            SlimefunItem item) {
+        if (item == null || item.getRecipeType() == null) {
+            return null;
+        }
+        SlimefunItem machine = item.getRecipeType().getMachine();
+        return machine instanceof io.github.thebusybiscuit.slimefun4.core.multiblocks.MultiBlockMachine mbm
+                ? mbm : null;
+    }
+
+    /** 配方类型的可读标识（{@code key} + 中文说明都拿不到时如实报）。 */
+    private static String describeRecipeTypeOf(
+            io.github.thebusybiscuit.slimefun4.api.recipes.RecipeType type) {
+        if (type == null) {
+            return "(null)";
+        }
+        return type.getKey() == null ? "(无 key)" : type.getKey().toString();
+    }
+
+    /** {@code colorPerChar} 里"这个字符没有自己的颜色码、沿用上一个"的写法。 */
+    private static boolean isInheritedColor(String color) {
+        return color == null || color.startsWith("(无");
+    }
+
+    /**
+     * 一行末尾的 1~2 个颜色/格式码，形如 {@code \u00a7r\u00a77} —— <b>纯 ASCII 读数</b>。
+     *
+     * <p>★ 为什么要专门打它：删除线那几行的源码末尾是 {@code §r§7}，但
+     * <b>Paper 的 lore 往返会把行尾那个多余的 {@code §r} 规范化掉</b>
+     * （{@code §r§7} 读回来只剩 {@code §7}；实测见 2026-09-24 的
+     * {@code /touhou item} 读数）。所以"结尾是不是 {@code §r§7}"这件事
+     * <b>不能</b>拿 {@code endsWith} 当断言（会假失败），要看真实尾巴长什么样。
+     */
+    private static String tailCodesOf(String line) {
+        if (line == null || line.isEmpty()) {
+            return "(空行)";
+        }
+        // 从后往前收集最多两组 "§X"（只认两位码；§x… 那种十六进制序列会因为"倒数第二
+        // 个字符不是 §"而直接收不到 —— 本读数只用来判断"行尾是不是 §r§7"，够用）
+        StringBuilder out = new StringBuilder();
+        int end = line.length();
+        for (int n = 0; n < 2 && end >= 2; n++) {
+            if (line.charAt(end - 2) == '\u00a7') {
+                out.insert(0, "\\u00a7" + line.charAt(end - 1));
+                end -= 2;
+            } else {
+                break;
+            }
+        }
+        return out.length() == 0 ? "(无)" : out.toString();
     }
 
     // ------------------------------------------------------------------ fairy（雾中の妖精）
@@ -7314,7 +7622,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
             return filter(List.of("reactor", "autobuild", "clickinfo", "structure", "saizen", "place",
                     "remove", "edit", "gui", "layout", "groups", "tags", "messages", "reload",
                     "power", "dreamcatcher", "seal", "lily", "springherald", "momiji", "cirno",
-                    "fairy", "point", "pengine", "harvest", "leaves", "acquisition", "echo", "proj", "guide"), args[0]);
+                    "fairy", "point", "pengine", "item", "harvest", "leaves", "acquisition", "echo", "proj", "guide"), args[0]);
         }
         if (args[0].equalsIgnoreCase("acquisition") && args.length == 2) {
             return filter(List.of("all", "rule"), args[1]);
@@ -7340,6 +7648,10 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         }
         if (args[0].equalsIgnoreCase("pengine") && args.length == 2) {
             return filter(List.of("selfcheck", "recipe"), args[1]);
+        }
+        if ((args[0].equalsIgnoreCase("item") || args[0].equalsIgnoreCase("iteminfo"))
+                && args.length == 2) {
+            return filter(List.of("all"), args[1]);
         }
         if (args[0].equalsIgnoreCase("cirno") && args.length == 3
                 && args[1].equalsIgnoreCase("cooldown")) {
@@ -7450,6 +7762,6 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         return List.of("reactor", "autobuild", "clickinfo", "structure", "saizen", "place", "remove",
                 "edit", "gui", "layout", "groups", "tags", "messages", "reload", "power",
                 "dreamcatcher", "seal", "lily", "springherald", "momiji", "cirno", "fairy",
-                "point", "pengine", "harvest", "leaves", "proj");
+                "point", "pengine", "item", "harvest", "leaves", "proj");
     }
 }

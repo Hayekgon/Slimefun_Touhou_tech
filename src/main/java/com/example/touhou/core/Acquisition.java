@@ -259,18 +259,22 @@ public final class Acquisition {
         SOURCE_BY_ID.put("TOUHOU_COMPLEX_MACHINE_REACTOR_BASE", Source.pending());
         SOURCE_BY_ID.put("TOUHOU_COMPLEX_MACHINE_REACTOR_INPUT_PORT", Source.pending());
         SOURCE_BY_ID.put("TOUHOU_COMPLEX_MACHINE_REACTOR_OUTPUT_PORT", Source.pending());
-        SOURCE_BY_ID.put("TOUHOU_COMPLEX_MACHINE_SHRINE_POST", Source.pending());
         // ★ 两个核心：来源就是"它自己所在的那套多方块结构" ⇒ 图标用核心本身；
-        //   而它们的门面由 TouhouRecipeTypes.REACTOR_CORE / SAIZENBAKO 专供
-        //   （那两条带着"搭建完整结构 + 材料清单"的说明），本类【不覆盖】它们。
+        //   而它们的门面由 TouhouRecipeTypes.REACTOR_CORE 专供
+        //   （那条带着"搭建完整结构 + 材料清单"的说明），本类【不覆盖】它。
         SOURCE_BY_ID.put("TOUHOU_COMPLEX_MACHINE_UTSUHO_REACTOR_CORE",
                 Source.of("在增强型工作台合成，再搭建完整的多方块结构（结构见物品描述）",
                         (ItemStack) null));     // null ⇒ 建立时回落到"本物品模板"
 
-        // 赛钱箱：多方块机器，来源填"那个结构的核心"（神社的木桩）
+        // ---- 2026-09-24 起拿到【魔法工作台】真配方的 7 件 ------------------------
+        // ★ 神社的木桩：原来是"配方待补"（Source.pending），现在有配方了。
+        SOURCE_BY_ID.put("TOUHOU_COMPLEX_MACHINE_SHRINE_POST",
+                Source.recipe("魔法工作台", () -> SlimefunItems.MAGIC_WORKBENCH));
+        // ★ 赛钱箱：原来写的是"搭建完整的多方块结构后放入核心（核心件为神社的木桩）"，
+        //   现在它自己能合成了 ⇒ 获取方式改成那台机器（搭结构仍然要做，但那是使用前提，
+        //   不是"怎么拿到这件物品"）。★ 它仍是多方块核心，这句话的完整版在物品描述里。
         SOURCE_BY_ID.put("TOUHOU_COMPLEX_MACHINE_SAIZENBAKO",
-                Source.of("搭建完整的多方块结构后放入核心（核心件为神社的木桩）",
-                        (ItemStack) null));     // null ⇒ 建立时回落到"神社的木桩"模板
+                Source.recipe("魔法工作台", () -> SlimefunItems.MAGIC_WORKBENCH));
 
         // ---- 符卡 / 道具 -----------------------------------------------------
         SOURCE_BY_ID.put("TOUHOU_PARTY_ITEM_FANTASY_SEAL_CONVERGE",
@@ -279,11 +283,12 @@ public final class Acquisition {
                 Source.recipe("增强型工作台", () -> SlimefunItems.ENHANCED_CRAFTING_TABLE));
 
         // ---- POWER 系统 ------------------------------------------------------
-        SOURCE_BY_ID.put("TOUHOU_POWER_POWER_INTEGRATED_CORE", Source.pending());
-        SOURCE_BY_ID.put("TOUHOU_POWER_POWER_REPEATER", Source.pending());
-        SOURCE_BY_ID.put("TOUHOU_POWER_POWER_STORAGE_UNIT", Source.pending());
-        SOURCE_BY_ID.put("TOUHOU_POWER_DREAMCATCHER", Source.pending());
-        SOURCE_BY_ID.put("TOUHOU_POWER_POWER_SUPPLY_UNIT", Source.pending());
+        // ★★ 2026-09-24：五件从"配方待补（Source.pending）"全部改成魔法工作台合成。
+        for (String id : List.of("TOUHOU_POWER_POWER_INTEGRATED_CORE",
+                "TOUHOU_POWER_POWER_REPEATER", "TOUHOU_POWER_POWER_STORAGE_UNIT",
+                "TOUHOU_POWER_DREAMCATCHER", "TOUHOU_POWER_POWER_SUPPLY_UNIT")) {
+            SOURCE_BY_ID.put(id, Source.recipe("魔法工作台", () -> SlimefunItems.MAGIC_WORKBENCH));
+        }
 
         // ---- INFO 组（代码内置的说明纸品） -----------------------------------
         // ★ 单一出处：本组物品只在这张表里登记一次，新增一张就加一个 id（不另起一行 put）。
@@ -481,11 +486,12 @@ public final class Acquisition {
             //      换成获取方式门面等于把整张合成表弄丢（真实踩点：反应堆核心走的是
             //      RecipeType.ENHANCED_CRAFTING_TABLE，被覆盖成门面后就只剩一句文字了）；
             //   ② 本类已经挂过的门面（重复调用）；
-            //   ③ 本项目自己的门面类型（TouhouRecipeTypes 的 reactor_core / saizenbako /
+            //   ③ 本项目自己的门面类型（TouhouRecipeTypes 的 reactor_core /
             //      dimension_shuttle —— 它们带着"搭建完整结构 + 材料清单"之类的定制文字）。
-            //   ★★ 判据必须是 **键的前缀**，不能是 `type == TouhouRecipeTypes.SAIZENBAKO`：
+            //   ★★ 判据必须是 **键的前缀**，不能是 `type == TouhouRecipeTypes.REACTOR_CORE`：
             //      本方法跑在 AddSlimefunItems.setup() 里，而注册物品那一刻 TouhouRecipeTypes
             //      的静态字段可能【还没被赋值】（null），拿常量比会漏判。
+            //      （2026-09-24 起赛钱箱不再有这个专用门面 —— 它拿到了真配方，走情形 ①。）
             if ((item.getRecipeType() != null && item.getRecipeType() != RecipeType.NULL)
                     || isDecorated(item) || hasProjectKey(item.getRecipeType())) {
                 kept++;
@@ -525,8 +531,12 @@ public final class Acquisition {
     /**
      * 来源图标写 {@code null} 时的回落。
      *
-     * <p>赛钱箱（结构核心是神社的木桩）与反应堆核心（用它自己）就走这条路 ——
-     * 这样"多方块机器的来源 = 那个结构的核心"这条口径在代码里是显式的。
+     * <p>反应堆核心（用它自己）就走这条路 —— 这样"多方块机器的来源 = 那个结构的核心"
+     * 这条口径在代码里是显式的。
+     *
+     * <p>⚠ 赛钱箱那一支<b>现在已经走不到</b>了：它 2026-09-24 起有真配方
+     * （魔法工作台），{@code applyFacades()} 在"有真实配方"那一关就跳过了它。
+     * 这一支保留着，是为了"哪天真给它填回一个 {@code null} 图标的来源"时口径还在。
      */
     private static ItemStack fallbackIcon(SlimefunItem item) {
         if ("TOUHOU_COMPLEX_MACHINE_SAIZENBAKO".equals(item.getId())) {

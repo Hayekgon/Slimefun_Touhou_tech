@@ -201,7 +201,31 @@ public final class AddItems {
          * 本条的起止<b>不同</b> ⇒ 每个字符拿到的色号都不一样，是<b>真的渐变</b>。
          * 所以 {@code /touhou pengine selfcheck} 的读数里，同一行的"不同色个数"必须 &gt; 0。
          */
-        DEEP_TO_LIGHT_BLUE(0x00008B, 0x87CEEB);
+        DEEP_TO_LIGHT_BLUE(0x00008B, 0x87CEEB),
+        /**
+         * POWER 一族（集成核心 / 中继器 / 供给单元 / 存储单元）与赛钱箱：<b>红 → 白</b>。
+         *
+         * <p>★ 用户给的是颜色名"红色到白色渐变"，色值是本实现的判断（与项目里其它配色
+         * 同一习惯：取"标准色名表里查得到"的值）——
+         * 红取 {@code #FF0000}（标准 red）、白取 {@code #FFFFFF}（纯白）。
+         * ★ 与 {@link #PINK_WHITE}（报春の妖精：粉 → 白）不是同一套：
+         * 那条起点是 {@code #FFB3D9}（粉），本条起点是纯红；两件物品放在一起能看出区别。
+         */
+        RED_WHITE(0xFF0000, 0xFFFFFF),
+        /**
+         * 幻梦捕捉器：<b>黑紫 → 深蓝</b>（用户要求"黑紫色到深蓝色渐变"）。
+         *
+         * <p>★ 色值是本实现的判断（用户只给了颜色名）：
+         * <ol>
+         *   <li>起点"黑紫"取 {@code #4B0082}（<b>indigo</b>，标准色名表里最暗的紫 ——
+         *       比 {@code purple #800080} / {@code darkmagenta #8B008B} 都更暗、更偏蓝紫，
+         *       也就是最接近"黑紫"的那个标准值）；</li>
+         *   <li>终点"深蓝"取 {@code #00008B} —— <b>复用</b> {@link #DEEP_BLUE}
+         *       （与 POINT / P引擎 的深蓝同源），不新造第二个深蓝。</li>
+         * </ol>
+         * 想更黑/更紫只动这一行的第一个值（例如 {@code 0x2E0A4A}）。
+         */
+        DARK_PURPLE_DEEP_BLUE(0x4B0082, 0x00008B);
 
         private final int start;
         private final int end;
@@ -544,14 +568,33 @@ public final class AddItems {
     // ------------------------------------------------------------------ POWER 能源系统
     // 归属 1 级组 POWER（touhou_power）。
     // 材质按你的要求分别引用原生物品：能源调节器头 / 货运节点头 / 红色混凝土。
+    // ★★ 2026-09-24：五件设备全部拿到【魔法工作台】配方（原来全是"配方待补"），
+    //   名字与描述统一红 → 白渐变（幻梦捕捉器黑紫 → 深蓝），最后一行灰 + 删除线。
 
-    /** POWER集成核心 —— 网络锚点 + 原生电网桥。 */
+    /**
+     * POWER集成核心 —— 网络锚点 + 原生电网桥。
+     *
+     * <p>★ 魔法工作台合成，<b>单次产出 2 个</b> ⇒ 用 {@code SlimefunItem} 第 5 个参数
+     * {@code recipeOutput}（模板数量保持 1），判据见
+     * {@link AddSlimefunItems#POWER_INTEGRATED_CORE_OUTPUT_AMOUNT}。
+     */
     public static SlimefunItemStack POWER_INTEGRATED_CORE;
 
-    /** POWER中继器 —— 导体 + 半径跳接。 */
+    /**
+     * POWER中继器 —— 导体 + 半径跳接。
+     *
+     * <p>★ 魔法工作台合成，<b>单次产出 8 个</b> ⇒ 同样走第 5 个参数 {@code recipeOutput}
+     * （与铜线 / 能源连接器那类"一次出一把"的本体物品同一路数）。
+     */
     public static SlimefunItemStack POWER_REPEATER;
 
-    /** POWER存储单元 —— long 精度储能。 */
+    /**
+     * POWER存储单元 —— long 精度储能。
+     *
+     * <p>★★ 2026-09-24：<b>先删掉了原来的祭坛（赛钱箱祈愿）配方，再改成魔法工作台合成</b>
+     * （用户原文就是这两步）。祭坛那条在 {@code SaizenbakoRecipes.setup()} 里，
+     * 现在那个注册表是空的 —— 详见那个类的注释。
+     */
     public static SlimefunItemStack POWER_STORAGE_UNIT;
 
     /**
@@ -615,12 +658,17 @@ public final class AddItems {
     //   核心 'C' 在最右一列，所以结构实现允许"核心偏心"）。
     //   判定在 SaizenbakoStructure，机器逻辑在 SaizenbakoManager。
     //   ★ 激活只能手动：玩家在赛钱箱 GUI 里点信息格才做一次现场结构检测。
+    // ★★ 2026-09-24：这一对从"配方待补 / 核心门面"改成【魔法工作台】合成
+    //   （用户原文给了两台机器的 3×3 图案与单次产出量）。
 
     /**
      * 神社的木桩 —— 多方块<b>结构方块</b>（构件）。
      *
      * <p>不耗电、不存电、不发电：给玩家一个观察窗口（POWER 量 + 激活状态 + 自己的编号），
      * 并提供一格混合型输入输出端给外界物流进出货 —— 那一格也是这台机器的<b>投料口</b>。
+     *
+     * <p>★ 魔法工作台合成（产出 1 个）。名字是粉 → 白渐变，描述<b>只有一行且整行红色</b>
+     * （用户原文标注 {@code //红色字体}）。
      */
     public static SlimefunItemStack SHRINE_POST;
 
@@ -630,6 +678,11 @@ public final class AddItems {
      * <p>它是 POWER 网络的一个<b>存储节点</b>（不是原生电力网络的节点）。
      * 结构完整并激活后：读 6 个预留槽（= 6 根木桩 IO 槽的镜像）比对配方，
      * 命中则消耗木桩里的材料 + 2 POWER，产物放进 IO 槽。
+     *
+     * <p>★ 魔法工作台合成（产出 1 个）—— 它<b>不再</b>是"只能搭结构拿到"的核心：
+     * 配方类型从 {@code TouhouRecipeTypes.SAIZENBAKO}（门面）换成了真正的
+     * {@code RecipeType.MAGIC_WORKBENCH}，那个门面类型因此已删除。
+     * 名字与描述都是红 → 白渐变，描述第 5、6 行原文自带<b>两对</b>双引号（逐字照抄）。
      */
     public static SlimefunItemStack SAIZENBAKO;
 
@@ -1068,33 +1121,31 @@ INFO_MODESHIFT = new SlimefunItemStack(
 
         // ------------------------------------------------------------------ 祭祀/信仰系多方块
         // 结构层图已定（docs\saizenbako-layers.yml）：9×6×9，6 根木桩 + 核心自己。
+        // ★★ 2026-09-24 用户口径变更：这一对不再"配方待补"，都改成【魔法工作台】合成
+        //   （用户给的原文："配方类型:魔法工作台" + 3×3 图案，见 AddSlimefunItems 的两个 Recipe 方法）。
+        //   名字仍是粉 → 白 / 红 → 白渐变，描述按"跟随名字"的全局规则走，只有木桩那一行是纯红。
         SHRINE_POST = new SlimefunItemStack(
                 "TOUHOU_COMPLEX_MACHINE_SHRINE_POST",
                 Material.DARK_OAK_LOG,
-                "&6神社的木桩",
+                gradientName("神社的木桩"),
                 "",
-                "&7立在神社境内的木桩",
-                "&7是搭建&6博丽神社&7结构的基础构件",
-                "",
-                "&7界面：&f9 格&7（信息 / 输入输出 / 核心位置）",
-                "&8第 5 格是混合型输入输出端，也是本桩的投料口",
-                "",
-                "&8多方块构件 · 不耗电、不存电",
-                "&8激活后核心会给本桩编号（先 +X 后 +Z）");
+                // ★ 整行红色（用户原文的 //红色字体）—— 走 LoreSegment.red，不手拼 §c
+                mixedLoreLine(LoreSegment.red("只是普通的原木，并贴了一些符纸。")));
 
         SAIZENBAKO = new SlimefunItemStack(
                 "TOUHOU_COMPLEX_MACHINE_SAIZENBAKO",
                 Material.LOOM,
-                "&6赛钱箱",
+                gradientNameRedWhite("赛钱箱"),
                 "",
-                "&7塞进五元硬币，许下一个愿望",
-                "&7香火钱会化作&ePOWER&7储存在这里",
-                "",
-                "&7容量：&f5 POWER",
-                "&8把 POWER 方块贴到它身上即可并网",
-                "",
-                "&8多方块核心 · 使用自研 POWER 能源",
-                "&8点信息格激活：6 个预留槽同时匹配配方才产出");
+                gradientNameRedWhite("投放香火钱的地方。"),
+                gradientNameRedWhite("似乎成为了科学世纪与幻想之地的连接通道。"),
+                gradientNameRedWhite("里面像是个无底洞，永远都只有很少的香火钱呢。"),
+                gradientNameRedWhite(" "),
+                // ★★ 第 5、6 行的双引号【逐字照抄用户原文】：原文那两行就是 `-""请看好…""`，
+                //   用户口径明确"别修成一对引号"，所以这里存的就是**两对**引号。
+                //   ⚠ 注意与「落叶」那行的口径不同（那件存了一对）—— 用户这次特意点名了这两行。
+                gradientNameRedWhite("\"\"请看好灵梦小姐的赛钱箱，不要被偷也不要被炸。\"\""),
+                gradientNameRedWhite("\"\"也不要把落叶当成赛钱塞进去\"\""));
 
         // 附魔光效：给物品挂一个"没有任何实际效果"的附魔，再用 HIDE_ENCHANTS 把附魔行藏掉，
         //   于是只剩图标外圈那层光晕。
@@ -1207,77 +1258,67 @@ INFO_MODESHIFT = new SlimefunItemStack(
 
         // ------------------------------------------------------------------ POWER（1 级组）
         // 头贴图直接引用原生物品的贴图常量（HeadTexture 是公开枚举）。
+        // ★★ 2026-09-24 用户口径变更：五件 POWER 设备全部从"配方待补"改成【魔法工作台】合成，
+        //   名字与描述统一走"红 → 白"渐变（幻梦捕捉器是黑紫 → 深蓝），
+        //   并且描述最后一行"使你充满了抛瓦。"是【灰 + 删除线】——那一行单独走 mixedLoreLine。
+        //   ★ "抛瓦"是用户原文里的谐音梗，逐字照抄（不是"力量"也不是"Power"）。
         POWER_INTEGRATED_CORE = new SlimefunItemStack(
                 "TOUHOU_POWER_POWER_INTEGRATED_CORE",
                 HeadTexture.ENERGY_REGULATOR,
-                "&cPOWER集成核心",
+                gradientNameRedWhite("POWER集成核心"),
                 "",
-                "&7POWER 网络的锚点与储能点",
-                "&7上方显示网络统计的悬浮文字",
-                "",
-                "&8不需要它也能组网（邻接即连通）",
-                "&8与原生电网的联动当前已中断");
+                gradientNameRedWhite("注:POWER网络逻辑为:"),
+                gradientNameRedWhite("以集成核心为核心，通过抛瓦中继器"),
+                gradientNameRedWhite("扩大范围，实际供应范围为以中继器。"),
+                gradientNameRedWhite("或核心为中心的13*13*13的区域"),
+                // 第 5 行是【一个空格】（用户原文那一行就是 `-" "`）—— 不是空串，照抄
+                gradientNameRedWhite(" "),
+                gradientNameRedWhite("你在尝试利用异界的能量的第一步。"),
+                gradientNameRedWhite("科学世纪连通幻想世界的桥梁。"),
+                mixedLoreLine(LoreSegment.grayStrikethrough("使你充满了抛瓦。")));
 
         POWER_REPEATER = new SlimefunItemStack(
                 "TOUHOU_POWER_POWER_REPEATER",
                 HeadTexture.CARGO_CONNECTOR_NODE,
-                "&cPOWER中继器",
+                gradientNameRedWhite("POWER中继器"),
                 "",
-                "&7把相邻的 POWER 方块串起来",
-                "&7并额外连接半径内的 POWER 方块",
-                "&8半径是立方体范围（含斜向），不必沿直线摆",
-                "",
-                "&8本身不存电");
+                gradientNameRedWhite("扩大POWER能量的覆盖范围。"),
+                gradientNameRedWhite(" "),
+                mixedLoreLine(LoreSegment.grayStrikethrough("使你周围充满了抛瓦。")));
 
         POWER_STORAGE_UNIT = new SlimefunItemStack(
                 "TOUHOU_POWER_POWER_STORAGE_UNIT",
                 Material.RED_CONCRETE,
-                "&cPOWER存储单元",
+                gradientNameRedWhite("POWER存储单元"),
                 "",
-                "&7POWER 网络的储能单元",
-                "&7电量按容量比例在网络内自动均衡",
-                "",
-                "&8long 精度，不会像原生电容那样溢出");
+                gradientNameRedWhite("存储暂时用不上的抛瓦，防止其逸散在科学世纪"),
+                gradientNameRedWhite(" "),
+                mixedLoreLine(LoreSegment.grayStrikethrough("使你充满了抛瓦。")));
 
         // 幻梦捕捉器：POWER 体系的第一台产能设备（原创机器）。
         // ★ 英文名 Dreamcatcher = 捕梦网；名称与 id 都按本项目规范：
         //   TOUHOU_"物品组POWER"_DREAMCATCHER，全大写。
+        // ★ 它的渐变是唯一的一套【黑紫 → 深蓝】（用户单独给的），不跟其它四件走红白。
         POWER_DREAMCATCHER = new SlimefunItemStack(
                 "TOUHOU_POWER_DREAMCATCHER",
                 Material.TARGET,
-                "&c幻梦捕捉器",
+                gradientNameDarkPurpleDeepBlue("幻梦捕捉器"),
                 "",
-                "&7把梦收进标靶，再榨成&cPOWER&7。",
-                "&7它只认四个水平方向上的&f床&7 ——",
-                "&7谁睡得越沉，谁就产得越快。",
-                "",
-                "&7每面各紧贴一张床 ⇒ 效率 &f100%&7，最多四面叠满",
-                "&7一张床：&f8 秒&7 产 &f1 POWER",
-                "&7四张床：&f2 秒&7 产 &f1 POWER",
-                "&7四周没有床：&f不产出",
-                "",
-                "&8自身缓冲 &f15 POWER&8，产出的电优先并入网络",
-                "&8（先送给储能点，实在没人接才留在自己这里）",
-                "&8POWER 体系的第一台产能设备");
+                gradientNameDarkPurpleDeepBlue("从梦境中去收集幻想之地的能量：POWER。"),
+                gradientNameDarkPurpleDeepBlue(" "),
+                mixedLoreLine(LoreSegment.grayStrikethrough("使你充满了抛瓦。")));
 
         // POWER供给单元：把网络里的电无线送给附近玩家手持的符卡。
-        // ★ 材质是海晶灯（按需求）；它是 POWER 一族里第一台"对外供电"的机器，
-        //   所以描述里必须写清"给谁充、多大范围、多久一次"——它没有 GUI。
+        // ★ 材质是海晶灯（按需求）；描述按用户原文（3 行正文 + 空格 + 灰删除线那行）。
         POWER_SUPPLY_UNIT = new SlimefunItemStack(
                 "TOUHOU_POWER_POWER_SUPPLY_UNIT",
                 Material.SEA_LANTERN,
-                "&cPOWER供给单元",
+                gradientNameRedWhite("POWER供给单元"),
                 "",
-                "&7把 POWER 网络里的电无线送给",
-                "&7附近玩家手持的符卡。",
-                "",
-                "&7半径 &f4 格&7（立方体范围，含斜向与上下）",
-                "&7每 &f2 秒&7 为范围内每位玩家充 &f5 POWER",
-                "&7主手与副手都算，各自独立充能",
-                "",
-                "&8自身缓冲 &f5 POWER&8，缓冲不够时从网络现取",
-                "&8机器与网络都没电时静默待机，不刷提示",
-                "&8没有界面：状态看 &f/touhou supply <x> <y> <z>");
+                gradientNameRedWhite("为以自身为中心的9*9*9范围内的"),
+                gradientNameRedWhite("玩家手持的符卡或者工具充能。"),
+                gradientNameRedWhite(" "),
+                mixedLoreLine(LoreSegment.grayStrikethrough("使你充满了抛瓦。")));
 
         // ------------------------------------------------------------------ 标签登记
         // ★ 为什么标签登记在这个"物品模板"层、而不是像最初那样放在 AddSlimefunItems 里：
@@ -1579,6 +1620,36 @@ INFO_MODESHIFT = new SlimefunItemStack(
     }
 
     /**
+     * 把一段文字逐字符染成<b>红 → 白</b>的左到右渐变（POWER 一族与赛钱箱用的那套）。
+     *
+     * <p>★ 起止色是本实现的判断（用户只给了颜色名）：红 {@code #FF0000}、白 {@code #FFFFFF}。
+     * 觉得红该更深/更亮就改 {@link Gradient#RED_WHITE} 那一行，本方法不用动。
+     *
+     * <p>★ 用到它的六件物品，<b>名字与描述都用同一套</b>（用户口径"无特殊说明，
+     * 物品介绍的字体与物品名字字体一致"）—— 所以名字与每一行描述都各自调用一次本方法；
+     * 只有被 {@code //} 单独标注的行例外（那几行走 {@link #mixedLoreLine}）。
+     *
+     * @param text 要染的文字（纯文本，不要带 {@code §}/{@code &} 颜色代码）
+     * @return 每字符都带 {@code §x§R§R§G§G§B§B} 前缀的字符串
+     */
+    public static String gradientNameRedWhite(String text) {
+        return gradientName(text, Gradient.RED_WHITE);
+    }
+
+    /**
+     * 把一段文字逐字符染成<b>黑紫 → 深蓝</b>的左到右渐变（「幻梦捕捉器」用的那套）。
+     *
+     * <p>★ 起止色是本实现的判断，理由写在 {@link Gradient#DARK_PURPLE_DEEP_BLUE} 里
+     * （黑紫 = 标准 indigo {@code #4B0082}，深蓝 = 项目已有的 {@code #00008B}）。
+     *
+     * @param text 要染的文字（纯文本，不要带 {@code §}/{@code &} 颜色代码）
+     * @return 每字符都带 {@code §x§R§R§G§G§B§B} 前缀的字符串
+     */
+    public static String gradientNameDarkPurpleDeepBlue(String text) {
+        return gradientName(text, Gradient.DARK_PURPLE_DEEP_BLUE);
+    }
+
+    /**
      * 一行 lore 的<b>片段</b> —— 要么是渐变、要么是"灰 + 删除线"。
      *
      * <p>引入它是因为出现了一种新需求：<b>同一行里两种样式混排</b>
@@ -1588,30 +1659,58 @@ INFO_MODESHIFT = new SlimefunItemStack(
      */
     public static final class LoreSegment {
 
+        /**
+         * 片段的样式。
+         *
+         * <p>★ 原来是 {@code boolean gradient} 两态（渐变 / 灰删除线）；这一轮多了
+         * "纯红整行"（{@link #red(String)}），两态装不下，所以改成三态枚举 ——
+         * 以后再要"金色 / 斜体 / 粗体"之类的片段，加一个枚举值 + 一个工厂即可。
+         */
+        private enum Style {
+            /** 逐字符渐变（用 {@link #palette} 那套起止色）。 */
+            GRADIENT,
+            /** 灰色 + 删除线（{@code §7§m…§r§7}）。 */
+            GRAY_STRIKETHROUGH,
+            /** 纯红（{@code §c}），不改字体。 */
+            RED
+        }
+
         private final String text;
-        private final boolean gradient;
+        private final Style style;
         /** 渐变片段用哪套配色（非渐变片段忽略）。 */
         private final Gradient palette;
 
-        private LoreSegment(String text, boolean gradient, Gradient palette) {
+        private LoreSegment(String text, Style style, Gradient palette) {
             this.text = text;
-            this.gradient = gradient;
+            this.style = style;
             this.palette = palette;
         }
 
         /** 渐变片段（用给定配色逐字符插值）。 */
         public static LoreSegment gradient(String text, Gradient palette) {
-            return new LoreSegment(text, true, palette);
+            return new LoreSegment(text, Style.GRADIENT, palette);
         }
 
         /** 渐变片段（橙 → 金，本件物品用的那套）。 */
         public static LoreSegment gradientOrangeGold(String text) {
-            return new LoreSegment(text, true, Gradient.ORANGE_GOLD);
+            return new LoreSegment(text, Style.GRADIENT, Gradient.ORANGE_GOLD);
         }
 
         /** 灰 + 删除线片段（{@code §7§m}）。 */
         public static LoreSegment grayStrikethrough(String text) {
-            return new LoreSegment(text, false, null);
+            return new LoreSegment(text, Style.GRAY_STRIKETHROUGH, null);
+        }
+
+        /**
+         * <b>纯红</b>片段（{@code §c}），<b>不改字体</b> —— 「神社的木桩」整行描述用的那套。
+         *
+         * <p>★ 它只换颜色，不动删除线/粗体/斜体这些格式，所以<b>不需要</b>像
+         * {@link #grayStrikethrough} 那样在末尾补 {@code §r}：格式本来就没被打开过。
+         * （将来若在这一段后面接别的片段：渐变片段每个字符自带 {@code §x} 序列、
+         * 灰删除线片段以 {@code §7§m} 开头，都会自己覆盖掉颜色，所以也不会串色。）
+         */
+        public static LoreSegment red(String text) {
+            return new LoreSegment(text, Style.RED, null);
         }
     }
 
@@ -1631,6 +1730,12 @@ INFO_MODESHIFT = new SlimefunItemStack(
      * <p>★ 渐变片段各自携带配色（{@link LoreSegment#gradient(String, Gradient)}），
      * 所以本方法不是"只给这一件物品用" —— 以后哪一行要混样式，直接列片段即可。
      *
+     * <p>★ <b>整行单一着色的行也走这里</b>（例如 POWER 一族的"灰+删除线"整行、
+     * 「神社的木桩」的整行红）：这样"一行是什么样式"在调用处永远只有一种表达方式，
+     * 不会出现一半用片段表、一半手拼 {@code §} 串的情况。
+     * 片段只有两种收尾规则：灰删除线补 {@code §r§7}（见上），红色不补
+     * （它没打开任何格式，见 {@link LoreSegment#red(String)}）。
+     *
      * @param segments 片段（按显示顺序）
      * @return 可直接交给 {@link SlimefunItemStack} 的一整行
      */
@@ -1643,11 +1748,13 @@ INFO_MODESHIFT = new SlimefunItemStack(
             if (seg == null) {
                 continue;
             }
-            if (seg.gradient) {
-                out.append(gradientName(seg.text, seg.palette));
-            } else {
+            switch (seg.style) {
+                case GRADIENT -> out.append(gradientName(seg.text, seg.palette));
                 // 灰色 + 删除线；收尾 §r§7 的理由见方法注释
-                out.append("\u00a77\u00a7m").append(seg.text).append("\u00a7r\u00a77");
+                case GRAY_STRIKETHROUGH -> out.append("\u00a77\u00a7m").append(seg.text)
+                        .append("\u00a7r\u00a77");
+                // 纯红：只换颜色、不碰格式，所以结尾什么都不用补（见 LoreSegment#red 的注释）
+                case RED -> out.append("\u00a7c").append(seg.text);
             }
         }
         return out.toString();

@@ -24,7 +24,23 @@ public abstract class AbstractPowerBlock extends SlimefunItem {
 
     protected AbstractPowerBlock(ItemGroup itemGroup, SlimefunItemStack item,
                                  RecipeType recipeType, ItemStack[] recipe) {
-        super(itemGroup, item, recipeType, recipe);
+        this(itemGroup, item, recipeType, recipe, null);
+    }
+
+    /**
+     * ★ 5 参重载：<b>单次合成多产出</b>用（{@code recipeOutput}），
+     * 传 {@code null} 就等于"产出 = 模板数量（1）"。
+     *
+     * <p>为什么要加：{@code SlimefunItem} 的多产出只认这条构造器
+     * （判据见 {@code AddSlimefunItems} 里那几个 {@code *_OUTPUT_AMOUNT} 常量），
+     * 而本类原来只声明了 4 参 —— 子类想多产出就<b>够不到</b>父类那条 5 参
+     * （构造器不走继承那套），javac 报"找不到符号"。
+     * 加一条转发即可，处理器仍然只在这一处挂。
+     */
+    protected AbstractPowerBlock(ItemGroup itemGroup, SlimefunItemStack item,
+                                 RecipeType recipeType, ItemStack[] recipe,
+                                 ItemStack recipeOutput) {
+        super(itemGroup, item, recipeType, recipe, recipeOutput);
 
         addItemHandler(new BlockTicker() {
             @Override

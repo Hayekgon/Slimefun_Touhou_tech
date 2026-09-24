@@ -53,6 +53,23 @@ public final class AddSlimefunItems {
      */
     public static final int P_ENGINE_OUTPUT_AMOUNT = 8;
 
+    /**
+     * 「POWER集成核心」每次合成的产出数量 —— <b>2</b>。
+     *
+     * <p>与 {@link #SPRING_HERALD_OUTPUT_AMOUNT} / {@link #P_ENGINE_OUTPUT_AMOUNT}
+     * 同一套机制：走 {@code SlimefunItem} 第 5 个参数 {@code recipeOutput}，
+     * <b>模板 {@link AddItems#POWER_INTEGRATED_CORE} 的数量保持 1</b>。
+     */
+    public static final int POWER_INTEGRATED_CORE_OUTPUT_AMOUNT = 2;
+
+    /**
+     * 「POWER中继器」每次合成的产出数量 —— <b>8</b>。
+     *
+     * <p>同上：第 5 个参数 {@code recipeOutput}，模板数量保持 1。
+     * 它跟本体的铜线 / 能源连接器一样是"一次出一把"的中继件，所以给 8 个。
+     */
+    public static final int POWER_REPEATER_OUTPUT_AMOUNT = 8;
+
     /** 反应堆核心（多方块核心 + 发电机）。 */
     public static UtsuhoReactorCore UTSUHO_REACTOR_CORE;
     /** 炙热的灰烬（材料）。 */
@@ -229,19 +246,34 @@ public final class AddSlimefunItems {
     public static ReactorOutputPort REACTOR_OUTPUT_PORT;
 
     // 祭祀/信仰系多方块（归属 2 级组 COMPLEX_MACHINE）
-    /** 神社的木桩（多方块<b>结构方块</b>；不耗电不存电）。 */
+    /**
+     * 神社的木桩（多方块<b>结构方块</b>；不耗电不存电）。
+     *
+     * <p>★ 2026-09-24 起有配方了：<b>魔法工作台</b>合成，产出 1 个
+     * （图案见 {@link #shrinePostRecipe()}）—— 它不再是"配方待补"。
+     */
     public static ShrinePost SHRINE_POST;
-    /** 赛钱箱（多方块<b>核心</b>；自研 POWER 网络的存储节点）。 */
+    /**
+     * 赛钱箱（多方块<b>核心</b>；自研 POWER 网络的存储节点）。
+     *
+     * <p>★ 2026-09-24 起有配方了：<b>魔法工作台</b>合成，产出 1 个
+     * （图案见 {@link #saizenbakoRecipe()}）。它的专用门面配方类型
+     * {@code TouhouRecipeTypes.SAIZENBAKO} 因此已删除。
+     */
     public static Saizenbako SAIZENBAKO;
 
     // POWER 能源系统（归属 1 级组 POWER）
+    // ★ 2026-09-24：五件全部改成魔法工作台合成；前两件走多产出（见各自的 OUTPUT_AMOUNT 常量）。
+    /** POWER集成核心（★ 魔法工作台合成，单次产出 {@value #POWER_INTEGRATED_CORE_OUTPUT_AMOUNT} 个）。 */
     public static PowerIntegratedCore POWER_INTEGRATED_CORE;
+    /** POWER中继器（★ 魔法工作台合成，单次产出 {@value #POWER_REPEATER_OUTPUT_AMOUNT} 个）。 */
     public static PowerRepeater POWER_REPEATER;
+    /** POWER存储单元（★ 魔法工作台合成；原来的祭坛配方已删）。 */
     public static PowerStorageUnit POWER_STORAGE_UNIT;
-    /** 幻梦捕捉器（POWER 体系的第一台产能设备）。 */
+    /** 幻梦捕捉器（POWER 体系的第一台产能设备；★ 魔法工作台合成）。 */
     public static DreamCatcher POWER_DREAMCATCHER;
     /**
-     * POWER供给单元（POWER 体系的<b>无线供电器</b>）。
+     * POWER供给单元（POWER 体系的<b>无线供电器</b>；★ 魔法工作台合成）。
      *
      * <p>★ 梦想封印 集 / 杀意的百合的 {@code charge-wireless} 保持 {@code false}
      * （那是"道具自带无线充电"，已废弃）；无线充电能力落在这台机器上 ——
@@ -250,10 +282,11 @@ public final class AddSlimefunItems {
     public static PowerSupplyUnit POWER_SUPPLY_UNIT;
 
     public static void setup(Touhou plugin) {
-        // ★ 自定义配方类型要先建好：它是两个多方块核心的"指南配方页"载体，物品构造器就要吃它
+        // ★ 自定义配方类型要先建好：它是多方块核心的"指南配方页"载体，物品构造器就要吃它
         //   （见 TouhouRecipeTypes 的类注释 —— 它【不会】让核心变成可合成物品）。
         //   它只依赖 AddItems 的模板，所以放在 AddItems.setup() 之后的任意位置都行；
         //   放最前面是为了"顺着往下读注册流程时先看到它"。
+        //   ⚠ 2026-09-24 起「赛钱箱」不再用它（那件有了真的魔法工作台配方，专用门面已删）。
         TouhouRecipeTypes.setup();
 
         // 材料：炙热的灰烬本身就是反应堆的产物，所以给一个"没有配方"的占位，
@@ -457,7 +490,8 @@ public final class AddSlimefunItems {
                 RecipeType.NULL, noRecipe()), plugin);
 
         // 祭祀/信仰系多方块：神社的木桩（构件）+ 赛钱箱（核心）。
-        // ⚠ 配方暂缺（RecipeType.NULL = 不可合成），先用 /sf give 拿取。
+        // ★★ 2026-09-24 用户口径变更：这一对不再是"配方暂缺、只能 /sf give"——
+        //   两台都改成【魔法工作台】合成（各自的 3×3 见 shrinePostRecipe / saizenbakoRecipe）。
         // ★ 结构层图来自 docs\saizenbako-layers.yml（内置于 AddonConfig.saizenLayers，
         //   可从 config.yml 的 saizenbako.structure 覆盖）：9×6×9，6 根木桩 + 核心自己。
         //   结构判定实现在 SaizenbakoStructure（层图数学复用 LayeredReactorStructure），
@@ -466,11 +500,17 @@ public final class AddSlimefunItems {
         //     它们走的是自研 POWER 能源系统（赛钱箱是 PowerComponent 的 STORAGE 节点）。
         SHRINE_POST = register(new ShrinePost(
                 AddGroups.COMPLEX_MACHINE, AddItems.SHRINE_POST,
-                RecipeType.NULL, noRecipe()), plugin);
+                RecipeType.MAGIC_WORKBENCH,
+                shrinePostRecipe()), plugin);
 
+        // 赛钱箱：★ 2026-09-24 从"核心门面（TouhouRecipeTypes.SAIZENBAKO）+ 9 格全空"
+        //   改成【魔法工作台】真实配方（产出 1 个）—— 门面类型已随之删除。
+        //   ⚠ 它仍然是多方块核心：能合成 ≠ 能直接用，放下后还得把 9×6×9 的
+        //     结构搭出来、并在 GUI 里点信息格激活（见 Saizenbako / SaizenbakoManager）。
         SAIZENBAKO = register(new Saizenbako(
                 AddGroups.COMPLEX_MACHINE, AddItems.SAIZENBAKO,
-                TouhouRecipeTypes.SAIZENBAKO, noRecipe()), plugin);
+                RecipeType.MAGIC_WORKBENCH,
+                saizenbakoRecipe()), plugin);
 
         // ★ 标签 touhou:reactor_shell（保护罩 + 两个接口）的登记【不在这里】——
         //   它挪到了 AddItems.setup() 的末尾。原因：核心物品描述里的「建造所需材料」
@@ -504,32 +544,43 @@ public final class AddSlimefunItems {
                 lilyRecipe()), plugin);
 
         // ------------------------------------------------------------------ POWER 能源系统
-        // ⚠ 配方暂缺（RecipeType.NULL），先用 /sf give 拿取；给了配方再填。
+        // ★★ 2026-09-24 用户口径变更：五件设备全部从"配方待补（/sf give）"改成
+        //   【魔法工作台】合成。两件走多产出（第 5 参数 recipeOutput）：
+        //     POWER集成核心 2 个、POWER中继器 8 个 —— 模板数量都保持 1。
         POWER_INTEGRATED_CORE = register(new PowerIntegratedCore(
                 AddGroups.POWER, AddItems.POWER_INTEGRATED_CORE,
-                RecipeType.NULL, noRecipe()), plugin);
+                RecipeType.MAGIC_WORKBENCH,
+                powerIntegratedCoreRecipe(),
+                new SlimefunItemStack(AddItems.POWER_INTEGRATED_CORE,
+                        POWER_INTEGRATED_CORE_OUTPUT_AMOUNT)), plugin);
 
         POWER_REPEATER = register(new PowerRepeater(
                 AddGroups.POWER, AddItems.POWER_REPEATER,
-                RecipeType.NULL, noRecipe()), plugin);
+                RecipeType.MAGIC_WORKBENCH,
+                powerRepeaterRecipe(),
+                new SlimefunItemStack(AddItems.POWER_REPEATER,
+                        POWER_REPEATER_OUTPUT_AMOUNT)), plugin);
 
+        // ★ 存储单元：用户原文是两步 ——"先去掉原有的祭坛配方，再改为魔法工作台"。
+        //   祭坛那条已经删掉（SaizenbakoRecipes.setup() 现在是空的），这里只负责新配方。
         POWER_STORAGE_UNIT = register(new PowerStorageUnit(
                 AddGroups.POWER, AddItems.POWER_STORAGE_UNIT,
-                RecipeType.NULL, noRecipe()), plugin);
+                RecipeType.MAGIC_WORKBENCH,
+                powerStorageUnitRecipe()), plugin);
 
         //    幻梦捕捉器：POWER 体系的【第一台产能设备】（节点类型 GENERATOR，只捐不取）。
-        //    配方同样暂缺 —— 它跟另外三件 POWER 设备保持一致的拿取方式。
         POWER_DREAMCATCHER = register(new DreamCatcher(
                 AddGroups.POWER, AddItems.POWER_DREAMCATCHER,
-                RecipeType.NULL, noRecipe()), plugin);
+                RecipeType.MAGIC_WORKBENCH,
+                dreamCatcherRecipe()), plugin);
 
         //    POWER供给单元：POWER 体系的无线供电器（节点类型 STORAGE）。
-        //    配方同样暂缺 —— 与另外四件 POWER 设备保持一致的拿取方式（/sf give）。
         //    ★ 它给玩家手上那件 PartyItem 充电（梦想封印 集 / 杀意的百合都算），
         //      判据是基类多态，不是逐个 id —— 见 PowerSupplyUnit 的类注释。
         POWER_SUPPLY_UNIT = register(new PowerSupplyUnit(
                 AddGroups.POWER, AddItems.POWER_SUPPLY_UNIT,
-                RecipeType.NULL, noRecipe()), plugin);
+                RecipeType.MAGIC_WORKBENCH,
+                powerSupplyUnitRecipe()), plugin);
 
         // ------------------------------------------------------------------ 获取方式门面
         // ★ 必须在【所有物品都注册完之后】才能跑：它要遍历 Slimefun 注册表
@@ -831,6 +882,175 @@ public final class AddSlimefunItems {
         };
     }
 
+    // ================================================================== POWER 一族 + 祭祀系
+    // ★★ 2026-09-24 用户口径变更：下面这 7 件全部改成【魔法工作台】合成。
+    //   图案一律"3×3 阅读顺序"（上→下、左→右，数组下标 0..8），`null` = 该格留空。
+    //   ★ 材料里的本项目模板（P引擎 / POINT / 报春の妖精 / 冰の妖精 / 另一个世界的回响 /
+    //     POWER集成核心）必须给【模板本身】—— 配方匹配拿粘液 id 比，
+    //     给"看起来一样"的别的东西是匹配不上的。
+    //   ★ 本体材料一律用 {@code SlimefunItems} 常量 / 原版 {@code Material}，
+    //     字段名已用 {@code javap} 在运行期 {@code Slimefun-2026.07-release.jar}
+    //     与 {@code paper-api-1.20.4} 上逐个核实（不许凭记忆）。
+
+    /**
+     * POWER集成核心的合成配方（<b>魔法工作台</b>，产出 <b>2</b> 个）。
+     *
+     * <pre>
+     *   能源调节器   P引擎        无
+     *   冰の妖精     POINT        报春の妖精
+     *   无           P引擎        能源调节器
+     * </pre>
+     *
+     * <p>★ 「能源调节器」= {@code SlimefunItems.ENERGY_REGULATOR}（javap 核实存在）。
+     * ★ 产出 2 个<b>不在这里写</b>：数量由注册处那个第 5 参数决定
+     * （见 {@link #POWER_INTEGRATED_CORE_OUTPUT_AMOUNT}）。
+     */
+    private static ItemStack[] powerIntegratedCoreRecipe() {
+        return new ItemStack[] {
+                SlimefunItems.ENERGY_REGULATOR, AddItems.P_ENGINE, null,
+                AddItems.CIRNO, AddItems.POINT, AddItems.SPRING_HERALD,
+                null, AddItems.P_ENGINE, SlimefunItems.ENERGY_REGULATOR
+        };
+    }
+
+    /**
+     * POWER中继器的合成配方（<b>魔法工作台</b>，产出 <b>8</b> 个）。
+     *
+     * <pre>
+     *   无           红石中继器   无
+     *   魔法糖       P引擎        魔法糖
+     *   无           红石中继器   无
+     * </pre>
+     *
+     * <p>★ 「红石中继器」= 原版 {@code Material.REPEATER} —— <b>不是</b> {@code REDSTONE_TORCH}、
+     * 也不是 {@code DIODE}：1.20.4 的 {@code Material} 枚举里叫 {@code REPEATER}
+     * （已用 {@code javap} 在 {@code paper-api-1.20.4.jar} 上核实）。
+     * ★ 「魔法糖」= {@code SlimefunItems.MAGIC_SUGAR}（javap 核实）。
+     * ★ 产出 8 个由注册处第 5 参数决定（见 {@link #POWER_REPEATER_OUTPUT_AMOUNT}）。
+     */
+    private static ItemStack[] powerRepeaterRecipe() {
+        return new ItemStack[] {
+                null, new ItemStack(Material.REPEATER), null,
+                SlimefunItems.MAGIC_SUGAR, AddItems.P_ENGINE, SlimefunItems.MAGIC_SUGAR,
+                null, new ItemStack(Material.REPEATER), null
+        };
+    }
+
+    /**
+     * POWER存储单元的合成配方（<b>魔法工作台</b>，产出 1 个）。
+     *
+     * <pre>
+     *   硅           镁盐            硅
+     *   红石块       POWER集成核心   青金石块
+     *   硅           镁盐            硅
+     * </pre>
+     *
+     * <p>★★ 这一条是"两步走"的结果：用户原文先要求<b>去掉原有的祭坛配方</b>
+     * （那条在 {@link SaizenbakoRecipes#setup()}，产物正是 本单元 ×4，
+     * 现已删除 —— 见那个类的注释），<b>再</b>改成这条魔法工作台配方。
+     * ★ 「硅」= {@code SlimefunItems.SILICON}、「镁盐」= {@code SlimefunItems.MAGNESIUM_SALT}
+     * （javap 核实）；「红石块 / 青金石块」= 原版 {@code Material.REDSTONE_BLOCK} /
+     * {@code LAPIS_BLOCK}。
+     */
+    private static ItemStack[] powerStorageUnitRecipe() {
+        return new ItemStack[] {
+                SlimefunItems.SILICON, SlimefunItems.MAGNESIUM_SALT, SlimefunItems.SILICON,
+                new ItemStack(Material.REDSTONE_BLOCK), AddItems.POWER_INTEGRATED_CORE,
+                new ItemStack(Material.LAPIS_BLOCK),
+                SlimefunItems.SILICON, SlimefunItems.MAGNESIUM_SALT, SlimefunItems.SILICON
+        };
+    }
+
+    /**
+     * 幻梦捕捉器的合成配方（<b>魔法工作台</b>，产出 1 个）。
+     *
+     * <pre>
+     *   无           红色床              无
+     *   报春の妖精   另一个世界的回响    报春の妖精
+     *   P引擎        红色床              P引擎
+     * </pre>
+     *
+     * <p>★ 「红色床」= 原版 {@code Material.RED_BED}（1.13 之后床按颜色拆开，
+     * 没有笼统的 {@code BED} 了）。
+     * ★ 注意这条图案与 POWER集成核心那条<b>不同</b>（中间行与底部行互换过），
+     * 不会撞配方。
+     */
+    private static ItemStack[] dreamCatcherRecipe() {
+        return new ItemStack[] {
+                null, new ItemStack(Material.RED_BED), null,
+                AddItems.SPRING_HERALD, AddItems.ECHO_OF_ANOTHER_WORLD, AddItems.SPRING_HERALD,
+                AddItems.P_ENGINE, new ItemStack(Material.RED_BED), AddItems.P_ENGINE
+        };
+    }
+
+    /**
+     * POWER供给单元的合成配方（<b>魔法工作台</b>，产出 1 个）。
+     *
+     * <pre>
+     *   无           GPS发射器       无
+     *   P引擎        POWER集成核心    P引擎
+     *   无           GPS发射器       无
+     * </pre>
+     *
+     * <p>★ 「GPS发射器」= {@code SlimefunItems.GPS_TRANSMITTER}（javap 核实）。
+     * ★ 它引用了同批的 POWER集成核心（模板本身）—— 也就是"先做出核心，再做供电单元"。
+     */
+    private static ItemStack[] powerSupplyUnitRecipe() {
+        return new ItemStack[] {
+                null, SlimefunItems.GPS_TRANSMITTER, null,
+                AddItems.P_ENGINE, AddItems.POWER_INTEGRATED_CORE, AddItems.P_ENGINE,
+                null, SlimefunItems.GPS_TRANSMITTER, null
+        };
+    }
+
+    /**
+     * 神社的木桩的合成配方（<b>魔法工作台</b>，产出 1 个）。
+     *
+     * <pre>
+     *   红色染料   橡木原木   红色染料
+     *   纸         线         纸
+     *   红色染料   橡木原木   红色染料
+     * </pre>
+     *
+     * <p>★ 「红色染料 / 橡木原木」= 原版 {@code Material.RED_DYE} / {@code OAK_LOG}，
+     * 「纸 / 线」= {@code Material.PAPER} / {@code Material.STRING}。
+     * ★ 它原来是"配方待补"，这条配方是 2026-09-24 用户给的。
+     */
+    private static ItemStack[] shrinePostRecipe() {
+        return new ItemStack[] {
+                new ItemStack(Material.RED_DYE), new ItemStack(Material.OAK_LOG),
+                new ItemStack(Material.RED_DYE),
+                new ItemStack(Material.PAPER), new ItemStack(Material.STRING),
+                new ItemStack(Material.PAPER),
+                new ItemStack(Material.RED_DYE), new ItemStack(Material.OAK_LOG),
+                new ItemStack(Material.RED_DYE)
+        };
+    }
+
+    /**
+     * 赛钱箱的合成配方（<b>魔法工作台</b>，产出 1 个）。
+     *
+     * <pre>
+     *   橡木原木   另一个世界的回响   橡木原木
+     *   橡木原木   POWER集成核心      橡木原木
+     *   橡木原木   橡木原木           橡木原木
+     * </pre>
+     *
+     * <p>★ 这是"八格橡木原木围边 + 中间一个 POWER集成核心"的形状。
+     * ★★ 能合成 ≠ 能直接用：它仍是多方块核心，放下后要把 9×6×9 的结构
+     * （6 根神社的木桩 + 核心自己）搭出来并在 GUI 里点信息格激活。
+     */
+    private static ItemStack[] saizenbakoRecipe() {
+        return new ItemStack[] {
+                new ItemStack(Material.OAK_LOG), AddItems.ECHO_OF_ANOTHER_WORLD,
+                new ItemStack(Material.OAK_LOG),
+                new ItemStack(Material.OAK_LOG), AddItems.POWER_INTEGRATED_CORE,
+                new ItemStack(Material.OAK_LOG),
+                new ItemStack(Material.OAK_LOG), new ItemStack(Material.OAK_LOG),
+                new ItemStack(Material.OAK_LOG)
+        };
+    }
+
     /**
      * 反应堆核心的合成配方（<b>当前未被使用</b> —— 保留下来只是为了"想恢复合成时一行就能切回去"）。
      *
@@ -856,9 +1076,12 @@ public final class AddSlimefunItems {
     /**
      * 9 格全空 —— "这个物品没有合成表"。
      *
-     * <p>两个多方块核心（反应堆 / 赛钱箱）现在也走它，配合
-     * {@link TouhouRecipeTypes} 的自定义配方类型：核心既不会出现在原版工作台，
-     * 也不会出现在增强工作台或任何多方块机器里（判据见那个类的类注释）。
+     * <p>★ 2026-09-24 起，用它的只剩"真的还没有配方"的那些：4 件反应堆构件 +
+     * 2 个物流接口 + 9 件 INFO 纸品 + 落叶 + 炙热的灰烬。
+     * ⚠ <b>两个多方块核心不再走它</b>：反应堆核心一直有增强工作台配方，
+     * 赛钱箱这一轮也拿到了魔法工作台配方（见 {@link #saizenbakoRecipe()}）。
+     * <p>仍然走它的物品，指南页槽 10 由 {@link Acquisition} 统一标注获取方式
+     * （待补的那几件显示"暂未开放"的屏障图标）。
      */
     private static ItemStack[] noRecipe() {
         return new ItemStack[] {
@@ -913,12 +1136,21 @@ public final class AddSlimefunItems {
                 + " / " + (REACTOR_INPUT_PORT == null ? "输入接口=未注册" : "输入接口=OK")
                 + " / " + (REACTOR_OUTPUT_PORT == null ? "输出接口=未注册" : "输出接口=OK")
                 + " / POWER=" + (POWER_INTEGRATED_CORE == null ? "未注册"
-                        : (POWER_INTEGRATED_CORE.getId() + "," + POWER_REPEATER.getId()
-                                + "," + POWER_STORAGE_UNIT.getId()
+                        : (POWER_INTEGRATED_CORE.getId() + ",产出"
+                                + POWER_INTEGRATED_CORE_OUTPUT_AMOUNT + ",模板"
+                                + AddItems.POWER_INTEGRATED_CORE.getAmount()
+                                + "," + POWER_REPEATER.getId() + ",产出"
+                                + POWER_REPEATER_OUTPUT_AMOUNT + ",模板"
+                                + AddItems.POWER_REPEATER.getAmount()
+                                + "," + POWER_STORAGE_UNIT.getId() + ",产出1"
                                 + "," + (POWER_DREAMCATCHER == null
-                                        ? "幻梦捕捉器=未注册" : POWER_DREAMCATCHER.getId())))
+                                        ? "幻梦捕捉器=未注册"
+                                        : POWER_DREAMCATCHER.getId() + ",产出1")
+                                + "," + (POWER_SUPPLY_UNIT == null
+                                        ? "POWER供给单元=未注册"
+                                        : POWER_SUPPLY_UNIT.getId() + ",产出1")))
                 + " / 祭祀=" + (SHRINE_POST == null ? "未注册"
-                        : (SHRINE_POST.getId() + "," + SAIZENBAKO.getId()))
+                        : (SHRINE_POST.getId() + ",产出1," + SAIZENBAKO.getId() + ",产出1"))
                 + " / 构件=" + (REACTOR_FRAME == null ? "未注册"
                         : (REACTOR_FRAME.getId() + "," + REACTOR_SHIELD.getId() + ","
                                 + REACTOR_STABILIZER.getId() + "," + REACTOR_BASE.getId()));
