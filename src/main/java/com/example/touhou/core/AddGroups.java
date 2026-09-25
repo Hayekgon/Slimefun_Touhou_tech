@@ -200,7 +200,7 @@ public final class AddGroups {
         //   ★ 用 SubItemGroup 而不是 TouhouNestedGroup，理由见 CHARACTER 字段注释
         //     （NestedItemGroup 会在指南主菜单顶层单独占一格）。
         //   ★ 图标挑 PLAYER_HEAD：本组装的就是"角色"，头颅最贴题；
-        //     且现有组用的星界/熔炉/铁锭/火箭/书/红羊毛/信标/干草块都不撞。
+        //     且现有组用的星界/熔炉/铁锭/火箭/书/红羊毛/信标/干草捆（旧叫法"干草块"）都不撞。
         CHARACTER = new SubItemGroup(
                 new NamespacedKey(plugin, "touhou_character"),
                 TH_TECH,

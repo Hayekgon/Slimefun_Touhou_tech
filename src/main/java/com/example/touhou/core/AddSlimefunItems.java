@@ -309,8 +309,8 @@ public final class AddSlimefunItems {
                 TouhouRecipeTypes.DIMENSION_SHUTTLE,
                 noRecipe()), plugin);
 
-        // 春泥：普通材料，用【增强工作台】合成 —— 本项目第一个走原版合成表路径的
-        // 非机器物品（两个核心分别是机器与事件获取）。八格泥土围边，中间夹蒲公英与玫瑰。
+        // 春泥：普通材料，用【增强型工作台】合成 —— 本项目第一个走原版合成表路径的
+        // 非机器物品（两个核心分别是机器与事件获取）。八格泥土围边，中间夹蒲公英与虞美人（旧称玫瑰）。
         SPRING_MUD = register(new SlimefunItem(
                 AddGroups.MATERIAL,
                 AddItems.SPRING_MUD,
@@ -448,9 +448,15 @@ public final class AddSlimefunItems {
                 RecipeType.NULL, noRecipe()), plugin);
 
         // 多方块大型机器：反应堆核心
-        // ★ 保留原有的【增强工作台】配方（强化板 / 鼓胀锭III / 马达 / 下界粘液球 / 碳素）——
+        // ★ 保留原有的【增强型工作台】配方（钢筋板 / 起泡锭 / 电动马达 / 奇怪的下界粘液 / 黑金刚石）——
         //   这条配方是刻意设计过的中后期配方，按 spec 的定位这台机器是顶级产能机器，
         //   不该便宜到随手能做。（曾经被误改成"不可合成"，已还原。）
+        //
+        //   ★★ 材料名一律用【客户端官方译名】（本文件从 2026-09-25 起）：
+        //     旧叫法 强化板 → **钢筋板**、鼓胀锭III → **起泡锭**、碳素 → **黑金刚石**、
+        //     下界粘液球 → **奇怪的下界粘液**、魔法结晶III → **魔法结晶 - III**
+        //     （完整对照表含粘液 id：{@code docs\material-names.md}，读数来自 {@code /touhou names}）。
+        //     名字虽然换了，**字段名 / 9 格图案 / 产出一个都没动**。
         //
         //   ⚠ 它与"粘液书底部的自定义配方页"互不冲突：那一页来自
         //     {@code RecipeDisplayItem}（见 {@link RecipePages}），是实现在【物品】上的，
@@ -591,16 +597,18 @@ public final class AddSlimefunItems {
 
     /** 梦想封印 集的配方：竖着一条，模仿钓鱼竿的形状（与改名前一致，没有动）。 */
     /**
-     * 春泥的合成配方（增强工作台）：八格泥土围边，中间一排是 蒲公英 / 泥土 / 玫瑰。
+     * 春泥的合成配方（增强型工作台）：八格泥土围边，中间一排是 蒲公英 / 泥土 / 虞美人。
      *
      * <pre>
      *   泥土    泥土    泥土
-     *   蒲公英  泥土    玫瑰
+     *   蒲公英  泥土    虞美人
      *   泥土    泥土    泥土
      * </pre>
      *
-     * <p>★ 这里的「玫瑰」用 {@code Material.POPPY}：它在 1.14 之前的中文名就叫「玫瑰」，
-     * 中文社区至今仍多这么称呼（1.14 之后官方中文改叫「虞美人」）。
+     * <p>★ 这里的「虞美人」（旧叫法"玫瑰"）用 {@code Material.POPPY}：它在 1.14 之前的中文名
+     * 就叫「玫瑰」，中文社区至今仍多这么称呼；**客户端现在的官方译名是「虞美人」**
+     * （2026-09-25 从客户端语言文件 {@code assets/.../lang/zh_cn.json} 核实：
+     * {@code block.minecraft.poppy = 虞美人}），所以文档与注释统一用官方译名。
      * 若将来想换成玫瑰丛（{@code ROSE_BUSH}）或凋灵玫瑰（{@code WITHER_ROSE}），改这一处即可。
      */
     private static ItemStack[] springMudRecipe() {
@@ -644,16 +652,17 @@ public final class AddSlimefunItems {
      * 红叶飞散の天狗的合成配方（<b>魔法工作台</b>）。
      *
      * <pre>
-     *   红色染料     落叶            魔法结晶III
-     *   落叶         另一个世界的回响 落叶
-     *   魔法结晶III  落叶            红色染料
+     *   红色染料         落叶             魔法结晶 - III
+     *   落叶             另一个世界的回响  落叶
+     *   魔法结晶 - III   落叶             红色染料
      * </pre>
      *
      * <p>★ 「落叶」与「另一个世界的回响」都是本项目自己的模板
      * （{@link AddItems#FALLEN_LEAVES} / {@link AddItems#ECHO_OF_ANOTHER_WORLD}）——
      * 配方匹配拿<b>粘液 id</b> 比，所以必须给模板本身。
      *
-     * <p>★ 「魔法结晶III」用的是<b>本体常量</b> {@code SlimefunItems.MAGIC_LUMP_3}
+     * <p>★ 「魔法结晶 - III」（旧叫法"魔法结晶III"）用的是<b>本体常量</b>
+     * {@code SlimefunItems.MAGIC_LUMP_3}
      * （字段名已用 {@code javap} 在运行期 jar 上核实：本体里是
      * {@code MAGIC_LUMP_1 / MAGIC_LUMP_2 / MAGIC_LUMP_3} 三档，
      * 没有任何叫 {@code MAGIC_CRYSTAL} 的字段 —— 中文名"魔法结晶"对应的是 {@code MAGIC_LUMP}）。
@@ -716,9 +725,9 @@ public final class AddSlimefunItems {
      * POINT 的合成配方（<b>增强型工作台</b>）。
      *
      * <pre>
-     *   青金石           雾中の妖精       青金石
-     *   红叶飞散の天狗    魔法结晶III      报春の妖精
-     *   青金石           冰の妖精         青金石
+     *   青金石           雾中の妖精        青金石
+     *   红叶飞散の天狗    魔法结晶 - III    报春の妖精
+     *   青金石           冰の妖精          青金石
      * </pre>
      *
      * <p>★ 用户说的"强化工作台"与项目里的"增强型工作台"<b>是同一台机器</b>：
@@ -732,7 +741,8 @@ public final class AddSlimefunItems {
      *
      * <p>★ 「青金石」= {@code Material.LAPIS_LAZULI}：1.20.4 里就叫这个
      * （老版本的染料类物品在 1.13 被拆成了独立 Material，不再有笼统的 {@code INK_SACK}）。
-     * 「魔法结晶III」= 本体常量 {@code SlimefunItems.MAGIC_LUMP_3}（与红叶飞散の天狗那件同款口径）。
+     * 「魔法结晶 - III」（旧叫法"魔法结晶III"）= 本体常量 {@code SlimefunItems.MAGIC_LUMP_3}
+     * （与红叶飞散の天狗那件同款口径）。
      *
      * <p>★ 产出 <b>1</b> 个：本方法只管 9 格图案；注册处用的是 4 参构造器（无 {@code recipeOutput}）。
      */
@@ -770,7 +780,7 @@ public final class AddSlimefunItems {
      * 配方匹配拿粘液 id 比，给"看起来一样"的别的东西是匹配不上的。
      *
      * <p>★ 配方撞车检查：本图案与项目里另外几条增强型工作台配方
-     * （春泥的泥土围边 / 反应堆核心的强化板 / 两张符卡的竖条）都不相同，
+     * （春泥的泥土围边 / 反应堆核心的钢筋板 / 两张符卡的竖条）都不相同，
      * 不会出现"后注册的覆盖前一个"（判据见 {@code modules\03} §6）。
      *
      * <p>★★ 产出 <b>8</b> 个<b>不在这里写</b> —— 本方法只管 9 格图案，
@@ -870,7 +880,7 @@ public final class AddSlimefunItems {
      * 形状照抄，只把顶端的材料换成反应堆另一种产物口径也无从谈起 —— 先保持一致。
      * 想改配方只需要改这一个方法（注册处不动）。
      * ⚠ 与梦想封印 集<b>用同一个 {@link ItemStack}[] 形状</b>会不会撞配方？
-     * 不会：Slimefun 的增强工作台按"9 格图案 + 配方类型"匹配，
+     * 不会：Slimefun 的增强型工作台按"9 格图案 + 配方类型"匹配，
      * 两件物品的图案一模一样 ⇒ 后注册的那个会覆盖前一个。
      * 所以这里把顶端材料改成 {@code CARBONADO}，让两张配方可区分（真实可合成）。
      */
@@ -987,12 +997,13 @@ public final class AddSlimefunItems {
      * POWER供给单元的合成配方（<b>魔法工作台</b>，产出 1 个）。
      *
      * <pre>
-     *   无           GPS发射器       无
-     *   P引擎        POWER集成核心    P引擎
-     *   无           GPS发射器       无
+     *   无           GPS 发射器      无
+     *   P引擎        POWER集成核心   P引擎
+     *   无           GPS 发射器      无
      * </pre>
      *
-     * <p>★ 「GPS发射器」= {@code SlimefunItems.GPS_TRANSMITTER}（javap 核实）。
+     * <p>★ 「GPS 发射器」（旧写法"GPS发射器"少一个空格）= {@code SlimefunItems.GPS_TRANSMITTER}
+     * （javap 核实过字段名；官方译名的那个空格由 {@code /touhou names} 读出）。
      * ★ 它引用了同批的 POWER集成核心（模板本身）—— 也就是"先做出核心，再做供电单元"。
      */
     private static ItemStack[] powerSupplyUnitRecipe() {
@@ -1078,7 +1089,7 @@ public final class AddSlimefunItems {
      *
      * <p>★ 2026-09-24 起，用它的只剩"真的还没有配方"的那些：4 件反应堆构件 +
      * 2 个物流接口 + 9 件 INFO 纸品 + 落叶 + 炙热的灰烬。
-     * ⚠ <b>两个多方块核心不再走它</b>：反应堆核心一直有增强工作台配方，
+     * ⚠ <b>两个多方块核心不再走它</b>：反应堆核心一直有增强型工作台配方，
      * 赛钱箱这一轮也拿到了魔法工作台配方（见 {@link #saizenbakoRecipe()}）。
      * <p>仍然走它的物品，指南页槽 10 由 {@link Acquisition} 统一标注获取方式
      * （待补的那几件显示"暂未开放"的屏障图标）。

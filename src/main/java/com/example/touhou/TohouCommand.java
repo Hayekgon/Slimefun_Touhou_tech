@@ -108,6 +108,8 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
                     pengine(sender, Arrays.copyOfRange(args, 1, args.length));
             case "item", "iteminfo" ->
                     item(sender, Arrays.copyOfRange(args, 1, args.length));
+            case "names", "materialnames" ->
+                    names(sender, Arrays.copyOfRange(args, 1, args.length));
             case "harvest", "harvesttime" ->
                     harvest(sender, Arrays.copyOfRange(args, 1, args.length));
             case "leaves", "fallenleaves", "fallen_leaves" ->
@@ -258,6 +260,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         s.sendMessage("\u00a77/touhou point [selfcheck|recipe]   POINT：头贴图逐字符比对 / 整行深蓝 / 物品组=MATERIAL / 配方产出 1（增强型工作台）");
         s.sendMessage("\u00a77/touhou pengine [selfcheck|recipe]   P引擎：头贴图逐字符比对 / 深蓝→浅蓝逐行渐变 / 物品组=MATERIAL / ★配方产出 8（模板仍是 1）");
         s.sendMessage("\u00a77/touhou item <物品id> [更多id…] | item all   通用逐件读数（模板/名称/描述逐行颜色/三条产出路径/9 格）+ 物品统计");
+        s.sendMessage("\u00a77/touhou names [sf|ours]   材料名对照：读物品自身的 displayName（本体官方译名 / 本项目物品名，含 §x 原样串）");
         s.sendMessage("\u00a77/touhou harvest [selfcheck | test <x> <y> <z> | probe <x> <y> <z> | clear <x> <y> <z> | cell <x> <y> <z> [面] | rng <x> <y> <z> | wake <x> <y> <z> [crops|empty] | cooldown [clear]]   丰收之时：范围催熟 / 骨粉行为 / 提示语验证");
         s.sendMessage("\u00a77/touhou acquisition [all|rule|<物品id>]   获取方式标注核查（所有物品统一，含 null 配方）");
         s.sendMessage("\u00a77/touhou leaves [selfcheck | tools | drop [n] | watch [n|off] | field <x> <y> <z> [n] | check <x> <y> <z> | clear <x> <y> <z>]   落叶：掉率/数量分布/工具判据/非树叶对照；watch=实机追踪（走 Log.always）");
@@ -403,7 +406,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         guideLine(sender, "\u00a78    Bukkit 配方表里能产出它的配方 = " + countRecipesFor(item)
                 + " 条（原版工作台口径）");
         guideLine(sender, "\u00a78    Slimefun 多方块机器配方表里能产出它的 = " + countMachineRecipesFor(item)
-                + " 条（增强工作台 / 冶炼炉 / 魔法工作台…口径）");
+                + " 条（增强型工作台 / 冶炼炉 / 魔法工作台…口径）");
         guideLine(sender, "\u00a78    /sf give 能不能拿到 = "
                 + (io.github.thebusybiscuit.slimefun4.api.items.SlimefunItem.getById(item.getId()) == item
                         ? "\u00a7a能（物品已在 Slimefun 注册表里）" : "\u00a7c查不到"));
@@ -428,14 +431,14 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
     }
 
     /**
-     * 数"Slimefun 的多方块机器（增强工作台 / 冶炼炉 / 魔法工作台…）里有没有配方产出这个物品"。
+     * 数"Slimefun 的多方块机器（增强型工作台 / 冶炼炉 / 魔法工作台…）里有没有配方产出这个物品"。
      *
      * <p>★ 为什么单查 Bukkit 的配方表不够：Slimefun 的合成<b>不走</b>原版配方系统 ——
      * 它把 addon 的配方塞进 {@code MultiBlockMachine#recipes}（判据见
      * {@code TouhouRecipeTypes} 的类注释）。所以"工作台摆不出来"必须两边都查：
      * <pre>
      *   原版工作台口径 → Bukkit.recipeIterator()      （countRecipesFor）
-     *   增强工作台口径 → 各 MultiBlockMachine 的配方表（本方法）
+     *   增强型工作台口径 → 各 MultiBlockMachine 的配方表（本方法）
      * </pre>
      *
      * <p>★★ 必须扫 {@code getRecipes()}，<b>不能</b>扫 {@code getDisplayRecipes()}：
@@ -1039,7 +1042,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
             guideLine(sender, "\u00a78    Bukkit 配方表里能产出它的 = " + countRecipesFor(item)
                     + " 条（原版工作台口径，本物品走粘液多方块、应为 0）");
             guideLine(sender, "\u00a78    Slimefun 多方块机器配方表里能产出它的 = " + countMachineRecipesFor(item)
-                    + " 条（增强工作台 / 魔法工作台口径，应为 1）");
+                    + " 条（增强型工作台 / 魔法工作台口径，应为 1）");
             log("[TOUHOU] springherald recipe type="
                     + (item.getRecipeType() == null ? "null" : item.getRecipeType().getKey())
                     + " declaredOutput=" + declaredAmount
@@ -2994,6 +2997,134 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
             }
         }
         return out.length() == 0 ? "(无)" : out.toString();
+    }
+
+    // ------------------------------------------------------------------ names（材料官方译名对照）
+
+    /**
+     * <b>材料名对照读数</b> —— 读物品<b>自己</b>的中文显示名（= 客户端会显示的那个字符串）。
+     *
+     * <pre>
+     *   /touhou names          本体材料 + 本项目物品都打
+     *   /touhou names sf       只打本体（{@code SlimefunItems} 那 23 个）
+     *   /touhou names ours     只打本项目（{@code TOUHOU_} 前缀，按 id 排序）
+     * </pre>
+     *
+     * <h2>为什么要有这条命令</h2>
+     * 文档与注释里长期用<b>项目习惯叫法</b>（强化板 / 鼓胀锭III / 碳素 / 下界粘液球 / 魔法结晶III），
+     * 而客户端显示的是<b>粘液官方译名</b> —— 两者对应的粘液 id 一一相同（配方无差异），
+     * 但玩家按文档去游戏里找"强化板"是找不到的。
+     * ★ <b>译名不能凭记忆写</b>：这里读的就是权威来源 ——
+     * {@code ((ItemStack) stack).getItemMeta().getDisplayName()}。
+     * 这条路<b>不需要 Player</b>（不像 {@code ItemGroup#getItem(Player)} / {@code ItemStack#getDisplayName(Player)}），
+     * 所以无头环境能跑，读到的也正是客户端拿到的那个字符串。
+     *
+     * <h2>两条输出</h2>
+     * <ul>
+     *   <li>{@code guideLine} —— 给人看的（{@code field  id=…  名=…}）；</li>
+     *   <li>{@code log} —— <b>机器可读的 ASCII 行</b>：
+     *       {@code [TOUHOU] names field=<字段名> id=<粘液id> name=<去色名> raw=<原样名>}，
+     *       用来生成 {@code docs\material-names.md} 那张对照表。</li>
+     * </ul>
+     * ★ 本项目自己的物品名带<b>逐字符渐变</b>（{@code §x§R§R§G§G§B§B}）：
+     * {@code raw=} 里把它<b>原样输出</b>（只把 {@code §} 转义成 {@code \u00a7} 以便安全落盘，
+     * 见 skill 的日志编码踩坑），<b>刻意不 strip</b>；`name=` 是同一串去色后的可见名，
+     * 纯粹为了好读 + 好 grep。两者都在，谁都骗不了谁。
+     */
+    private void names(CommandSender sender, String[] args) {
+        String sub = args.length >= 1 ? args[0].toLowerCase(Locale.ROOT) : "all";
+        boolean sf = sub.equals("all") || sub.equals("sf") || sub.equals("slimefun");
+        boolean ours = sub.equals("all") || sub.equals("ours") || sub.equals("touhou");
+        if (!sf && !ours) {
+            sender.sendMessage(PREFIX + "\u00a7c用法: /touhou names [sf|ours]");
+            return;
+        }
+        if (sf) {
+            namesOfSlimefunItems(sender);
+        }
+        if (ours) {
+            namesOfOurs(sender);
+        }
+    }
+
+    /**
+     * 本体材料（{@code SlimefunItems}）的官方译名。
+     *
+     * <p>★ 清单 = 本项目**实际用到的全部本体字段**（用正则
+     * {@code (?<![A-Za-z_])SlimefunItems\.} 在 src 下扫出来的 21 个）
+     * **加上** {@code MAGIC_LUMP_1 / MAGIC_LUMP_2}（本工程只用 III，但 I/II 是同族，
+     * 放进对照表便于一眼看全"魔法结晶"这一族）。
+     * 机器（增强型工作台 / 魔法工作台 / 古代祭坛）也一并读 ——
+     * 文档里到处写它们的名字，同样要按官方译名核对。
+     */
+    private void namesOfSlimefunItems(CommandSender sender) {
+        guideLine(sender, PREFIX + "\u00a7e本体材料官方译名（读物品自身的 displayName，不需要玩家）");
+        nameLine(sender, "REINFORCED_PLATE", SlimefunItems.REINFORCED_PLATE);
+        nameLine(sender, "BLISTERING_INGOT_3", SlimefunItems.BLISTERING_INGOT_3);
+        nameLine(sender, "CARBONADO", SlimefunItems.CARBONADO);
+        nameLine(sender, "STRANGE_NETHER_GOO", SlimefunItems.STRANGE_NETHER_GOO);
+        nameLine(sender, "MAGIC_LUMP_1", SlimefunItems.MAGIC_LUMP_1);
+        nameLine(sender, "MAGIC_LUMP_2", SlimefunItems.MAGIC_LUMP_2);
+        nameLine(sender, "MAGIC_LUMP_3", SlimefunItems.MAGIC_LUMP_3);
+        nameLine(sender, "ENERGY_REGULATOR", SlimefunItems.ENERGY_REGULATOR);
+        nameLine(sender, "MAGIC_SUGAR", SlimefunItems.MAGIC_SUGAR);
+        nameLine(sender, "SILICON", SlimefunItems.SILICON);
+        nameLine(sender, "MAGNESIUM_SALT", SlimefunItems.MAGNESIUM_SALT);
+        nameLine(sender, "GPS_TRANSMITTER", SlimefunItems.GPS_TRANSMITTER);
+        nameLine(sender, "STEEL_PLATE", SlimefunItems.STEEL_PLATE);
+        nameLine(sender, "COPPER_WIRE", SlimefunItems.COPPER_WIRE);
+        nameLine(sender, "CARBON", SlimefunItems.CARBON);
+        nameLine(sender, "ELECTRIC_MOTOR", SlimefunItems.ELECTRIC_MOTOR);
+        nameLine(sender, "BLANK_RUNE", SlimefunItems.BLANK_RUNE);
+        nameLine(sender, "ZINC_INGOT", SlimefunItems.ZINC_INGOT);
+        nameLine(sender, "OIL_BUCKET", SlimefunItems.OIL_BUCKET);
+        nameLine(sender, "FUEL_BUCKET", SlimefunItems.FUEL_BUCKET);
+        nameLine(sender, "POWER_CRYSTAL", SlimefunItems.POWER_CRYSTAL);
+        nameLine(sender, "ENHANCED_CRAFTING_TABLE", SlimefunItems.ENHANCED_CRAFTING_TABLE);
+        nameLine(sender, "MAGIC_WORKBENCH", SlimefunItems.MAGIC_WORKBENCH);
+        nameLine(sender, "ANCIENT_ALTAR", SlimefunItems.ANCIENT_ALTAR);
+    }
+
+    /** 本项目物品（{@code TOUHOU_}）的显示名 —— 按 id 排序，便于与文档逐条对照。 */
+    private void namesOfOurs(CommandSender sender) {
+        guideLine(sender, PREFIX + "\u00a7e本项目物品显示名（★ raw= 含 §x 渐变码，原样未 strip）");
+        List<String> ids = new ArrayList<>();
+        java.util.Map<String, ItemStack> byId = new java.util.HashMap<>();
+        for (SlimefunItem it : Slimefun.getRegistry().getAllSlimefunItems()) {
+            if (it == null || !com.example.touhou.core.Acquisition.isOurs(it.getId())) {
+                continue;
+            }
+            ids.add(it.getId());
+            byId.put(it.getId(), it.getItem());
+        }
+        java.util.Collections.sort(ids);
+        for (String id : ids) {
+            nameLine(sender, id, byId.get(id));
+        }
+        log("[TOUHOU] names ours count=" + ids.size());
+    }
+
+    /**
+     * 一条材料名读数：给人看的 + 机器可读的 ASCII 行。
+     *
+     * <p>{@code field} 用本体字段名（本体材料）或粘液 id（本项目物品）——
+     * 两者在 {@code docs\material-names.md} 里就是"字段名 / 粘液 id"两列。
+     */
+    private void nameLine(CommandSender sender, String field, ItemStack stack) {
+        if (stack == null) {
+            guideLine(sender, "\u00a78  " + field + " = (null)");
+            log("[TOUHOU] names field=" + field + " id=(null) name=(null) raw=(null)");
+            return;
+        }
+        ItemMeta meta = stack.getItemMeta();
+        String raw = meta == null ? null : meta.getDisplayName();
+        String visible = raw == null ? "(无 displayName)" : ChatColor.stripColor(raw);
+        String id = idOf(stack);
+        guideLine(sender, "\u00a78  " + field + "  id=" + id + "  名=" + visible);
+        log("[TOUHOU] names field=" + field
+                + " id=" + id
+                + " name=" + visible
+                + " raw=" + (raw == null ? "(null)" : raw.replace("\u00a7", "\\u00a7")));
     }
 
     // ------------------------------------------------------------------ fairy（雾中の妖精）
@@ -7863,7 +7994,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
             return filter(List.of("reactor", "autobuild", "clickinfo", "structure", "saizen", "place",
                     "remove", "edit", "gui", "layout", "groups", "tags", "messages", "reload",
                     "power", "dreamcatcher", "seal", "lily", "springherald", "momiji", "cirno",
-                    "fairy", "point", "pengine", "item", "harvest", "leaves", "acquisition", "echo", "proj", "guide"), args[0]);
+                    "fairy", "point", "pengine", "item", "names", "harvest", "leaves", "acquisition", "echo", "proj", "guide"), args[0]);
         }
         if (args[0].equalsIgnoreCase("acquisition") && args.length == 2) {
             return filter(List.of("all", "rule"), args[1]);
@@ -7893,6 +8024,10 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         if ((args[0].equalsIgnoreCase("item") || args[0].equalsIgnoreCase("iteminfo"))
                 && args.length == 2) {
             return filter(List.of("all"), args[1]);
+        }
+        if ((args[0].equalsIgnoreCase("names") || args[0].equalsIgnoreCase("materialnames"))
+                && args.length == 2) {
+            return filter(List.of("sf", "ours"), args[1]);
         }
         if (args[0].equalsIgnoreCase("cirno") && args.length == 3
                 && args[1].equalsIgnoreCase("cooldown")) {
@@ -8003,6 +8138,6 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         return List.of("reactor", "autobuild", "clickinfo", "structure", "saizen", "place", "remove",
                 "edit", "gui", "layout", "groups", "tags", "messages", "reload", "power",
                 "dreamcatcher", "seal", "lily", "springherald", "momiji", "cirno", "fairy",
-                "point", "pengine", "item", "harvest", "leaves", "proj");
+                "point", "pengine", "item", "names", "harvest", "leaves", "proj");
     }
 }

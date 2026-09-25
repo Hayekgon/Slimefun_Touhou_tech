@@ -8,6 +8,10 @@
 > ★★ **2026-09-25 重写**：上一版是拿 20:21 那份树状图写的，没注意到提交 `61a5e7e`
 > 已经把 **POWER 五件 + 神社的木桩 + 赛钱箱** 全部加上了魔法工作台配方，
 > 于是把"已完成"当成了"待补"。本版按实测读数重排（`docs\touhou-tree.md` 同轮校正）。
+>
+> ★ **材料名一律用客户端官方译名**（钢筋板 / 起泡锭 / 黑金刚石 / 奇怪的下界粘液 /
+> 魔法结晶 - III / GPS 发射器…）—— 权威对照表见 **`docs\material-names.md`**
+> （读数来自 `/touhou names`，读的是 `ItemMeta#getDisplayName()`，不是凭记忆写的）。
 
 ---
 
@@ -59,7 +63,7 @@ gridFilled=0 machineRecipes=0`，`type=touhou:acquire_<id>`（获取方式门面
 | POWER中继器 | `TOUHOU_POWER_POWER_REPEATER` | 魔法工作台（空·红石中继器·空 / 魔法糖·P引擎·魔法糖 / 空·红石中继器·空） | **8** |
 | POWER存储单元 | `TOUHOU_POWER_POWER_STORAGE_UNIT` | 魔法工作台（硅·镁盐·硅 / 红石块·POWER集成核心·青金石块 / 硅·镁盐·硅） | 1 |
 | 幻梦捕捉器 | `TOUHOU_POWER_DREAMCATCHER` | 魔法工作台（空·红色床·空 / 报春の妖精·回响·报春の妖精 / P引擎·红色床·P引擎） | 1 |
-| POWER供给单元 | `TOUHOU_POWER_POWER_SUPPLY_UNIT` | 魔法工作台（空·GPS发射器·空 / P引擎·POWER集成核心·P引擎 / 空·GPS发射器·空） | 1 |
+| POWER供给单元 | `TOUHOU_POWER_POWER_SUPPLY_UNIT` | 魔法工作台（空·GPS 发射器·空 / P引擎·POWER集成核心·P引擎 / 空·GPS 发射器·空） | 1 |
 | 神社的木桩 | `TOUHOU_COMPLEX_MACHINE_SHRINE_POST` | 魔法工作台（红色染料·橡木原木·红色染料 / 纸·线·纸 / …） | 1 |
 | 赛钱箱 | `TOUHOU_COMPLEX_MACHINE_SAIZENBAKO` | 魔法工作台（橡木原木·回响·橡木原木 / 橡木原木·POWER集成核心·橡木原木 / 橡木原木×3） | 1 |
 
@@ -123,4 +127,7 @@ gridFilled=0 machineRecipes=0`，`type=touhou:acquire_<id>`（获取方式门面
 4. **材料档位平衡的新配方** —— 只有当新物品需要"被谁消耗"时才做（现有 11 件材料出口已够用）。
 
 ★ 以上每一项都需要用户给**材料档位**（用什么材料、放在哪台机器），例如：
-「反应堆框架 = 增强型工作台：强化板×8 + 铁块×1」这种粒度。**我不擅自定档位。**
+「反应堆框架 = 增强型工作台：钢筋板×8 + 铁块×1」这种粒度。**我不擅自定档位。**
+（★ 材料名一律用**客户端官方译名** —— 权威对照表见 **`docs\material-names.md`**：
+旧叫法 强化板 → 钢筋板、鼓胀锭III → 起泡锭、碳素 → 黑金刚石、下界粘液球 → 奇怪的下界粘液、
+魔法结晶III → 魔法结晶 - III、GPS发射器 → GPS 发射器。）

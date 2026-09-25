@@ -40,7 +40,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * 它<b>不是合成出来的</b>：物品的配方数组是 {@code AddSlimefunItems#noRecipe()}
  * 的 9 格全空，配方类型 {@link TouhouRecipeTypes#DIMENSION_SHUTTLE} 是
  * "只当门面、不落合成表"的类型（判据见那个类的类注释）。
- * 所以它不会出现在工作台、增强工作台或任何多方块机器里。
+ * 所以它不会出现在工作台、增强型工作台或任何多方块机器里。
  *
  * <h2>★ 侦测口径：只认"真的换了世界"</h2>
  * 用的是 {@link EchoOfAnotherWorldListener 玩家换世界事件}

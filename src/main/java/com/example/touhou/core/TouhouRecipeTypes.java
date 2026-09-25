@@ -56,7 +56,7 @@ public final class TouhouRecipeTypes {
      * （原油桶 → 炙热的灰烬 + 发电参数）。
      *
      * <p>⚠ 注意：反应堆核心的<b>配方类型</b>其实是
-     * {@code RecipeType.ENHANCED_CRAFTING_TABLE}（它有真的增强工作台配方）；
+     * {@code RecipeType.ENHANCED_CRAFTING_TABLE}（它有真的增强型工作台配方）；
      * 本类型只出现在"自定义配方页"的展示里，与槽 10 无关。
      */
     public static RecipeType REACTOR_CORE;
@@ -76,7 +76,7 @@ public final class TouhouRecipeTypes {
      * （{@code registerConsumer == null}），而 {@code machine} 指向的那个
      * {@code SlimefunItem} 是 {@link EchoOfAnotherWorld}（普通 {@code SlimefunItem}，
      * 不是 {@code MultiBlockMachine}），两条注册路径都不通；再加上物品传入的配方数组是
-     * {@code AddSlimefunItems#noRecipe()} 的 9 格全空 —— 工作台/增强工作台/任何机器里
+     * {@code AddSlimefunItems#noRecipe()} 的 9 格全空 —— 工作台/增强型工作台/任何机器里
      * 都摆不出它。运行期由 {@code /touhou guide echo} 的"可合成性核查"证明。
      *
      * <p>key 取 {@code touhou:dimension_shuttle}（「维度穿梭」的直译）。

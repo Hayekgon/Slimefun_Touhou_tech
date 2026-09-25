@@ -340,7 +340,7 @@ public final class AddItems {
      * {@code COMPLEX_MACHINE} 并列挂在 {@code MACHINE} 下 —— id 也随之变成
      * {@code TOUHOU_SIMPLE_MACHINE_HARVEST_TIME}。
      *
-     * <p>★ 材质：干草块（{@code Material.HAY_BLOCK}）+ 附魔光效
+     * <p>★ 材质：干草捆 —— 旧叫法"干草块"（{@code Material.HAY_BLOCK}）+ 附魔光效
      * （光效靠 {@code setup()} 末尾那段 {@code addUnsafeEnchantment} + {@code HIDE_ENCHANTS}，
      * 与梦想封印 集 / 杀意的百合 / 另一个世界的回响同一套做法）。
      */
@@ -787,7 +787,7 @@ public final class AddItems {
 
         // 丰收之时：秋姐妹的赠与（橙黄渐变的机器）。
         // ★ 名字与描述【都是】橙→黄左到右渐变（用户要求"字体同上"）。
-        // ★ 材质：干草块 —— 与"丰收"意象直接对应。
+        // ★ 材质：干草捆 —— 与"丰收"意象直接对应。
         // ★ 描述按用户原文，【一行】照抄、不折行、不改写。
         HARVEST_TIME = new SlimefunItemStack(
                 "TOUHOU_SIMPLE_MACHINE_HARVEST_TIME",
