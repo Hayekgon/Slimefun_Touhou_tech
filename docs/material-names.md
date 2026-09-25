@@ -51,9 +51,19 @@
 | `ENHANCED_CRAFTING_TABLE` | `ENHANCED_CRAFTING_TABLE` | 增强型工作台 | 一致（用户口中的"强化工作台"**就是它**） |
 | `MAGIC_WORKBENCH` | `MAGIC_WORKBENCH` | 魔法工作台 | 一致 |
 | `ANCIENT_ALTAR` | `ANCIENT_ALTAR` | 古代祭坛 | 一致 |
+| `CLOTH` | `CLOTH` | **布** | ★ 2026-09-25 新增用到（祭坛配方"布×4"）。材质是 **`PAPER`**，**不是羊毛** | 
 
-★ 清单口径 = 用 `(?<![A-Za-z_])SlimefunItems\.` 在 `src` 下扫出的**全部 21 个字段**，
-外加 `MAGIC_LUMP_1 / MAGIC_LUMP_2`（同族，便于对照）。
+★ 清单口径 = 用 `(?<![A-Za-z_])SlimefunItems\.` 在 `src` 下扫出的**全部本体字段**
+（2026-09-25 起 = 上面这 **22** 个），外加 `MAGIC_LUMP_1 / MAGIC_LUMP_2`（同族对照）。
+
+★★ **「布」的坑（本轮实测）**：需求原文写的是「布 = `Material.WHITE_WOOL`」，但运行期读数是
+```
+field=CLOTH  id=CLOTH   material=PAPER     name=布
+```
+而 `Material.WHITE_WOOL` 的客户端官方译名是 **白色羊毛** —— 两者是**不同身份**的物品
+（粘液物品带 PDC id、原版物品没有），而祭坛配方的匹配判据是"任意一边是粘液物品，
+就必须两边都是且 id 相同"。所以配方里写原版白羊毛的话，玩家拿粘液的「布」反而摆不出来
+（连材质都对不上：`CLOTH` 是 `PAPER`）。**本项目的祭坛配方用的是 `SlimefunItems.CLOTH`。**
 
 ---
 

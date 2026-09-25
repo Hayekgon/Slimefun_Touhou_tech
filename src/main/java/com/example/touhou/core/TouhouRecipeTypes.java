@@ -36,7 +36,10 @@ import org.bukkit.NamespacedKey;
  * <p>★★ <b>2026-09-24 变更</b>：「赛钱箱」拿到了用户给的<b>真实</b>魔法工作台配方，
  * 所以它<b>不再</b>使用本类的门面（{@code SAIZENBAKO} 那个类型已随之下线）——
  * 门面类型与"真配方"是互斥的：有真配方就该让指南页槽 10 显示那台真实的机器。
- * 现在本类只剩两个：反应堆核心、维度穿梭。
+ * <p>★★ <b>2026-09-25 新增</b>：{@link #SAIZEN_ALTAR}（赛钱箱<b>祈愿</b>的门面）——
+ * 祈愿产出的物品（空白符卡 / 灵梦的大蝴蝶结 / 梦想封印 集）自己没有 9 格配方，
+ * 真配方在 {@link SaizenbakoRecipes} 那张 6 槽表里，所以只能用门面表达"来源 = 祭坛"。
+ * 现在本类共三个：反应堆核心、维度穿梭、赛钱箱祈愿。
  *
  * <h2>为什么要有 setup() 而不是 static final 字段</h2>
  * {@code RecipeType(NamespacedKey, SlimefunItemStack, …)} 要吃 {@link SlimefunItemStack}
@@ -84,7 +87,32 @@ public final class TouhouRecipeTypes {
     public static RecipeType DIMENSION_SHUTTLE;
 
     /**
-     * 建好两个门面配方类型 —— 必须在 {@link AddItems#setup()} 之后、
+     * 「赛钱箱（祭坛）祈愿」的配方类型 —— 本项目的第四个门面类型（2026-09-25 新增）。
+     *
+     * <p>它承载的是 {@link SaizenbakoRecipes} 里注册的每一条祈愿配方
+     * （6 根木桩各放什么 → 产出什么）。把它挂在"由祈愿产出的物品"上当 {@code RecipeType}，
+     * 指南页<b>槽 10</b> 就会显示赛钱箱图标 + "在赛钱箱（祭坛）里祈愿产出"那两行说明，
+     * 而不是一片空气。
+     *
+     * <p>★★ 为什么<b>不能</b>用本体的 {@code RecipeType.ANCIENT_ALTAR}：
+     * 那是本体<b>另一台机器</b>（古代祭坛：9 格 + {@code registerConsumer} 会把配方写进
+     * {@code AncientAltar.getRecipes()}）。我们的赛钱箱祈愿是自研机制（6 个槽、按木桩编号、
+     * 走 {@link SaizenbakoRecipe} 匹配），配方根本不在物品的 9 格数组里 ——
+     * 用 {@code ANCIENT_ALTAR} 等于真的把配方塞进古代祭坛，玩家会在古代祭坛里合成出它们。
+     *
+     * <p>★ 与核心那个老门面（{@code reactor_core} / {@code dimension_shuttle}）同一形态：
+     * {@link #core} 造出来的类型 {@code registerConsumer == null}，而 {@code machine} 指向的
+     * 是本插件自己的物品（不是 {@code MultiBlockMachine}）⇒ 两条注册路径都不通
+     * ⇒ <b>什么都不注册</b>；再加上这些物品传入的配方数组是
+     * {@code AddSlimefunItems#noRecipe()} 的 9 格全空，所以任何台子里都摆不出来
+     * （真配方在 {@link SaizenbakoRecipes} 那张表里）。
+     *
+     * <p>key 取 {@code touhou:saizen_altar}。
+     */
+    public static RecipeType SAIZEN_ALTAR;
+
+    /**
+     * 建好三个门面配方类型 —— 必须在 {@link AddItems#setup()} 之后、
      * {@link AddSlimefunItems#setup} 之前调用。
      */
     public static void setup() {
@@ -98,6 +126,13 @@ public final class TouhouRecipeTypes {
                 "",
                 "&a&o穿过维度之门（主世界 ↔ 地狱）",
                 "&8身上的能量水晶会化作 1 个另一个世界的回响");
+        // 赛钱箱祈愿：图标用核心「赛钱箱」自己 —— 槽 10 一眼就是"在哪台机器上做"。
+        // ★ 那 6 个槽要放什么、放多少，看指南页底部的自定义配方页
+        //   （Saizenbako#getDisplayRecipes()，数据源就是 SaizenbakoRecipes）。
+        SAIZEN_ALTAR = core("saizen_altar", AddItems.SAIZENBAKO,
+                "",
+                "&a&o在赛钱箱（祭坛）里祈愿产出",
+                "&86 根木桩各放什么见指南页底部的配方页");
     }
 
     /**
@@ -115,21 +150,24 @@ public final class TouhouRecipeTypes {
     public static String describe() {
         return "自定义配方类型：反应堆核心=" + keyOf(REACTOR_CORE)
                 + " / 维度穿梭=" + keyOf(DIMENSION_SHUTTLE)
-                + "（赛钱箱已改为真实魔法工作台配方，门面已下线）";
+                + " / 赛钱箱祈愿=" + keyOf(SAIZEN_ALTAR)
+                + "（赛钱箱本身是真实魔法工作台配方，没有门面）";
     }
 
     /**
-     * 这个配方类型是不是本类专供的门面（反应堆核心 / 维度穿梭）。
+     * 这个配方类型是不是本类专供的门面（反应堆核心 / 维度穿梭 / 赛钱箱祈愿）。
      *
      * <p>★ 用途：{@link Acquisition#applyFacades()} 要靠它判断"这件物品已经有
-     * 一个更具体的槽 10 说明" —— 那两个门面带着"搭建完整结构 + 材料清单"之类的
+     * 一个更具体的槽 10 说明" —— 那几个门面带着"搭建完整结构 + 材料清单"之类的
      * 定制文字，<b>不能被通用的获取方式门面覆盖掉</b>。
      *
-     * <p>⚠ 2026-09-24：赛钱箱那一支已移除（它现在有真配方，<b>本来就不会</b>被
-     * 通用门面覆盖 —— {@code applyFacades} 对"有真配方的物品"直接跳过）。
+     * <p>⚠ 2026-09-24：赛钱箱<b>本体</b>那一支已移除（它拿到了真配方，
+     * <b>本来就不会</b>被通用门面覆盖 —— {@code applyFacades} 对"有真配方的物品"直接跳过）；
+     * 2026-09-25 起本类多了一个 {@link #SAIZEN_ALTAR}，挂在"由祈愿产出的物品"上。
      */
     public static boolean isDedicatedFacade(RecipeType type) {
-        return type != null && (type == REACTOR_CORE || type == DIMENSION_SHUTTLE);
+        return type != null
+                && (type == REACTOR_CORE || type == DIMENSION_SHUTTLE || type == SAIZEN_ALTAR);
     }
 
     private static String keyOf(RecipeType type) {

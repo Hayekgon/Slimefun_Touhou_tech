@@ -110,6 +110,8 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
                     item(sender, Arrays.copyOfRange(args, 1, args.length));
             case "names", "materialnames" ->
                     names(sender, Arrays.copyOfRange(args, 1, args.length));
+            case "altar", "saizenrecipes" ->
+                    altar(sender, Arrays.copyOfRange(args, 1, args.length));
             case "harvest", "harvesttime" ->
                     harvest(sender, Arrays.copyOfRange(args, 1, args.length));
             case "leaves", "fallenleaves", "fallen_leaves" ->
@@ -261,6 +263,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         s.sendMessage("\u00a77/touhou pengine [selfcheck|recipe]   P引擎：头贴图逐字符比对 / 深蓝→浅蓝逐行渐变 / 物品组=MATERIAL / ★配方产出 8（模板仍是 1）");
         s.sendMessage("\u00a77/touhou item <物品id> [更多id…] | item all   通用逐件读数（模板/名称/描述逐行颜色/三条产出路径/9 格）+ 物品统计");
         s.sendMessage("\u00a77/touhou names [sf|ours]   材料名对照：读物品自身的 displayName（本体官方译名 / 本项目物品名，含 §x 原样串）");
+        s.sendMessage("\u00a77/touhou altar [list|test]   赛钱箱（祭坛）祈愿配方表 + 纯逻辑匹配自测（正例/交叉/反例，不需要世界）");
         s.sendMessage("\u00a77/touhou harvest [selfcheck | test <x> <y> <z> | probe <x> <y> <z> | clear <x> <y> <z> | cell <x> <y> <z> [面] | rng <x> <y> <z> | wake <x> <y> <z> [crops|empty] | cooldown [clear]]   丰收之时：范围催熟 / 骨粉行为 / 提示语验证");
         s.sendMessage("\u00a77/touhou acquisition [all|rule|<物品id>]   获取方式标注核查（所有物品统一，含 null 配方）");
         s.sendMessage("\u00a77/touhou leaves [selfcheck | tools | drop [n] | watch [n|off] | field <x> <y> <z> [n] | check <x> <y> <z> | clear <x> <y> <z>]   落叶：掉率/数量分布/工具判据/非树叶对照；watch=实机追踪（走 Log.always）");
@@ -2792,6 +2795,25 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
                 + " material=" + (icon == null ? "null" : icon.getType())
                 + " templateAmount=" + (icon == null ? -1 : icon.getAmount()));
 
+        // ---- 头贴图：把"模板常量里那串"与"物品实际带着的那串"都打出来并逐字符比对 ----
+        //   ★ 与 /touhou point / /touhou pengine 那两条专用自检同一判据，
+        //     只是这里做成"任何一件已知头贴物品都能读"的通用版（两张表见下方两个 switch）。
+        String expectTexture = expectedTextureOf(item.getId());
+        io.github.thebusybiscuit.slimefun4.api.items.SlimefunItemStack skullTemplate = skullTemplateOf(item.getId());
+        if (expectTexture != null && skullTemplate != null) {
+            String actualTexture = skullTemplate.getSkullTexture().orElse(null);
+            boolean same = expectTexture.equals(actualTexture);
+            guideLine(sender, "\u00a78  ---- 头贴图逐字符比对 ----");
+            guideLine(sender, "\u00a78  模板常量 = " + expectTexture);
+            guideLine(sender, "\u00a78  读回     = " + actualTexture);
+            guideLine(sender, "\u00a78  相等 = " + same
+                    + (same ? "  \u00a7a[SKULL-MATCH]" : "  \u00a7c[SKULL-MISMATCH]"));
+            log("[TOUHOU] item skull id=" + item.getId()
+                    + " expected=" + expectTexture
+                    + " actual=" + actualTexture
+                    + " match=" + same);
+        }
+
         ItemMeta meta = icon == null ? null : icon.getItemMeta();
         // ---- 名称（JSON + 原样串 + 逐字符；再补一行纯 ASCII 端点色）
         printDisplayNameEvidence(sender, "显示名", meta);
@@ -2966,6 +2988,40 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         return type.getKey() == null ? "(无 key)" : type.getKey().toString();
     }
 
+    /**
+     * 已知头贴物品的<b>模板</b>（用来读回它实际带着的那串 base64）。
+     *
+     * <p>★ 为什么需要一张表：{@code getSkullTexture()} 是 {@link SlimefunItemStack} 上的方法
+     * （模板级），而 {@code itemDetail} 手上只有 {@code SlimefunItem} 与它的 {@code ItemStack}；
+     * 所以按 id 反查回模板。新增头贴物品时在下面两张 switch 里各加一行即可。
+     */
+    private static io.github.thebusybiscuit.slimefun4.api.items.SlimefunItemStack skullTemplateOf(String id) {
+        return switch (id) {
+            case "TOUHOU_MATERIAL_POINT" -> AddItems.POINT;
+            case "TOUHOU_MATERIAL_P_ENGINE" -> AddItems.P_ENGINE;
+            case "TOUHOU_MATERIAL_REIMU_RIBBON" -> AddItems.REIMU_RIBBON;
+            case "TOUHOU_CHARACTER_CIRNO" -> AddItems.CIRNO;
+            case "TOUHOU_CHARACTER_MOMIJI_TENGU" -> AddItems.MOMIJI_TENGU;
+            case "TOUHOU_CHARACTER_SPRING_HERALD" -> AddItems.SPRING_HERALD;
+            case "TOUHOU_CHARACTER_FAIRY_IN_MIST" -> AddItems.FAIRY_IN_MIST;
+            default -> null;
+        };
+    }
+
+    /** 用户给定（或项目登记）的那串头颅 Value 常量（与 {@link #skullTemplateOf} 一一对应）。 */
+    private static String expectedTextureOf(String id) {
+        return switch (id) {
+            case "TOUHOU_MATERIAL_POINT" -> AddItems.POINT_TEXTURE;
+            case "TOUHOU_MATERIAL_P_ENGINE" -> AddItems.P_ENGINE_TEXTURE;
+            case "TOUHOU_MATERIAL_REIMU_RIBBON" -> AddItems.REIMU_RIBBON_TEXTURE;
+            case "TOUHOU_CHARACTER_CIRNO" -> AddItems.CIRNO_TEXTURE;
+            case "TOUHOU_CHARACTER_MOMIJI_TENGU" -> AddItems.MOMIJI_TENGU_TEXTURE;
+            case "TOUHOU_CHARACTER_SPRING_HERALD" -> AddItems.SPRING_HERALD_TEXTURE;
+            case "TOUHOU_CHARACTER_FAIRY_IN_MIST" -> AddItems.FAIRY_IN_MIST_TEXTURE;
+            default -> null;
+        };
+    }
+
     /** {@code colorPerChar} 里"这个字符没有自己的颜色码、沿用上一个"的写法。 */
     private static boolean isInheritedColor(String color) {
         return color == null || color.startsWith("(无");
@@ -2997,6 +3053,56 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
             }
         }
         return out.length() == 0 ? "(无)" : out.toString();
+    }
+
+    // ------------------------------------------------------------------ altar（赛钱箱祈愿配方）
+
+    /**
+     * <b>赛钱箱（祭坛）祈愿配方</b>读数 —— <b>不需要世界、不需要真机器、不需要玩家</b>。
+     *
+     * <pre>
+     *   /touhou altar            全部打印（配方表 + 匹配自测）
+     *   /touhou altar list       只打配方表（3 条 × 6 槽 + 产物）
+     *   /touhou altar test       只打匹配自测（正例 / 交叉矩阵 / 两个反例）
+     * </pre>
+     *
+     * <p>★ 为什么要有它：{@code /touhou saizen <x> <y> <z> recipe} 要求那个坐标上真的立着
+     * 一台赛钱箱（{@code BlockStorage.check} 得是 {@link Saizenbako}），无头环境摆不出结构就读不到；
+     * 而配方匹配本身是<b>纯函数</b>，可以脱离世界直接验。它走的就是机器用的同一个入口
+     * （{@code SaizenbakoRecipes.match}），所以"自测通过"= 真机上按同样投料也能命中。
+     */
+    private void altar(CommandSender sender, String[] args) {
+        String sub = args.length >= 1 ? args[0].toLowerCase(Locale.ROOT) : "all";
+        boolean list = sub.equals("all") || sub.equals("list") || sub.equals("recipes");
+        boolean test = sub.equals("all") || sub.equals("test") || sub.equals("selftest");
+        if (!list && !test) {
+            sender.sendMessage(PREFIX + "\u00a7c用法: /touhou altar [list|test]");
+            return;
+        }
+        if (list) {
+            guideLine(sender, PREFIX + "\u00a7e赛钱箱（祭坛）祈愿配方表");
+            for (String line : com.example.touhou.core.SaizenbakoRecipes.describe()) {
+                guideLine(sender, "\u00a78  " + line);
+            }
+            log("[TOUHOU] altar list count=" + com.example.touhou.core.SaizenbakoRecipes.count());
+        }
+        if (test) {
+            guideLine(sender, PREFIX + "\u00a7e赛钱箱配方匹配自测");
+            boolean ok = true;
+            for (String line : com.example.touhou.core.SaizenbakoRecipes.selfTest()) {
+                guideLine(sender, "\u00a78  " + com.example.touhou.core.Notify.plain(line));
+                String ascii = line.replace("\u00a7", "");
+                if (ascii.contains("✔") || ascii.startsWith("  ×")) {
+                    // 逐条配方一行 ASCII 读数（机器可读）
+                    log("[TOUHOU] altar test " + com.example.touhou.core.Notify.plain(line).trim());
+                }
+                if (ascii.startsWith("  ×") || ascii.contains("项不通过")) {
+                    ok = false;
+                }
+            }
+            log("[TOUHOU] altar test result=" + (ok ? "OK" : "FAIL")
+                    + " recipes=" + com.example.touhou.core.SaizenbakoRecipes.count());
+        }
     }
 
     // ------------------------------------------------------------------ names（材料官方译名对照）
@@ -3083,6 +3189,10 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         nameLine(sender, "ENHANCED_CRAFTING_TABLE", SlimefunItems.ENHANCED_CRAFTING_TABLE);
         nameLine(sender, "MAGIC_WORKBENCH", SlimefunItems.MAGIC_WORKBENCH);
         nameLine(sender, "ANCIENT_ALTAR", SlimefunItems.ANCIENT_ALTAR);
+        // ★ 2026-09-25 新增：粘液本体的「布」——用户需求里的"布"要确认到底指它还是原版白羊毛
+        //   （`Material.WHITE_WOOL` 在客户端里叫"白色羊毛"，两者是**不同身份**的物品，
+        //    祭坛配方按 id 比，给错了玩家就摆不出来）。
+        nameLine(sender, "CLOTH", SlimefunItems.CLOTH);
     }
 
     /** 本项目物品（{@code TOUHOU_}）的显示名 —— 按 id 排序，便于与文档逐条对照。 */
@@ -3120,9 +3230,11 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         String raw = meta == null ? null : meta.getDisplayName();
         String visible = raw == null ? "(无 displayName)" : ChatColor.stripColor(raw);
         String id = idOf(stack);
-        guideLine(sender, "\u00a78  " + field + "  id=" + id + "  名=" + visible);
+        guideLine(sender, "\u00a78  " + field + "  id=" + id + "  材质=" + stack.getType()
+                + "  名=" + visible);
         log("[TOUHOU] names field=" + field
                 + " id=" + id
+                + " material=" + stack.getType()
                 + " name=" + visible
                 + " raw=" + (raw == null ? "(null)" : raw.replace("\u00a7", "\\u00a7")));
     }
@@ -7994,7 +8106,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
             return filter(List.of("reactor", "autobuild", "clickinfo", "structure", "saizen", "place",
                     "remove", "edit", "gui", "layout", "groups", "tags", "messages", "reload",
                     "power", "dreamcatcher", "seal", "lily", "springherald", "momiji", "cirno",
-                    "fairy", "point", "pengine", "item", "names", "harvest", "leaves", "acquisition", "echo", "proj", "guide"), args[0]);
+                    "fairy", "point", "pengine", "item", "names", "altar", "harvest", "leaves", "acquisition", "echo", "proj", "guide"), args[0]);
         }
         if (args[0].equalsIgnoreCase("acquisition") && args.length == 2) {
             return filter(List.of("all", "rule"), args[1]);
@@ -8028,6 +8140,10 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         if ((args[0].equalsIgnoreCase("names") || args[0].equalsIgnoreCase("materialnames"))
                 && args.length == 2) {
             return filter(List.of("sf", "ours"), args[1]);
+        }
+        if ((args[0].equalsIgnoreCase("altar") || args[0].equalsIgnoreCase("saizenrecipes"))
+                && args.length == 2) {
+            return filter(List.of("list", "test"), args[1]);
         }
         if (args[0].equalsIgnoreCase("cirno") && args.length == 3
                 && args[1].equalsIgnoreCase("cooldown")) {
@@ -8138,6 +8254,6 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         return List.of("reactor", "autobuild", "clickinfo", "structure", "saizen", "place", "remove",
                 "edit", "gui", "layout", "groups", "tags", "messages", "reload", "power",
                 "dreamcatcher", "seal", "lily", "springherald", "momiji", "cirno", "fairy",
-                "point", "pengine", "item", "names", "harvest", "leaves", "proj");
+                "point", "pengine", "item", "names", "altar", "harvest", "leaves", "proj");
     }
 }

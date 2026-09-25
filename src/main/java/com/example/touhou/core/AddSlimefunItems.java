@@ -161,6 +161,27 @@ public final class AddSlimefunItems {
      */
     public static SlimefunItem P_ENGINE;
     /**
+     * 空白符卡 —— ★ 2026-09-25 新增的<b>祭坛（赛钱箱祈愿）产出</b>的中间材料。
+     *
+     * <p>★ 归属 1 级组 {@link AddGroups#MATERIAL}（用户指定"物品组:幻想之物"）。
+     *
+     * <p>★★ <b>它的"配方"不在物品自己身上</b>：祈愿配方是"6 根木桩各放什么"，
+     * 存在 {@link SaizenbakoRecipes} 那张表里（#0 POINT×4 / #1 纸×12 / #2 青金石×8 /
+     * #3 回响×4 / #4 红色染料×16 / #5 红石×24），由 {@link SaizenbakoManager} 匹配。
+     * 所以这里给的是<b>门面配方类型</b> {@link TouhouRecipeTypes#SAIZEN_ALTAR} +
+     * {@link #noRecipe()}（9 格全空）—— 判据见那个门面类型的注释。
+     */
+    public static SlimefunItem BLANK_SPELLCARD;
+    /**
+     * 灵梦的大蝴蝶结 —— ★ 2026-09-25 新增的<b>祭坛（赛钱箱祈愿）产出</b>的材料。
+     *
+     * <p>★ 归属 1 级组 {@link AddGroups#MATERIAL}（用户指定"物品组:幻想之物"）。
+     * ★ 与 {@link #BLANK_SPELLCARD} 同一形态：门面类型 {@code SAIZEN_ALTAR} + 9 格全空，
+     * 真配方在 {@link SaizenbakoRecipes}（#0 红色染料×4 / #1 白色染料×1 / #2 布×4 /
+     * #3 布×4 / #4 POINT×1 / #5 回响×2）。
+     */
+    public static SlimefunItem REIMU_RIBBON;
+    /**
      * 冰の妖精（琪露诺 / Cirno）—— <b>右键生效的范围冰冻机器</b>（不需要 GUI）。
      *
      * <p>★ 归属 1 级组 {@link AddGroups#MATERIAL}（用户指定"物品组 MATERIAL"）。
@@ -526,23 +547,44 @@ public final class AddSlimefunItems {
         //     「旧地狱-反应堆保护罩」，同一件事两个说法）。
         //   请看 AddItems 末尾「标签登记」那一段，别在这里再登记一次。
 
-        // Flee into Gensokyo：梦想封印 集（形状模仿钓鱼竿）
+        // 空白符卡 / 灵梦的大蝴蝶结：★ 2026-09-25 新增的两件材料，
+        //   **真配方在赛钱箱（祭坛）的祈愿表里**（SaizenbakoRecipes），物品自己没有 9 格配方
+        //   ⇒ RecipeType 用项目的门面类型 SAIZEN_ALTAR（指南页槽 10 = 赛钱箱 + "祈愿产出"），
+        //   配方数组全空（noRecipe()）。
+        BLANK_SPELLCARD = register(new SlimefunItem(
+                AddGroups.MATERIAL, AddItems.BLANK_SPELLCARD,
+                TouhouRecipeTypes.SAIZEN_ALTAR, noRecipe()), plugin);
+
+        REIMU_RIBBON = register(new SlimefunItem(
+                AddGroups.MATERIAL, AddItems.REIMU_RIBBON,
+                TouhouRecipeTypes.SAIZEN_ALTAR, noRecipe()), plugin);
+
+        // Flee into Gensokyo：梦想封印 集（符卡）
         // ★ PARTY_ITEM 之前因为一个物品都没有，注册表里根本没它；
         //   装上这个物品之后，这个 1 级组才真正出现在 TH_TECH 菜单里。
         //   ★ 它现在吃的是自研 POWER（不再实现 Rechargeable），充能循环由
         //     Touhou#onEnable 在注册完成之后显式启动（见 FantasySeal#startCharging）。
+        // ★★ 2026-09-25 按用户要求【改为祭坛祈愿配方】：
+        //   ① 原配方的 goheiRecipe()（增强型工作台：竖条 炙热灰烬 / 钢筋板 / 电动马达）**已删除**；
+        //      该文件里没有别处引用它（已核对），所以一并清掉、不留死代码；
+        //   ② 换成 SaizenbakoRecipes 里那条「梦想封印 集」祈愿（#1 POWER存储单元×2、
+        //      #2 空白符卡×1、#3 灵梦的大蝴蝶结×4、#4 红色染料×16）；
+        //   ③ 物品的 RecipeType 因此从 RecipeType.ENHANCED_CRAFTING_TABLE 换成门面类型
+        //      TouhouRecipeTypes.SAIZEN_ALTAR，配方数组给 noRecipe()（9 格全空）——
+        //      与 2026-09-24「POWER存储单元：先删祭坛配方、再改真配方」是同一套做法的反向运用。
         FANTASY_SEAL = register(new FantasySeal(
                 AddGroups.PARTY_ITEM,
                 AddItems.FANTASY_SEAL,
-                RecipeType.ENHANCED_CRAFTING_TABLE,
-                goheiRecipe()), plugin);
+                TouhouRecipeTypes.SAIZEN_ALTAR,
+                noRecipe()), plugin);
 
         // 杀意的百合：PARTY_ITEM 组的第二件符卡（用户 spec 里的「杀意的百合」）。
         // ★ 它【沿用】梦想封印 集的整套 POWER 数据 —— 那 8 个 ItemSetting 的声明与读取
         //   都在 PartyItem 基类里，本类不各写一份（见 PartyItem 的类注释）。
         //   物品组 / 材质 / 附魔光效同样沿用（见 AddItems）。
-        // ★ 配方目前与梦想封印 集同一形状（竖着一条），因为 spec 没有给配方；
-        //   要改配方只动下面这个方法即可（与 goheiRecipe 并列）。
+        // ★ 配方目前与梦想封印 集【原来的】形状相同（竖着一条），因为 spec 没有给配方；
+        //   要改配方只动下面这个方法即可（与 lilyRecipe 并列）。
+        //   ⚠ 2026-09-25：梦想封印 集已改走祭坛祈愿，所以"两件同形状"这句话现在只描述百合自己。
         MURDEROUS_LILY = register(new MurderousLily(
                 AddGroups.PARTY_ITEM,
                 AddItems.MURDEROUS_LILY,
@@ -865,24 +907,19 @@ public final class AddSlimefunItems {
         };
     }
 
-    private static ItemStack[] goheiRecipe() {
-        return new ItemStack[] {
-                null, AddItems.BLAZING_ASH, null,
-                null, SlimefunItems.REINFORCED_PLATE, null,
-                null, SlimefunItems.ELECTRIC_MOTOR, null
-        };
-    }
-
     /**
-     * 杀意的百合的配方：与梦想封印 集<b>同一形状</b>（竖着一条）。
+     * 杀意的百合的配方：与梦想封印 集<b>原来的</b>形状相同（竖着一条）。
      *
-     * <p>★ spec 没有给这件道具的配方，所以按"同组同档次的符卡"处理：
-     * 形状照抄，只把顶端的材料换成反应堆另一种产物口径也无从谈起 —— 先保持一致。
+     * <p>★ spec 没有给这件道具的配方，所以按"同组同档次的符卡"处理：形状照抄梦想封印 集。
      * 想改配方只需要改这一个方法（注册处不动）。
      * ⚠ 与梦想封印 集<b>用同一个 {@link ItemStack}[] 形状</b>会不会撞配方？
      * 不会：Slimefun 的增强型工作台按"9 格图案 + 配方类型"匹配，
      * 两件物品的图案一模一样 ⇒ 后注册的那个会覆盖前一个。
      * 所以这里把顶端材料改成 {@code CARBONADO}，让两张配方可区分（真实可合成）。
+     * ★ 2026-09-25：梦想封印 集 已改走<b>赛钱箱（祭坛）祈愿</b>，它的增强型工作台配方
+     * （{@code goheiRecipe()}）按用户要求<b>已删除</b>；本方法（百合）保持不变 ——
+     * 于是现在增强型工作台这条竖条只剩百合一张，原先"顶端材料不同以免撞车"的担心
+     * 实际上已经不存在了（保留 CARBONADO 是为了不改动已验证过的配方）。
      */
     private static ItemStack[] lilyRecipe() {
         return new ItemStack[] {
@@ -1133,6 +1170,8 @@ public final class AddSlimefunItems {
                                 + ",模板" + AddItems.P_ENGINE.getAmount() + ")")
                 + " / " + (ECHO_OF_ANOTHER_WORLD == null ? "另一个世界的回响=未注册"
                         : "另一个世界的回响=OK(" + ECHO_OF_ANOTHER_WORLD.getId() + ")")
+                + " / 祭坛产出=" + (BLANK_SPELLCARD == null ? "未注册"
+                        : (BLANK_SPELLCARD.getId() + "," + REIMU_RIBBON.getId()))
                 + " / " + (INFO_MODESHIFT == null ? "模式玻璃板=未注册" : "模式玻璃板=OK")
                 + " / INFO=" + (INFO_PLUGIN_MESSAGE == null ? "未注册"
                         : (INFO_PLUGIN_MESSAGE.getId() + "," + INFO_DECLARATION_1.getId()
@@ -1142,7 +1181,8 @@ public final class AddSlimefunItems {
                                 + "," + INFO_TEAM_SHANGHAI_ALICE.getId()
                                 + "," + INFO_NING_MENG.getId()
                                 + "," + INFO_MATL114.getId()))
-                + " / " + (FANTASY_SEAL == null ? "梦想封印 集=未注册" : "梦想封印 集=OK")
+                + " / " + (FANTASY_SEAL == null ? "梦想封印 集=未注册"
+                        : "梦想封印 集=OK(" + FANTASY_SEAL.getId() + ",祭坛祈愿产出)")
                 + " / " + (MURDEROUS_LILY == null ? "杀意的百合=未注册" : "杀意的百合=OK")
                 + " / " + (REACTOR_INPUT_PORT == null ? "输入接口=未注册" : "输入接口=OK")
                 + " / " + (REACTOR_OUTPUT_PORT == null ? "输出接口=未注册" : "输出接口=OK")

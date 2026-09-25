@@ -277,8 +277,18 @@ public final class Acquisition {
                 Source.recipe("魔法工作台", () -> SlimefunItems.MAGIC_WORKBENCH));
 
         // ---- 符卡 / 道具 -----------------------------------------------------
+        // ★★ 2026-09-25：这三件改成/新增为【赛钱箱（祭坛）祈愿产出】——
+        //   真配方在 SaizenbakoRecipes（6 个木桩槽），不在物品的 9 格数组里，
+        //   所以物品的 RecipeType 是门面类型 touhou:saizen_altar（专用门面），
+        //   applyFacades() 不会覆盖它们（判据是键的 namespace = 插件名）。
+        //   这里登记的是"获取方式"文字；图标借用赛钱箱本体（惰性 Supplier，
+        //   静态块里绝不能直接读 AddItems.XXX —— 那时模板还没建）。
+        SOURCE_BY_ID.put("TOUHOU_MATERIAL_BLANK_SPELLCARD",
+                Source.deferred("在赛钱箱（祭坛）里祈愿产出", () -> AddItems.SAIZENBAKO));
+        SOURCE_BY_ID.put("TOUHOU_MATERIAL_REIMU_RIBBON",
+                Source.deferred("在赛钱箱（祭坛）里祈愿产出", () -> AddItems.SAIZENBAKO));
         SOURCE_BY_ID.put("TOUHOU_PARTY_ITEM_FANTASY_SEAL_CONVERGE",
-                Source.recipe("增强型工作台", () -> SlimefunItems.ENHANCED_CRAFTING_TABLE));
+                Source.deferred("在赛钱箱（祭坛）里祈愿产出", () -> AddItems.SAIZENBAKO));
         SOURCE_BY_ID.put("TOUHOU_PARTY_ITEM_MURDEROUS_LILY",
                 Source.recipe("增强型工作台", () -> SlimefunItems.ENHANCED_CRAFTING_TABLE));
 

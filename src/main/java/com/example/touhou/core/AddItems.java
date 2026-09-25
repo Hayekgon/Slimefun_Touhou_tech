@@ -95,6 +95,19 @@ public final class AddItems {
             + "M2IwNDMzZjFjMjI3OTYwOGY3YmQyY2VjZWI5OGNkMTc1Y2JhYWRjM2Y2Mjk5YWUzY2NhZTI1N2RjMjJhNTViMiJ9fX0=";
 
     /**
+     * 「灵梦的大蝴蝶结」的头颅 Value —— 用户给定的那串 base64（<b>原样照抄、不做任何加工</b>）。
+     *
+     * <p>★ 判据同上：以 {@code "ey"} 开头 ⇒ {@code getTexture} 原样当 base64 用
+     * （只有"64 位十六进制"那种才会被自动包成 base64），不需要任何加工；
+     * 运行期用 {@code REIMU_RIBBON.getSkullTexture()} 读回来逐字符比对，
+     * 于是"用户给的那串"与"物品实际带着的那串"只有一个出处。
+     * ★ 同样按项目惯例拆成两段拼接（断点与前几串一致：公共前缀之后、纹理 hash 之前）。
+     */
+    public static final String REIMU_RIBBON_TEXTURE =
+            "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUv"
+            + "NDJlZDA4YTlhODliMzY1YjEwN2MyOGMwM2VjOTVjNWQ4YzgzZjU1ZDA2MjlmOTNkNjJlZWJiZTZkOTFmMjUxOCJ9fX0=";
+
+    /**
      * 渐变配色表。
      *
      * <p>★ 起止色随配色走，而不是把"粉白"那组写死在 {@link #gradientName} 里 ——
@@ -424,6 +437,52 @@ public final class AddItems {
      * （判据见 {@link AddSlimefunItems#P_ENGINE_OUTPUT_AMOUNT}）。
      */
     public static SlimefunItemStack P_ENGINE;
+
+    /**
+     * 空白符卡 —— 祭坛（赛钱箱祈愿）产出的<b>中间材料</b>（往「梦想封印 集」那类符卡走的第一步）。
+     *
+     * <p>id 按本项目铁律 {@code TOUHOU_"物品组"_"英文名"}：归属 1 级组
+     * {@link AddGroups#MATERIAL}（用户指定"物品组:幻想之物"），英文名取
+     * <b>Blank Spellcard</b> ⇒ {@code TOUHOU_MATERIAL_BLANK_SPELLCARD}。
+     *
+     * <p>★ <b>名称灰色</b>（用户原文标注 {@code //灰色字体}）：直接写 {@code "&7"}，
+     * <b>不</b>走 {@link Gradient} —— 理由见 {@link #gradientNameRedWhite} 那条注释里说的
+     * "同组纸品白字"的先例：**单色灰**本来就是"整行同色"，用 {@code &7} 表达最直白；
+     * 本项目只有"渐变"才需要 {@code §x} 序列，纯色一律用传统色码（与 INFO 组九张纸一样）。
+     *
+     * <p>★★ <b>两行描述都是暗红色</b>（用户把两行<u>各标了一次</u> {@code //暗红色字体}）：
+     * 取 {@code &4}（原版"暗红"/dark_red）。★ 这里<b>刻意不</b>服从"描述跟随名字"的全局规则，
+     * 因为用户对这两行有明确的 {@code //} 标注 —— 全局规则只管"没标注"的行。
+     * 同理：名字是灰、描述是暗红，两套颜色**不是同一个**，这是用户要的效果。
+     *
+     * <p>★ 材质 {@code Material.FLOWER_BANNER_PATTERN}（旗帜图案）：与「梦想封印 集」
+     * 「杀意的百合」两张符卡同一材质 —— 它是"符卡"这一族的视觉标识。
+     */
+    public static SlimefunItemStack BLANK_SPELLCARD;
+
+    /**
+     * 灵梦的大蝴蝶结 —— 祭坛（赛钱箱祈愿）产出的<b>材料</b>（符卡的配件）。
+     *
+     * <p>id 按本项目铁律 {@code TOUHOU_"物品组"_"英文名"}：归属 1 级组
+     * {@link AddGroups#MATERIAL}（用户指定"物品组:幻想之物"），英文名取
+     * <b>Reimu Ribbon</b> ⇒ {@code TOUHOU_MATERIAL_REIMU_RIBBON}。
+     *
+     * <p>★ <b>名字与描述用哪套配色：需求没写 {@code //} 标注</b>（原文只有材质 / 物品组 /
+     * 配方 / 描述文字）⇒ 按全局规则"物品介绍的字体与物品名字字体一致"，
+     * <b>描述跟随名字</b>；而名字配色也没指定 ⇒ 本实现选
+     * <b>红 → 白逐字符渐变</b>（{@link #gradientNameRedWhite}），理由三条：
+     * <ol>
+     *   <li><b>物品自己的描述就是"红色白纹"</b>——红→白正好是它字面上的配色；</li>
+     *   <li><b>与同角色/同系列的「梦想封印 集」同一套</b>：那件的名字本轮也定为红→白
+     *       （{@code Gradient.RED_WHITE}），两件摆在一起是"灵梦系"的一致观感；</li>
+     *   <li>不新造配色：{@link Gradient#RED_WHITE} 是本项目已有的枚举项
+     *       （赛钱箱 / 四件 POWER 设备都在用），换色只改那一行。</li>
+     * </ol>
+     *
+     * <p>★ 材质是<b>头颅 Value</b>（用户给定的 base64，见 {@link #REIMU_RIBBON_TEXTURE}），
+     * 构造器路径与报春の妖精 / 冰の妖精 / 红叶飞散の天狗 / 雾中の妖精 / POINT / P引擎完全一致。
+     */
+    public static SlimefunItemStack REIMU_RIBBON;
 
     /**
      * 冰の妖精 —— 琪露诺（东方 Project 的「チルノ」，英文 Cirno）。
@@ -844,6 +903,34 @@ public final class AddItems {
                 gradientNamePEngine("幻想之物与现世之物结合而来，"),
                 gradientNamePEngine("窥探不存在的世界的第一步"));
 
+        // 空白符卡（祭坛产出的中间材料）。
+        // ★ 名称【灰色】：直接 &7（用户原文 //灰色字体）。★ 不建 Gradient：
+        //   纯色不是渐变，用传统色码最直白（与 INFO 组九张纸同一做法），理由见字段注释。
+        // ★★ 两行描述【都是暗红色】&4（用户对两行各标了一次 //暗红色字体）——
+        //   这一处【不】服从"描述跟随名字"的全局规则：全局规则只管"没标注"的行。
+        // ★ 材质与两张符卡相同（FLOWER_BANNER_PATTERN）。
+        BLANK_SPELLCARD = new SlimefunItemStack(
+                "TOUHOU_MATERIAL_BLANK_SPELLCARD",
+                Material.FLOWER_BANNER_PATTERN,
+                "&7空白符卡",
+                "",
+                "&4空白的符纸，贴近能感受到向外涌动的力量",
+                "&4也许能够进一步制成符卡");
+
+        // 灵梦的大蝴蝶结（祭坛产出的材料）。
+        // ★ 材质：用户给定的【头颅 Value】（base64，REIMU_RIBBON_TEXTURE）—— 判据同上面几件：
+        //   以 "ey" 开头 ⇒ getTexture 原样当 base64 用，不需要任何加工；
+        //   运行期用 REIMU_RIBBON.getSkullTexture() 读回来逐字符比对。
+        // ★ 名字与两行描述都用【红 → 白】逐字符渐变（需求没标 // ⇒ 描述跟随名字；
+        //   名字配色是本实现选的，三条理由见 REIMU_RIBBON 的字段注释）。
+        REIMU_RIBBON = new SlimefunItemStack(
+                "TOUHOU_MATERIAL_REIMU_RIBBON",
+                REIMU_RIBBON_TEXTURE,
+                gradientNameRedWhite("灵梦的大蝴蝶结"),
+                "",
+                gradientNameRedWhite("非常巨大的红色白纹蝴蝶结头饰"),
+                gradientNameRedWhite("蕴含幻想之力"));
+
         // 冰の妖精（琪露诺 / Cirno）。
         // ★ 材质：用户给定的【头颅 Value】（base64，CIRNO_TEXTURE）—— 判据同上面那两件头贴物品：
         //   这串以 "ey" 开头 ⇒ SlimefunItemStack 的 getTexture 原样当 base64 用，
@@ -1012,11 +1099,14 @@ INFO_MODESHIFT = new SlimefunItemStack(
         //   「夢想封印」= Fantasy Seal；「集」= -Converge-（与 -Scatter- / -Strike- 并列），
         //   去连字符后即 FANTASY_SEAL_CONVERGE。★ 英文名已由用户核对确认（2026-09-20）。
         //   ⚠ 物品组仍是 PARTY_ITEM，没跟着改组。
-        // 描述：由用户指定的原文（一句话，不拆行）。
-        //   末尾那几行灰字是"参数放最后"的约定（spec 允许），
-        //   其中 "POWER:" 那一行还有功能：FantasySeal 会就地改写它来显示实时电量
-        //   （见 FantasySeal#renderChargeLore —— 本道具不再是 Rechargeable，
-        //    没有 Slimefun 自带的那行电力显示，所以这一行必须留着）。
+        // ★★ 2026-09-25 用户口径变更：
+        //   ① 名字改成【红 → 白逐字符渐变】（原文标了 "//红色到白色渐变字体"）——
+        //      原来是平色的 "&d"（淡紫）；走的还是项目已有的 Gradient.RED_WHITE，不新造配色。
+        //   ② 配方从【增强型工作台】改成【赛钱箱（祭坛）祈愿】—— 见 AddSlimefunItems 的注册处
+        //      与 SaizenbakoRecipes 里那一条；原先的 goheiRecipe() 已按用户要求删除。
+        //   ③ 描述【一行都不改】（原文写的是"(文本沿用原先文本)"）：文本与原配色（&7 描述行 +
+        //      &8 参数行）全部保留 —— 其中 "POWER:" 那一行还有功能：FantasySeal 会就地改写它
+        //      来显示实时电量（见 FantasySeal#renderChargeLore），所以那一行必须留着。
         // 材质：旗帜图案 · 花朵盾徽（FLOWER_BANNER_PATTERN），带附魔光效。
         //   ★ 换材质历史：FISHING_ROD（仿钓鱼竿的握持手感）→ PAPER（纸）→ 现在这个。
         //   ★ 注意「附魔光效」不是材质自带的，而是靠 setup() 末尾那段
@@ -1025,7 +1115,7 @@ INFO_MODESHIFT = new SlimefunItemStack(
         FANTASY_SEAL = new SlimefunItemStack(
                 "TOUHOU_PARTY_ITEM_FANTASY_SEAL_CONVERGE",
                 Material.FLOWER_BANNER_PATTERN,
-                "&d梦想封印 集",
+                gradientNameRedWhite("梦想封印 集"),
                 "",
                 "&7灵梦的符卡梦想封印之一，据说没有几个人能完整的抗下一发",
                 "",
@@ -1222,6 +1312,24 @@ INFO_MODESHIFT = new SlimefunItemStack(
         if (pEngineMeta != null) {
             pEngineMeta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
             P_ENGINE.setItemMeta(pEngineMeta);
+        }
+
+        // 空白符卡 / 灵梦的大蝴蝶结：附魔光效（与 P引擎 同一段做法）。
+        //   ★ 需求没提光效，照项目惯例给（"每一件材料物品都这么处理"）；
+        //     ★ 空白符卡与两张符卡同材质（FLOWER_BANNER_PATTERN），符卡都有光晕，
+        //       它作为"符卡的半成品"保持一致；不想要就删掉对应这一段。
+        BLANK_SPELLCARD.addUnsafeEnchantment(Enchantment.ARROW_INFINITE, 1);
+        ItemMeta blankSpellcardMeta = BLANK_SPELLCARD.getItemMeta();
+        if (blankSpellcardMeta != null) {
+            blankSpellcardMeta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
+            BLANK_SPELLCARD.setItemMeta(blankSpellcardMeta);
+        }
+
+        REIMU_RIBBON.addUnsafeEnchantment(Enchantment.ARROW_INFINITE, 1);
+        ItemMeta reimuRibbonMeta = REIMU_RIBBON.getItemMeta();
+        if (reimuRibbonMeta != null) {
+            reimuRibbonMeta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
+            REIMU_RIBBON.setItemMeta(reimuRibbonMeta);
         }
 
         // 红叶飞散の天狗：附魔光效（同一套"挂无用附魔 + HIDE_ENCHANTS"）。
