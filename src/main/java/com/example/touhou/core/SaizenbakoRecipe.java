@@ -100,7 +100,18 @@ public final class SaizenbakoRecipe {
     /** 编号 -> 要求（没登记的编号 = 该格不限制）。 */
     private final Map<Integer, Ingredient> inputs;
     private final ItemStack output;
-    /** 备注（可空），写进诊断输出。 */
+    /**
+     * 备注（可空）。
+     *
+     * <p>★★★ <b>这是玩家可见文案，禁止写日期 / 改动来历</b> —— 见 {@code SKILL.md} 第 13 条硬规则。
+     * 它会出现在<b>粘液书配方页</b>（{@link Saizenbako#getDisplayRecipes()} 那一页）、
+     * {@link SaizenbakoRecipes#describe()} 与 {@code /touhou altar list} 的输出里 ——
+     * 所以"2026-09-25 用户给定""本次改动""替代原 XX"这类**开发过程记录一律不许写**
+     * （真实踩点：用户截图抓到过 {@code 配方: 空白符卡（2026-09-25 用户给定）}）。
+     * <p>★ 只允许两种内容：<b>对玩家有意义的一句话</b>（例如"需要满结构才能祈愿"），
+     * 或者<b>干脆不调 {@link Builder#note(String)}</b>（拿不准就删掉）。
+     * ★ 改动的来龙去脉请写在<b>代码注释</b>里 —— 注释不算玩家可见。
+     */
     private final String note;
 
     private SaizenbakoRecipe(String id, Map<Integer, Ingredient> inputs, ItemStack output, String note) {
@@ -266,7 +277,13 @@ public final class SaizenbakoRecipe {
             return output(copy);
         }
 
-        /** 备注（写进诊断输出）。 */
+        /**
+         * 备注 —— <b>玩家可见</b>（配方页 / 配方展示都会打出来）。
+         *
+         * <p>★★ 禁止写日期、"用户给定 / 本次改动 / 替代原 XX"这类改动来历：
+         * 见 {@link #note} 字段的注释与 {@code SKILL.md} 第 13 条硬规则。
+         * 拿不准就<b>别调用本方法</b>。
+         */
         public Builder note(String note) {
             this.note = note;
             return this;

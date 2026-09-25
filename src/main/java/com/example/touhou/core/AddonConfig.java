@@ -1171,7 +1171,7 @@ public final class AddonConfig {
                         + "  破坏树叶 " + String.format(java.util.Locale.ROOT, "%.1f", fallenLeavesDropChance * 100.0D)
                         + "% 掉落 " + fallenLeavesMinAmount + "~" + fallenLeavesMaxAmount + " 个",
                 "cirno             = 冰の妖精 每方块冷却 " + cirnoCooldownMillis + " ms"
-                        + "（用户口径 8000）  前缀「" + cirnoPrefix + "」",
+                        + "  前缀「" + cirnoPrefix + "」",
                 "fairy             = 雾中の妖精 前缀「" + fairyPrefix + "」"
                         + "（只用于「召唤失败」的 warning —— 右键已放下的方块不再有任何提示）");
     }

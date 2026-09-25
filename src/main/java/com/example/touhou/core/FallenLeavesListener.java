@@ -174,16 +174,26 @@ public class FallenLeavesListener implements Listener {
         return sb.toString();
     }
 
-    /** 供诊断：本类监听了什么（{@code /touhou leaves selfcheck} 打印）。 */
+    /**
+     * 供诊断：本类监听了什么（{@code /touhou leaves selfcheck} 打印）。
+     *
+     * <p>★★ 这里<b>只写"当前实现与它为什么这样"</b>，不写开发过程（"第一版怎么挂的、哪次实机失败"）——
+     * 这段文字是**玩家/管理员可见**的（{@code sendMessage}），改动来历按 SKILL.md 第 13 条硬规则
+     * 一律只写在注释里。下面那条注释就是被从输出里挪出来的历史：
+     * <pre>
+     *   第一版挂在 BlockDropItemEvent 上，实机失败：徒手/锄头挖树叶时原版掉落常常是空的
+     *   ⇒ 该事件不触发 ⇒ 判定一次都没跑到。（详见 modules/08 的踩坑表）
+     * </pre>
+     */
     public static List<String> describe() {
         return List.of(
                 "★ 判定与掉落入口 = BlockBreakEvent（破坏一定会触发，与原版掉不掉东西无关）",
-                "   ★★ 第一版挂在 BlockDropItemEvent 上，实机失败：徒手/锄头挖树叶时"
-                        + "原版掉落常常是空的 ⇒ 该事件不触发 ⇒ 判定一次都没跑到",
+                "   ★ 不用 BlockDropItemEvent 的原因：徒手 / 锄头挖树叶时原版掉落常常是空的"
+                        + " ⇒ 该事件根本不触发 ⇒ 判定一次都跑不到",
                 "BlockDropItemEvent = 只做诊断打印（证明原版掉落是否为空），不产生任何掉落",
                 "判据用 Tag.LEAVES —— 涵盖全部树种（含樱花/红树/杜鹃），新增树种自动跟上",
                 "爆炸 / 水流 / 活塞不触发 BlockBreakEvent（玩家破坏）⇒ 『只在玩家手动破坏时』是免费拿到的",
-                "★ 剪刀 或 精准采集（任一成立） ⇒ 跳过，不掉落叶（用户口径）",
+                "★ 剪刀 或 精准采集（任一成立） ⇒ 跳过，不掉落叶",
                 "   —— 这条同时堵掉了『放置-破坏』的循环：只有剪刀/精准采集才拿得到树叶方块本身",
                 "工具取主手（原版破坏用主手；副手不参与破坏判定）",
                 "掉落方式：自己生成 Item 实体丢到世界（不动原版掉落，无覆盖风险）",

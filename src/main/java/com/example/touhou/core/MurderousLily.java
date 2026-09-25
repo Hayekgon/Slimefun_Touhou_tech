@@ -1645,7 +1645,7 @@ public class MurderousLily extends PartyItem {
                 + "×力量 + " + sharpnessAmplifier.getValue() + "×锋利）");
         out.add("  arrowSpeed      = " + String.format("%.3f", configuredArrowSpeed())
                 + " 格/tick（基准 " + ARROW_SPEED + " × 倍率 " + arrowSpeedMultiplier.getValue()
-                + "，即用户要求的「提高 150%」）");
+                + "，相对基准提速 150%）");
         out.add("  maxDistance     = " + configuredMaxDistance() + " 格"
                 + "（真正生效 = min(它, 模拟距离×16)）"
                 + "   maxSeconds = " + configuredMaxSeconds() + " 秒");

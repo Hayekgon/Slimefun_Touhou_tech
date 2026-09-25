@@ -75,6 +75,9 @@ public final class SaizenbakoRecipes {
         // ---------------- 配方 1：空白符卡（材料 → 符卡半成品）----------------
         //   #0 POINT×4  #1 纸×12  #2 青金石×8  #3 另一个世界的回响×4
         //   #4 红色染料×16  #5 红石×24  →  空白符卡×1
+        // ★★ 以下三条都【刻意不调 .note(...)】：note 是**玩家可见文案**（配方页 / 配方展示都会打出来），
+        //   禁止写日期、"用户给定"这类改动来历 —— 见 SKILL.md 第 13 条硬规则。
+        //   （"这三条是 2026-09-25 需求给的"这件事只留在代码注释里，玩家看不到。）
         register(SaizenbakoRecipe.of("空白符卡")
                 .slot(0, AddItems.POINT, 4)
                 .slot(1, new ItemStack(Material.PAPER), 12)
@@ -83,7 +86,6 @@ public final class SaizenbakoRecipes {
                 .slot(4, new ItemStack(Material.RED_DYE), 16)
                 .slot(5, new ItemStack(Material.REDSTONE), 24)
                 .output(AddItems.BLANK_SPELLCARD, 1)
-                .note("2026-09-25 用户给定")
                 .build());
 
         // ---------------- 配方 2：灵梦的大蝴蝶结 ----------------
@@ -104,7 +106,6 @@ public final class SaizenbakoRecipes {
                 .slot(4, AddItems.POINT, 1)
                 .slot(5, AddItems.ECHO_OF_ANOTHER_WORLD, 2)
                 .output(AddItems.REIMU_RIBBON, 1)
-                .note("2026-09-25 用户给定")
                 .build());
 
         // ---------------- 配方 3：梦想封印 集 ----------------
@@ -119,7 +120,6 @@ public final class SaizenbakoRecipes {
                 .slot(3, AddItems.REIMU_RIBBON, 4)
                 .slot(4, new ItemStack(Material.RED_DYE), 16)
                 .output(AddItems.FANTASY_SEAL, 1)
-                .note("2026-09-25 用户给定（替代原增强型工作台配方）")
                 .build());
     }
 

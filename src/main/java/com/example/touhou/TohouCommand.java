@@ -933,7 +933,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
             }
             guideLine(sender, "\u00a78  getSkullTexture() = "
                     + (actual == null ? "\u00a7c(null —— 这个材质不是头颅，或贴图没写进去）" : actual));
-            guideLine(sender, "\u00a78  用户给定的 Value  = " + expect);
+            guideLine(sender, "\u00a78  模板常量 Value    = " + expect);
             guideLine(sender, "\u00a78  两者相等 = "
                     + (expect.equals(actual) ? "\u00a7a是" : "\u00a7c否"));
             guideLine(sender, "\u00a78  物品组 = " + (item.getItemGroup() == null
@@ -1737,7 +1737,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         guideLine(sender, "\u00a7e  -- 冷却（按方块记） --");
         long cd = AddonConfig.get().cirnoCooldownMillis;
         guideLine(sender, "\u00a78  config.yml cirno.cooldown-millis = " + cd
-                + " ms（用户口径 8000）⇒ " + (cd == 8000 ? "\u00a7a符合" : "\u00a7c不符"));
+                + " ms（期望 8000）⇒ " + (cd == 8000 ? "\u00a7a符合" : "\u00a7c不符"));
         guideLine(sender, "\u00a78  冷却中的方块数 = " + com.example.touhou.core.Cirno.coolingCount());
         guideLine(sender, "\u00a78  冷却文案（唯一出处）= \u00a7f"
                 + com.example.touhou.core.Notify.plain(
@@ -2416,7 +2416,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         }
         guideLine(sender, "\u00a78  ---- 汇总 ----");
         guideLine(sender, "\u00a78  非空 lore 行数 = " + coloredLines
-                + "（期望 1 —— 用户原文里描述只有一行「普通的点啦」）");
+                + "（期望 1 —— 描述只有一行「普通的点啦」）");
         log("[TOUHOU] point name lines=" + coloredLines + " allDeepBlue=" + checks);
     }
 
@@ -2433,7 +2433,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
                 + "   指向的机器 = " + (item.getRecipeType() == null
                         || item.getRecipeType().getMachine() == null
                                 ? "(无)" : item.getRecipeType().getMachine().getId())
-                + "（★ 用户说的「强化工作台」就是这台「增强型工作台」）");
+                + "（配方类型指向的机器就是这台「增强型工作台」）");
         // ---- 路径①：SlimefunItem#getRecipeOutput（指南页产物格 / 自动合成机读它）
         ItemStack declared = item.getRecipeOutput();
         int amount = declared == null ? -1 : declared.getAmount();
@@ -2624,7 +2624,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         }
         guideLine(sender, "\u00a78  ---- 汇总 ----");
         guideLine(sender, "\u00a78  非空 lore 行数 = " + coloredLines
-                + "（期望 3 —— 用户原文里的 (endl) 是换行标记）");
+                + "（期望 3 —— (endl) 是换行标记，拆成三行）");
         log("[TOUHOU] pengine name lines=" + coloredLines + " gradientPerLine=" + checks);
     }
 
@@ -2651,7 +2651,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
                 + "   指向的机器 = " + (item.getRecipeType() == null
                         || item.getRecipeType().getMachine() == null
                                 ? "(无)" : item.getRecipeType().getMachine().getId())
-                + "（★ 用户说的「强化工作台」就是这台「增强型工作台」）");
+                + "（配方类型指向的机器就是这台「增强型工作台」）");
         int expectAmount = com.example.touhou.core.AddSlimefunItems.P_ENGINE_OUTPUT_AMOUNT;
         // ---- 路径①：SlimefunItem#getRecipeOutput（指南页产物格 / 自动合成机读它）
         ItemStack declared = item.getRecipeOutput();
@@ -3422,8 +3422,8 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         guideLine(sender, "\u00a78  聊天栏 = " + com.example.touhou.core.FairyInMist.CHAT_COLOR
                 + com.example.touhou.core.FairyInMist.BOMB_NAME + "（不走 Notify 前缀）");
         guideLine(sender, "\u00a78  右键已放下的方块 = 什么都不发生"
-                + "（不触发 / 不消耗 / 不发消息 —— 用户口径；没有任何 handler 去实现它）");
-        guideLine(sender, "\u00a78  冷却 = 无（用户口径：对空气右键本身就消耗 1 个物品）");
+                + "（不触发 / 不消耗 / 不发消息；没有任何 handler 去实现它）");
+        guideLine(sender, "\u00a78  冷却 = 无（对空气右键本身就消耗 1 个物品）");
 
         log("[TOUHOU] fairy selfcheck id=" + item.getId()
                 + " material=" + (icon == null ? "null" : icon.getType())
@@ -3468,7 +3468,7 @@ public class TohouCommand implements CommandExecutor, TabCompleter {
         // 机器可读汇总：每一行都应当是"整行同一个 #00FF00"
         guideLine(sender, "\u00a78  ---- 汇总 ----");
         guideLine(sender, "\u00a78  非空 lore 行数 = " + coloredLines
-                + "（期望 2 —— 描述两行；用户已更正：原文里多出来的那个 (endl) 是多打的）");
+                + "（期望 2 —— 描述两行）");
         List<String> checks = new ArrayList<>();
         for (String line : lore) {
             if (line == null || line.isEmpty()) {
