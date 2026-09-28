@@ -8,6 +8,12 @@
 > （`/touhou item all` + `/touhou item <id>` + `/touhou acquisition all` + `/touhou guide`），
 > 结论见文末「三」的复核注记 —— **本文件与当前代码一致**。
 >
+> ★★ **计数口径（唯一）**：物品 / 真配方 / 无配方 / 待补 / 祭坛配方这五个数，
+> **一律以 `/touhou item all` + `/touhou altar list` 的运行期读数为准**（现值见「一、」末尾那一行）——
+> 手写计数本项目已经错过多次（32 / 36 / 18 / 0 都出现过），**读数是唯一可信来源**。
+> 若本文件别处的小计与现值不符，以「一、」末尾的运行期读数为准并回来改这一处。
+> 详细缺口与"下一步"见 **`docs\PROGRESS.md`** 与 **`docs\todo-items.md`**。
+>
 > ★ **材料名一律用客户端官方译名**（钢筋板 / 起泡锭 / 黑金刚石 / 奇怪的下界粘液 / 魔法结晶 - III…）：
 > 权威对照表见 **`docs\material-names.md`**（读数是 `/touhou names` 打出来的
 > `ItemMeta#getDisplayName()`）。旧叫法与官方名的对应关系在那里一次性列出。
@@ -78,8 +84,8 @@ TH Tech  (0 级容器 TOUHOU_TH_TECH, key touhou:touhou_th_tech, 指南主菜单
 ```
 
 **小计**：1 个 0 级容器 + 6 个 1 级组（其中「科学世纪」自身是容器）+ 2 个 2 级组；**物品 38 件**
-（幻想之物 8 / 幻想之缘起 4 / 多方块 9 / 单方块 1 / 符卡 2 / INFO 9 / Power 5）。
-其中**有真配方（会进合成表）的 17 件**（增强型工作台 5 + 魔法工作台 12），
+（= 幻想之物 8 + 幻想之缘起 4 + 多方块 9 + 单方块 1 + 符卡 2 + INFO 9 + Power 5）。
+其中**有真配方（会进合成表）的 17 件**（= 增强型工作台 **5** + 魔法工作台 **12**），
 **没有任何配方的 21 件**（= 38 − 17）：落叶 · 回响（这 2 件靠机制获得）· 炙热的灰烬 ·
 多方块组里除反应堆核心 / 神社的木桩 / 赛钱箱之外的 6 件（反应堆框架 / 保护罩 / 稳定器 /
 基座 / 输入接口 / 输出接口）· INFO 9 件 · **祭坛祈愿产出 3 件**（空白符卡 / 灵梦的大蝴蝶结 /
@@ -90,9 +96,16 @@ TH Tech  (0 级容器 TOUHOU_TH_TECH, key touhou:touhou_th_tech, 指南主菜单
 `touhou:saizen_altar`，不是屏障）。
 ★ **祭坛祈愿配方本身有 3 条**（`SaizenbakoRecipes`，用 `/touhou altar list` 复核）——
 它们不出现在"有真配方"那一栏里，因为 `RecipeType` 上挂的是门面而不是机器。
-★ 上面这几组数字都能用 **`/touhou item all`** 一行复核：
-`items total=36 withRealRecipe=18 noRecipe=18` + `byMachine={ENHANCED_CRAFTING_TABLE=6, MAGIC_WORKBENCH=12}`。
-（2026-09-24 那一轮：7 件物品从"无配方 / 待补"改成魔法工作台，所以真配方 11 → 18、无配方 25 → 18、待补 13 → 7。）
+★ 上面这几组数字都能用 **`/touhou item all`** 一行复核（**运行期读数是唯一口径**）：
+`items total=38 withRealRecipe=17 noRecipe=21` + `byMachine={ENHANCED_CRAFTING_TABLE=5, MAGIC_WORKBENCH=12}`。
+
+⇒ **三个数都是"可自行求和核对"的派生量**：
+**38** = 8 + 4 + 9 + 1 + 2 + 9 + 5（分组小计）；
+**17** = 5（增强型工作台）+ 12（魔法工作台）；
+**21** = 38 − 17（且 = 待补 7 + INFO 9 + 机制/门面 5）。
+祭坛祈愿那 3 条**不计入 17**（它们的 `RecipeType` 是门面而非机器，见上一条）。
+（2026-09-24 那一轮：7 件物品从"无配方 / 待补"改成魔法工作台，所以真配方 11 → 17、无配方 25 → 21、待补 13 → 7；
+当天那一版读数 `total=36 withRealRecipe=18 noRecipe=18` 与"无配方 25"对不上，**已废弃勿引用**。）
 
 ---
 
@@ -220,22 +233,28 @@ TH Tech  (0 级容器 TOUHOU_TH_TECH, key touhou:touhou_th_tech, 指南主菜单
 | **赛钱箱（祭坛）祈愿** | 3 | **空白符卡** · **灵梦的大蝴蝶结** · **梦想封印 集**（★ 这三条是"6 根木桩 × 数量"，不是 3×3；用 `/touhou altar list` 复核） |
 | **无配方**（机制获取 / 待补 / 祭坛祈愿门面） | 21 | 落叶 · 回响（维度穿梭）· 炙热的灰烬 · 反应堆构件 6 件 · INFO 9 件 · 祭坛祈愿产出 3 件（空白符卡 / 灵梦的大蝴蝶结 / 梦想封印 集） |
 
+★ **本表的求和口径**：**真配方 17 = 5 + 12**（前两行，`/touhou item all` 的 `byMachine` 复核）；
+**无配方 21 = 38 − 17**（末行，且 = 待补 7 + INFO 9 + 机制/门面 2 + 炙热灰烬 1 + 反应堆构件 6 + 祭坛产出 3）；
+祭坛那 3 条**不计入 17**（门面类型，不在 `byMachine` 里）——**三处互印、各自都能独立求和**。
+
 **待补配方的 7 件**：炙热的灰烬、反应堆框架/保护罩/稳定器/基座/输入接口/输出接口。
 （另有 9 件 INFO 纸品是**刻意不给配方**的说明物，不算待补；
 落叶 / 回响 靠机制获得 —— 它们**已经被当作材料消耗**：落叶用于红叶飞散の天狗 ×4 与雾中の妖精 ×2，
 回响用于红叶飞散の天狗 / 丰收之时 / 幻梦捕捉器 / 赛钱箱 / **空白符卡 / 灵梦的大蝴蝶结 / 梦想封印 集** 各若干。）
 
 > ★ 与上一版的差异（2026-09-24）：**7 件**从"无配方 / 待补 / 核心门面"改成了魔法工作台合成
-> （5 件 POWER 设备 + 神社的木桩 + 赛钱箱）⇒ 真配方 11 → **18**、无配方 25 → **18**、待补 13 → **7**。
+> （5 件 POWER 设备 + 神社的木桩 + 赛钱箱）⇒ 真配方 11 → **17**、无配方 25 → **21**、待补 13 → **7**。
 > 两个核心（反应堆 / 赛钱箱）现在**都有**真配方，所以"无配方"那一行不再有"核心门面"这一项。
 
 > ★★ **2026-09-25（第二轮）**：新增 **空白符卡 · 灵梦的大蝴蝶结**（祭坛祈愿产出），
 > 并把 **梦想封印 集** 从增强型工作台改成**祭坛祈愿**（原 `goheiRecipe()` 已删）⇒
-> 物品 **36 → 38**、真配方 **18 → 17**（增强型工作台 6 → **5**）、无配方 **18 → 21**、
+> 物品 **36 → 38**、真配方 **11 → 17**（增强型工作台 6 → **5**）、无配方 **25 → 21**、
 > **祭坛祈愿 0 → 3 条**；待补仍是 7。
 > ★ 运行期读数（可自行核对）：`/touhou item all` →
 > `items total=38 withRealRecipe=17 noRecipe=21` + `byMachine={ENHANCED_CRAFTING_TABLE=5, MAGIC_WORKBENCH=12}`；
 > `/touhou altar list` → `count=3`；`/touhou altar test` → 3 条全部 ✔（正例命中自己 / 交叉命中=无 / 两个反例都拦下）。
+> ★ 上面那句"待补仍是 7"要说清：**待补的 7 件与魔法工作台那 7 件是两批不同的物品** ——
+> 待补 = 炙热的灰烬 + 反应堆构件 6 件（它们**从来**没有配方）；被补上配方的是 5 件 POWER 设备 + 木桩 + 赛钱箱。
 
 > ★★ **2026-09-25 逐件复核**：用 `/touhou item <id>` 把
 > **全部有配方的物品**的「配方类型 / 9 格逐格 / 三条产出路径」与上表逐行对照，**完全一致**
@@ -261,8 +280,8 @@ TH Tech  (0 级容器 TOUHOU_TH_TECH, key touhou:touhou_th_tech, 指南主菜单
 touhou groups
 # 全部物品的获取方式标注（唯一出处 = Acquisition.SOURCE_BY_ID；无 [MISS] 即全覆盖）
 touhou acquisition all
-# ★ 物品统计（本文件里所有计数的唯一复核口径）：
-#   items total=36 withRealRecipe=18 noRecipe=18 / byMachine={ENHANCED_CRAFTING_TABLE=6, MAGIC_WORKBENCH=12}
+# ★ 物品统计（本文件里所有计数的唯一复核口径）——**以下三个数就是"现值"，本文件其它地方的计数若与它不符，以它为准**：
+#   items total=38 withRealRecipe=17 noRecipe=21 / byMachine={ENHANCED_CRAFTING_TABLE=5, MAGIC_WORKBENCH=12}
 touhou item all
 # ★ 通用逐件读数：模板(id/组/材质/数量) + 名称与描述逐字符颜色 + 三条产出路径 + 9 格逐格
 touhou item TOUHOU_POWER_POWER_INTEGRATED_CORE      # 产出 2 的样板
@@ -273,6 +292,6 @@ touhou item TOUHOU_COMPLEX_MACHINE_SHRINE_POST TOUHOU_COMPLEX_MACHINE_SAIZENBAKO
 # 逐件的专用自检（读数更细，例如头贴图逐字符比对）
 touhou springherald recipe / touhou pengine recipe
 touhou point recipe / touhou cirno recipe / touhou momiji recipe / touhou fairy recipe
-# 祭坛侧：SaizenbakoRecipes 的条数（现为 0）+ 粘液书自定义配方页内容
+# 祭坛侧：SaizenbakoRecipes 的条数（现为 3）+ 粘液书自定义配方页内容
 touhou guide
 ```

@@ -30,6 +30,14 @@
 [TOUHOU] altar test result=OK recipes=3
 ```
 
+★ **上面这五行是本轮（`docs\PROGRESS.md` 建立时）用无头服重新采集的**，不是抄文档：
+部署的 `Touhou-1.0.1.jar` 与 `build.ps1` 的产物**哈希/大小/时间戳一致**（562245 B / 同一次构建），
+用 `D:\DS_work\slimefun\_tools\headless_run.ps1 -CommandsFile <清单>` 起服后发
+`touhou item all` / `touhou acquisition all` / `touhou altar list` / `touhou altar test` / `touhou groups`，
+按 **GBK(936)** 解码 `logs\latest.log` 逐个抓出来；**测完已优雅 `stop`**（日志末尾 `Closing Server`）。
+交叉印证：`acquisition` 的 `[OK] TOUHOU_…` 行数 = **38** = `table=38`；
+`item all` 的 `byMachine` 两项相加 = 17；源码实点 `register(` = 38 个、模板字段 = 38 个。
+
 | 项 | 数 | 可自行求和核对 |
 |---|---|---|
 | 物品总数 | **38** | 幻想之物 8 + 幻想之缘起 4 + 多方块 9 + 单方块 1 + 符卡 2 + INFO 9 + POWER 5 |
@@ -59,25 +67,42 @@
 - **数据源文件（唯一权威）**：`docs\todo-items.md`（最新、逐项复核过）>
   `docs\touhou-tree.md`（**部分计数已过期且自相矛盾，见 §1.2**）> 本文件。
 
-### 1.2 ★ 文档内部矛盾与已知过期数字（**先看这段，免得被带偏**）
+### 1.2 ★ 文档计数口径（矛盾已就地修掉，本轮）
 
-**★ 本轮用源码实点复核的一处（重要）**：`AddSlimefunItems.setup()` 里用
+**★★ 规矩**：**所有计数一律以运行期读数为准** ——
+`/touhou item all` 的 `total / withRealRecipe / noRecipe` + `byMachine={…}`、
+`/touhou acquisition all` 的 `table=<N>`、`/touhou altar list` 的 `count=<N>`。
+**不许拿另一份文档的数字当依据**（手写计数本项目已经错过多次：32 / 36 / 18 / 0 都出现过）。
+
+**★ 本轮用源码实点 + 运行期读数复核的一处**：`AddSlimefunItems.setup()` 里用
 `RecipeType.ENHANCED_CRAFTING_TABLE` 的物品是
 `SPRING_MUD`(338) / `POINT`(401) / `P_ENGINE`(413) / `UTSUHO_REACTOR_CORE`(488) / `MURDEROUS_LILY`(591)
 —— **这 5 件**（`FANTASY_SEAL` 已改走祭坛门面，`lilyRecipe` 的竖条现在是唯一一条）。
-加上 12 件魔法工作台 = **17**，与 `todo-items.md` §0 的 `ENHANCED_CRAFTING_TABLE=5` / `withRealRecipe=17` **自洽**。
+加上 **12** 件魔法工作台 = **17**，与 `todo-items.md` §0 的 `ENHANCED_CRAFTING_TABLE=5` / `withRealRecipe=17` **自洽**。
 
-| 位置 | 它写的 | 实际 | 处置 |
+| 位置 | 曾经写的 | 现值（运行期口径） | 处置 |
 |---|---|---|---|
-| `docs\touhou-tree.md:82` / `:94` / `:229` / `:234` | 真配方 **17 / 18 / 18 / 17**（四处各说一套） | **17** | 以 `todo-items.md` §0 为准 |
-| `docs\touhou-tree.md:218` | "增强型工作台 \| **5**" —— 但同一格后面的物品列**列了 6 件**（春泥 · 反应堆核心 · 杀意的百合 · POINT · P引擎 · 再加一件），而该表文首又说真配方 **17** | ★ **该表自身不闭合**：5 + 12 = 17 与"5 条"一致，但**那 6 件里只能有 5 件**；按源码实点，属于这台机器的就是上表那 5 件 | **物品清单多写了一行**，以 `todo-items.md` + 源码为准 |
-| `docs\touhou-tree.md:265 / :276` | `items total=36 withRealRecipe=18` / "SaizenbakoRecipes 的条数（现为 0）" | **38 / 17 / 祭坛 3 条** | 过期，**勿引用** |
-| `docs\touhou-tree.md:229` | "真配方 11 → **18**" | 应为 **11 → 17** | 过期，**勿引用** |
-| `docs\todo-items.md` §B 小标题 | "提交 `61a5e7e`（**2026-09-24**）" 却挂着 5 件 POWER 设备的魔法工作台配方 | 那段是 2026-09-25 那轮的事（§0 与 §C 都写 2026-09-25） | 只影响历史叙述，数据本身对 |
-| `docs\todo-items.md` §D | "38 − 13 件被消耗的" 后写 "= 上表 13 行" | 上表实际是 **13 行**、列了 **13 种材料**（自洽） | 无需改 |
+| `docs\touhou-tree.md`「一、」复核实录 | `items total=36 withRealRecipe=18 noRecipe=18` + `byMachine={ENHANCED_CRAFTING_TABLE=6, …}` | **38 / 17 / 21** + `{ENHANCED_CRAFTING_TABLE=5, MAGIC_WORKBENCH=12}` | ★ **已就地改成现值**，并补上"三个数都能自行求和核对"的算式 |
+| `docs\touhou-tree.md`「一、」第三轮沿革 | 真配方 **18 → 17**、无配方 **18 → 21** | **11 → 17**、**25 → 21** | ★ **已就地改正**（2026-09-24 那轮的正确值是 11；读数 `withRealRecipe=18` 与它自己写的"无配方 25"对不上，18 这个数从未存在过） |
+| `docs\touhou-tree.md`「三、」上方沿革 | 真配方 11 → **18**、无配方 25 → **18** | **11 → 17**、**25 → 21** | ★ **已就地改正** |
+| `docs\touhou-tree.md`「四、」复核命令注释 | 注释里的统计示例 `total=36 … ENHANCED_CRAFTING_TABLE=6` | **38 / 17 / 21**、`=5` | ★ **已就地改成现值**，并注明"本文件其它地方的计数若与它不符，以它为准" |
+| `docs\touhou-tree.md`「四、」最后一行 | "SaizenbakoRecipes 的条数（**现为 0**）" | 祭坛配方 **3** 条 | ★ **已就地改成 3**（与「一、」的 `count=3` 一致） |
+| `docs\touhou-tree.md`「三、」按机器归并表 | 增强型工作台 5 / 魔法 12 / 祭坛 3 / 无配方 21 | **与现值一致**（5 + 12 = 17、38 − 17 = 21） | 表本身**对**；已补一行"求和口径"，把三处互印的算式写出来 |
+| `docs\todo-items.md` 开头沿革 | 真配方记成 **18** | **17**（2026-09-24 那轮是 **11**） | ★ **已就地加一条更正注记**（18 从未存在过） |
+| `docs\todo-items.md` §B 小标题 | "提交 `61a5e7e`（**2026-09-24**）" 却挂着 5 件 POWER 设备的魔法工作台配方 | 那段是 2026-09-25 那轮的事（§0 与 §C 都写 2026-09-25） | ⚠ **日期存疑、未改**（见下方"判不准"清单） |
 
-**★ 关于 `docs\touhou-tree.md` 的另一处必须知道的坑**：它第 82 / 94 / 229 / 234 行的历史沿革段落
-（"真配方 11 → 18"、"无配方 25 → 18"）是**上一轮**的旧数据，**不要当现值**。
+**★ 判不准、故意没改的（清单）**：
+
+1. `docs\touhou-tree.md`「三、」里 **2026-09-24 那轮的沿革句**仍写着"真配方 11 → **17**、无配方 25 → **21**…
+   当天读数 `total=36 withRealRecipe=18 noRecipe=18` 已废弃" —— 这是**历史段**，改了就篡改历史；
+   但它现在与"那天到底是多少"存在两种说法（11 还是 18）。**只保留现值与废弃标记，不再追认历史。**
+2. `docs\todo-items.md` §B 的日期（2026-09-24 vs 09-25）：`61a5e7e` 的实际提交时间需要
+   `git show -s --format=%ci 61a5e7e` 才能定，本轮**没查**（不在计数范围内）。
+3. `docs\touhou-tree.md:80` 的"6 个 1 级组"：`AddGroups` 里 1 级组是
+   MATERIAL / CHARACTER / MACHINE / PARTY_ITEM / INFO / POWER = **6 个**，
+   另加 0 级 `TH_TECH` 与 2 级的 COMPLEX/SIMPLE —— **自洽**，未改。
+4. `docs\todo-items.md` §D 的"25 件自有物品从不出现在任何配方里（38 − 13…）"：
+   38 − 13 = **25**、且正文列举出来正好 **25 件** —— **自洽**，未改。
 
 ---
 
@@ -499,8 +524,8 @@ GUI 文案 / **配方展示**（`RecipePages`、`Saizenbako#getDisplayRecipes`�
 | **`build.ps1` 的 7 个关键点** | `--release 21`（本机 JDK 25，不加会产出 major=69 的类）· **不加 `-sourcepath`** · 每次先删 `out\` 与 `build\`** · `_lib_extra` 同名覆盖 · 手工替换 `${project.version}` · 打包自检（不得含 `io/github/thebusybiscuit*` 与 `org/bukkit*`）· javac/jar 前后临时放宽 `$ErrorActionPreference` |
 | **依赖 jar** | `_lib` 里实际是 **19 个 jar**（**不是** 18）；`_lib_extra` 里 2 个（adventure-api/key **4.16.0**）。只加 paper-api + Slimefun4 会因缺 `NotNull` / adventure 而 `CompletionFailure` |
 | **编译依赖 vs 运行期** | 编译用 Slimefun4-**2025.1**、运行是 **2026.07**；已核实**只有一处**签名差异（`AGenerator#getGeneratedOutput`）。**用新 API 一律先 `javap` 运行期 jar** |
-| **当前 git 状态** | `main` 已推、工作区干净（除了下面那条）；最近提交 `bb9f7e8`（版本号 1.0.0 → 1.0.1 + 补回 `build.ps1` 被编辑时丢失的 UTF-8 BOM）。本文件是新增提交 `d8199e1`，**不要 push**（用户统一推） |
-| **本文件建立时的未提交改动** | `src\main\resources\plugin.yml` 第 2 行 `author:` 由 `YourName` 改成了 `Ning_Meng__(Haykegon)`（**不是本文件的改动，故意没提交**）。它会被 `build.ps1` 打进 jar，属于玩家/管理员可见信息 —— 与本项目包名 `com.example.touhou` 一样是"待清理的脚手架痕迹"，**要不要一并改由用户定** |
+| **当前 git 状态** | `main` 已推；最近几个提交：`08eadfe`（docs 计数统一为运行期口径 + 修掉 docs 之间的自相矛盾）← `d758920`（`plugin.yml` 作者由占位符 `YourName` 改为 `Ning_Meng__(Haykegon)`）← `d8199e1`（本文件建立）← `bb9f7e8`（版本号 1.0.0 → 1.0.1 + 补回 `build.ps1` 被编辑时丢失的 UTF-8 BOM）。**不要 push**（用户统一推） |
+| **★ 多人/多会话并发写同一个仓库** | 本项目真实发生过：本会话 `git commit --amend` 时报 `index.lock File exists` —— 另一个执行者**同时**提交了 `plugin.yml`。⇒ 提交前后都要 `git status` 复核、**只 `add` 自己的文件**、别用 `--amend`（会改写别人的提交） |
 
 ---
 
@@ -512,3 +537,7 @@ GUI 文案 / **配方展示**（`RecipePages`、`Saizenbako#getDisplayRecipes`�
 4. **§5 只加仍然有效的坑**；废弃方案只留一句"别再用它"，正文仍在 `modules\08`。
 5. **§7 的每一项都必须写"缺什么 / 影响 / 需要用户给什么"三要素**，不许只写"待办"。
 6. 本文与 `SKILL.md` / `modules\*` / 源码冲突时，**以那三者为准**，并回来修本文。
+7. ★ **`docs\` 之间出现计数分歧时，一律以运行期读数为准**（`/touhou item all` +
+   `/touhou acquisition all` + `/touhou altar list`），**不许拿另一份文档的数字当依据**；
+   就地改错的那一份，并把改动记进 §1.2 的"处置"列（含"判不准而保留"的清单）。
+   —— 本轮据此修掉 6 处（4 处 `touhou-tree.md` 计数 + 1 处 `todo-items.md` 沿革 + 1 处 `touhou-tree.md` "现为 0"）。
