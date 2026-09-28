@@ -499,7 +499,8 @@ GUI 文案 / **配方展示**（`RecipePages`、`Saizenbako#getDisplayRecipes`�
 | **`build.ps1` 的 7 个关键点** | `--release 21`（本机 JDK 25，不加会产出 major=69 的类）· **不加 `-sourcepath`** · 每次先删 `out\` 与 `build\`** · `_lib_extra` 同名覆盖 · 手工替换 `${project.version}` · 打包自检（不得含 `io/github/thebusybiscuit*` 与 `org/bukkit*`）· javac/jar 前后临时放宽 `$ErrorActionPreference` |
 | **依赖 jar** | `_lib` 里实际是 **19 个 jar**（**不是** 18）；`_lib_extra` 里 2 个（adventure-api/key **4.16.0**）。只加 paper-api + Slimefun4 会因缺 `NotNull` / adventure 而 `CompletionFailure` |
 | **编译依赖 vs 运行期** | 编译用 Slimefun4-**2025.1**、运行是 **2026.07**；已核实**只有一处**签名差异（`AGenerator#getGeneratedOutput`）。**用新 API 一律先 `javap` 运行期 jar** |
-| **当前 git 状态** | `main` 已推、工作区干净；最近提交 `bb9f7e8`（版本号 1.0.0 → 1.0.1 + 补回 `build.ps1` 被编辑时丢失的 UTF-8 BOM）。本文件是新增提交，**不要 push**（用户统一推） |
+| **当前 git 状态** | `main` 已推、工作区干净（除了下面那条）；最近提交 `bb9f7e8`（版本号 1.0.0 → 1.0.1 + 补回 `build.ps1` 被编辑时丢失的 UTF-8 BOM）。本文件是新增提交 `d8199e1`，**不要 push**（用户统一推） |
+| **本文件建立时的未提交改动** | `src\main\resources\plugin.yml` 第 2 行 `author:` 由 `YourName` 改成了 `Ning_Meng__(Haykegon)`（**不是本文件的改动，故意没提交**）。它会被 `build.ps1` 打进 jar，属于玩家/管理员可见信息 —— 与本项目包名 `com.example.touhou` 一样是"待清理的脚手架痕迹"，**要不要一并改由用户定** |
 
 ---
 

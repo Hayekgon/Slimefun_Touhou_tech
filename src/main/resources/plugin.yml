@@ -1,5 +1,5 @@
 name: Touhou
-author: YourName
+author: Ning_Meng__(Haykegon)
 description: TH Tech — Slimefun4 addon for Touhou-flavoured tech (multiblock reactor, machines, materials)
 main: com.example.touhou.Touhou
 version: ${project.version}
