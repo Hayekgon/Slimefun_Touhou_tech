@@ -9,13 +9,17 @@
 #   snakeyaml / commons-lang3 / fastutil / bungeecord-chat / adventure-* / examination-*
 #
 # 产出：out\  （classes，供 CLI 直接 -cp 使用）
-#       Touhou-1.0.0.jar （可直接丢进 plugins\）
+#       Touhou-<Version>.jar （可直接丢进 plugins\）
+#
+# ★ 版本号只有一个出处：下面 param 里的 $Version 默认值。
+#   它会被替换进打进 jar 的 plugin.yml 的 ${project.version}（本工程没有 Maven，
+#   所以不能用 pom 那一套 —— 见本文件后面的 .Replace('${project.version}', $Version)）。
 # ============================================================================
 param(
     [string]$Root = $PSScriptRoot,
     [string]$Lib = "",
     [string]$ExtraLib = "",
-    [string]$Version = "1.0.0",
+    [string]$Version = "1.0.1",
     [switch]$SkipPackage
 )
 
