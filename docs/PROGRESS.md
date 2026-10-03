@@ -524,7 +524,8 @@ GUI 文案 / **配方展示**（`RecipePages`、`Saizenbako#getDisplayRecipes`�
 | **`build.ps1` 的 7 个关键点** | `--release 21`（本机 JDK 25，不加会产出 major=69 的类）· **不加 `-sourcepath`** · 每次先删 `out\` 与 `build\`** · `_lib_extra` 同名覆盖 · 手工替换 `${project.version}` · 打包自检（不得含 `io/github/thebusybiscuit*` 与 `org/bukkit*`）· javac/jar 前后临时放宽 `$ErrorActionPreference` |
 | **依赖 jar** | `_lib` 里实际是 **19 个 jar**（**不是** 18）；`_lib_extra` 里 2 个（adventure-api/key **4.16.0**）。只加 paper-api + Slimefun4 会因缺 `NotNull` / adventure 而 `CompletionFailure` |
 | **编译依赖 vs 运行期** | 编译用 Slimefun4-**2025.1**、运行是 **2026.07**；已核实**只有一处**签名差异（`AGenerator#getGeneratedOutput`）。**用新 API 一律先 `javap` 运行期 jar** |
-| **当前 git 状态** | `main` 已推；最近几个提交：`08eadfe`（docs 计数统一为运行期口径 + 修掉 docs 之间的自相矛盾）← `d758920`（`plugin.yml` 作者由占位符 `YourName` 改为 `Ning_Meng__(Haykegon)`）← `d8199e1`（本文件建立）← `bb9f7e8`（版本号 1.0.0 → 1.0.1 + 补回 `build.ps1` 被编辑时丢失的 UTF-8 BOM）。**不要 push**（用户统一推） |
+| **当前 git 状态** | `main` **与 `origin/main` 已同步**（`ahead=0`）。HEAD = `ec1e97a`（`plugin.yml` 作者拼写 `Haykegon` → `Hayekgon`）← `3c113b0`（docs 计数统一为运行期口径 + 修掉 docs 之间的自相矛盾）← `d758920`（作者由占位符 `YourName` 改为 `Ning_Meng__(Hayekgon)`）← `d8199e1`（本文件建立）← `bb9f7e8`（版本号 1.0.0 → 1.0.1 + 补回 `build.ps1` 丢失的 UTF-8 BOM）。★ 早期提到的 `08eadfe` 已被 amend 成 `3c113b0`，**该 hash 已不存在**。 |
+| **已发布的 Release / tag** | tag `v1.0.0`（指向 `daea28f`）、`v1.0.1`（指向 `ec1e97a`）**均已推送**；两个 GitHub Release **已发布**并各挂一个 jar 附件：`releases/tag/v1.0.0`（首个正式发布）、`releases/tag/v1.0.1`（**Latest**）。源码文件由 GitHub 自动附带的 `Source code (zip/tar.gz)` 提供。本地留档在 `D:\DS_work\slimefun\_release\`（两个 jar + 两份发布说明）。 |
 | **★ 多人/多会话并发写同一个仓库** | 本项目真实发生过：本会话 `git commit --amend` 时报 `index.lock File exists` —— 另一个执行者**同时**提交了 `plugin.yml`。⇒ 提交前后都要 `git status` 复核、**只 `add` 自己的文件**、别用 `--amend`（会改写别人的提交） |
 
 ---
